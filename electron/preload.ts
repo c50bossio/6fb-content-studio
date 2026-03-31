@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('save-api-key', { provider, key }),
   getApiKey: (provider: string) =>
     ipcRenderer.invoke('get-api-key', provider),
+  deleteApiKey: (provider: string) =>
+    ipcRenderer.invoke('delete-api-key', provider),
   getAllSettings: () =>
     ipcRenderer.invoke('get-all-settings'),
   completeSetup: () =>
@@ -33,9 +35,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   postToSocial: (platform: string, content: Record<string, unknown>) =>
     ipcRenderer.invoke('post-to-social', { platform, content }),
 
+  // System
+  checkSystemHealth: () =>
+    ipcRenderer.invoke('check-system-health'),
+  resetApp: () =>
+    ipcRenderer.invoke('reset-app'),
+  openPath: (path: string) =>
+    ipcRenderer.invoke('open-path', path),
+
   // Progress Updates
   onProgress: (callback: (data: { percent: number; label: string }) => void) => {
     ipcRenderer.on('progress-update', (_event, data) => callback(data));
     return () => ipcRenderer.removeAllListeners('progress-update');
   },
 });
+

@@ -1,4 +1,4 @@
-type Page = 'dashboard' | 'clips' | 'carousel' | 'editor' | 'schedule' | 'analytics';
+type Page = 'dashboard' | 'clips' | 'carousel' | 'editor' | 'schedule' | 'analytics' | 'settings';
 
 interface SidebarProps {
   currentPage: Page;
@@ -57,13 +57,15 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
       {/* Bottom */}
       <div className="px-5 py-4 border-t border-6fb-border">
         <button
-          onClick={() => {/* Settings modal */}}
-          className="flex items-center gap-2 text-xs text-6fb-text-muted hover:text-white transition-colors"
+          onClick={() => onNavigate('settings')}
+          className={`flex items-center gap-2 text-xs transition-colors ${
+            currentPage === 'settings' ? 'text-6fb-green' : 'text-6fb-text-muted hover:text-white'
+          }`}
         >
           <span>⚙️</span>
           <span>Settings</span>
         </button>
-        <p className="text-[9px] text-6fb-text-muted mt-2">v1.0.0 — Phase 1</p>
+        <p className="text-[9px] text-6fb-text-muted mt-2">v1.0.0 — Phase 2</p>
       </div>
     </aside>
   );

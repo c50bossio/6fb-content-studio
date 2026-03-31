@@ -4,12 +4,14 @@ import Dashboard from './pages/Dashboard';
 import Setup from './pages/Setup';
 import ClipExtractor from './pages/ClipExtractor';
 import CarouselStudio from './pages/CarouselStudio';
+import Settings from './pages/Settings';
 
 declare global {
   interface Window {
     electronAPI: {
       saveApiKey: (provider: string, key: string) => Promise<{ success: boolean }>;
       getApiKey: (provider: string) => Promise<{ hasKey: boolean; hint: string | null }>;
+      deleteApiKey: (provider: string) => Promise<{ success: boolean }>;
       getAllSettings: () => Promise<{
         apiKeys: { claude: boolean; openai: boolean };
         setupComplete: boolean;
@@ -21,6 +23,9 @@ declare global {
       generateCarousel: (data: { topic: string; type: string; keyPoints: string[] }) => Promise<{ success: boolean; slides?: Slide[]; error?: string }>;
       renderVideo: (compositionId: string, props: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
       postToSocial: (platform: string, content: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
+      checkSystemHealth: () => Promise<unknown>;
+      resetApp: () => Promise<{ success: boolean }>;
+      openPath: (path: string) => Promise<{ success: boolean }>;
       onProgress: (callback: (data: { percent: number; label: string }) => void) => () => void;
     };
   }
@@ -35,7 +40,7 @@ export interface Slide {
   slideType: 'cover' | 'content' | 'cta';
 }
 
-type Page = 'dashboard' | 'clips' | 'carousel' | 'editor' | 'schedule' | 'analytics';
+type Page = 'dashboard' | 'clips' | 'carousel' | 'editor' | 'schedule' | 'analytics' | 'settings';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
@@ -56,6 +61,14 @@ export default function App() {
         renderVideo: async () => ({ success: false, error: 'Electron required' }),
         postToSocial: async () => ({ success: false, error: 'Electron required' }),
         onProgress: () => () => {},
+        deleteApiKey: async () => ({ success: true }),
+        checkSystemHealth: async () => ({
+          deps: { python: false, ffmpeg: false, mediapipe: false, clipExtractor: false },
+          paths: { userData: '~/Library/Application Support/6fb-content-studio', ixClipExtractor: '~/clawd/projects/ix-social-media-manager/tools/clip_extractor' },
+          apiKeys: { claude: true, openai: false },
+        }),
+        resetApp: async () => ({ success: true }),
+        openPath: async () => ({ success: true }),
       };
     }
 
@@ -100,6 +113,7 @@ export default function App() {
         {currentPage === 'editor' && <ComingSoon title="Video Editor" icon="🎬" />}
         {currentPage === 'schedule' && <ComingSoon title="Scheduler" icon="📅" />}
         {currentPage === 'analytics' && <ComingSoon title="Analytics" icon="📊" />}
+        {currentPage === 'settings' && <Settings />}
       </main>
     </div>
   );

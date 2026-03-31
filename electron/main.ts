@@ -1,5 +1,6 @@
-import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron';
 import { join } from 'path';
+import { runClipExtractor, checkPythonDeps } from './python-bridge';
 
 // electron-store: handle ESM default export
 import Store from 'electron-store';
@@ -100,6 +101,63 @@ ipcMain.handle('select-output-dir', async () => {
     return { cancelled: true };
   }
   return { cancelled: false, dirPath: result.filePaths[0] };
+});
+
+// ─── Clip Extractor (Python Bridge) ───────────────────────────────
+
+ipcMain.handle('extract-clips', async (_event, { videoPath, options }: {
+  videoPath: string;
+  options: { outputFormat?: string; startSec?: number; endSec?: number };
+}) => {
+  const outputDir = join(app.getPath('userData'), 'clips', Date.now().toString());
+  const result = await runClipExtractor(
+    videoPath,
+    outputDir,
+    {
+      outputFormat: (options.outputFormat as '9x16' | '1x1' | 'split') || '9x16',
+      startSec: options.startSec,
+      endSec: options.endSec,
+    },
+    mainWindow,
+  );
+  return result;
+});
+
+// ─── System Health Check ──────────────────────────────────────────
+
+ipcMain.handle('check-system-health', async () => {
+  const deps = await checkPythonDeps();
+  return {
+    deps,
+    paths: {
+      userData: app.getPath('userData'),
+      ixClipExtractor: join(
+        process.env.HOME || '~',
+        'clawd/projects/ix-social-media-manager/tools/clip_extractor'
+      ),
+    },
+    apiKeys: {
+      claude: !!store.get('apiKeys.claude'),
+      openai: !!store.get('apiKeys.openai'),
+    },
+  };
+});
+
+// ─── Settings Management ──────────────────────────────────────────
+
+ipcMain.handle('delete-api-key', async (_event, provider: string) => {
+  store.delete(`apiKeys.${provider}`);
+  return { success: true };
+});
+
+ipcMain.handle('reset-app', async () => {
+  store.clear();
+  return { success: true };
+});
+
+ipcMain.handle('open-path', async (_event, path: string) => {
+  shell.openPath(path);
+  return { success: true };
 });
 
 // Carousel Generation (uses student's Claude API key)
