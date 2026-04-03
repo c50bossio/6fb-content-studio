@@ -1,6 +1,6 @@
 {
   "name": "6fb-content-studio",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "6FB Content Studio \u2014 Professional content creation tools for barbers",
   "main": "out/main/index.js",
   "scripts": {
