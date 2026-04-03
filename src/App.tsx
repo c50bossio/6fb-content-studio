@@ -84,6 +84,7 @@ declare global {
       deleteRun: (runId: string) => Promise<{ success: boolean }>;
       deleteClip: (clipPath: string) => Promise<{ success: boolean }>;
       renameClip: (specPath: string, newTitle: string) => Promise<{ success: boolean }>;
+      trimClip: (data: { filePath: string; specPath: string; startSec: number; endSec: number }) => Promise<{ success: boolean; error?: string }>;
       generateThumbnail: (videoPath: string, thumbPath: string) => Promise<{ success: boolean; thumbPath?: string }>;
       // Progress
       onProgress: (callback: (data: { percent: number; label: string }) => void) => () => void;

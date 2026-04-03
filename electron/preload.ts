@@ -96,6 +96,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('delete-clip', clipPath),
   renameClip: (specPath: string, newTitle: string) =>
     ipcRenderer.invoke('rename-clip', { specPath, newTitle }),
+  trimClip: (data: { filePath: string; specPath: string; startSec: number; endSec: number }) =>
+    ipcRenderer.invoke('trim-clip', data),
   generateThumbnail: (videoPath: string, thumbPath: string) =>
     ipcRenderer.invoke('generate-thumbnail', { videoPath, thumbPath }),
 

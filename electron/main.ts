@@ -617,6 +617,38 @@ ipcMain.handle('rename-clip', async (_event, { specPath, newTitle }: { specPath:
   } catch (err) { return { success: false, error: String(err) }; }
 });
 
+// Re-trim an existing extracted clip to new in/out points
+ipcMain.handle('trim-clip', async (_event, {
+  filePath, specPath, startSec, endSec,
+}: { filePath: string; specPath: string; startSec: number; endSec: number }) => {
+  const ffmpeg = findFfmpeg();
+  const tmpOut = filePath.replace(/\.mp4$/, '_trimmed.mp4');
+  const duration = endSec - startSec;
+  return new Promise<{ success: boolean; error?: string }>((resolve) => {
+    execFile(ffmpeg, [
+      '-y', '-i', filePath,
+      '-ss', String(startSec), '-t', String(duration),
+      '-c', 'copy', tmpOut,
+    ], { timeout: 60000 }, (err) => {
+      if (err) return resolve({ success: false, error: err.message });
+      try {
+        // Atomically replace original with trimmed version
+        rmSync(filePath, { force: true });
+        require('fs').renameSync(tmpOut, filePath);
+        // Update spec
+        if (existsSync(specPath)) {
+          const spec = JSON.parse(readFileSync(specPath, 'utf-8'));
+          spec.clipStart = (spec.clipStart ?? 0) + startSec;
+          spec.clipEnd = spec.clipStart + duration;
+          spec.duration = duration;
+          writeFileSync(specPath, JSON.stringify(spec, null, 2));
+        }
+        resolve({ success: true });
+      } catch (e) { resolve({ success: false, error: String(e) }); }
+    });
+  });
+});
+
 // ─── Carousel Persistence ─────────────────────────────────────────
 const carouselsDir = () => join(app.getPath('userData'), 'carousels');
 
