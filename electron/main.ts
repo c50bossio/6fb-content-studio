@@ -649,7 +649,117 @@ ipcMain.handle('trim-clip', async (_event, {
   });
 });
 
-// ─── Carousel Persistence ─────────────────────────────────────────
+// ─── Video Editor: Full Render Pipeline ───────────────────────────
+ipcMain.handle('render-video', async (_event, props: {
+  clipPath: string;
+  trimStart: number;
+  trimEnd: number;
+  outputFormat: '9x16' | '1x1' | '16x9';
+  transition?: string;
+  caption?: { text: string; fontWeight: string; fontSize: number; color: string; position: 'top' | 'center' | 'bottom'; bgOpacity: number } | null;
+  music?: { path: string; volume: number } | null;
+  outputDir?: string;
+}) => {
+  const { clipPath, trimStart, trimEnd, outputFormat, caption, music, outputDir } = props;
+  const ffmpeg = findFfmpeg();
+  const outDir = outputDir || app.getPath('downloads');
+  if (!existsSync(outDir)) { try { mkdirSync(outDir, { recursive: true }); } catch {} }
+  const outFile = join(outDir, `6fb_edit_${Date.now()}.mp4`);
+  const duration = trimEnd - trimStart;
+
+  // ── Build ffmpeg args ──
+  const args: string[] = ['-y', '-i', clipPath];
+  if (music?.path && existsSync(music.path)) args.push('-i', music.path);
+
+  // Trim (input side — fast seeking)
+  args.push('-ss', String(trimStart), '-t', String(duration));
+
+  // ── Video filters ──
+  const vf: string[] = [];
+
+  // Scale + crop for output format
+  if (outputFormat === '9x16') {
+    vf.push('scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920');
+  } else if (outputFormat === '1x1') {
+    vf.push('scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080');
+  }
+  // 16x9: no crop, keep natural
+
+  // Caption drawtext overlay
+  if (caption?.text) {
+    const safeText = caption.text.replace(/'/g, "\\'").replace(/:/g, '\\:');
+    const hexColor = caption.color.startsWith('#')
+      ? '0x' + caption.color.slice(1) + 'FF'
+      : caption.color;
+    const yExpr = caption.position === 'top'    ? 'h*0.08'
+                : caption.position === 'center' ? '(h-text_h)/2'
+                : 'h*0.82';
+    const bgAlpha = (caption.bgOpacity / 100).toFixed(2);
+    const fontSize = Math.max(24, Math.round(caption.fontSize * 0.7));
+    const fontBold = caption.fontWeight !== 'normal' ? ':style=Bold' : '';
+    vf.push(
+      `drawtext=text='${safeText}'` +
+      `:fontsize=${fontSize}${fontBold}` +
+      `:fontcolor=${hexColor}` +
+      `:x=(w-text_w)/2:y=${yExpr}` +
+      `:box=1:boxcolor=black@${bgAlpha}:boxborderw=12`
+    );
+  }
+
+  if (vf.length > 0) args.push('-vf', vf.join(','));
+
+  // ── Audio ──
+  const hasMusic = music?.path && existsSync(music.path);
+  if (hasMusic) {
+    const vol = (music!.volume).toFixed(2);
+    args.push(
+      '-filter_complex', `[1:a]volume=${vol}[mv];[0:a][mv]amix=inputs=2:duration=first[aout]`,
+      '-map', '0:v', '-map', '[aout]',
+    );
+  }
+
+  // ── Codec selection ──
+  const needsEncode = vf.length > 0 || hasMusic;
+  if (needsEncode) {
+    args.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '22', '-c:a', 'aac', '-b:a', '128k');
+  } else {
+    args.push('-c', 'copy');
+  }
+
+  args.push(outFile);
+
+  // ── Spawn ffmpeg and stream progress ──
+  return new Promise<{ success: boolean; outputPath?: string; error?: string }>((resolve) => {
+    const { spawn } = require('child_process');
+    const child = spawn(ffmpeg, args);
+    let stderr = '';
+
+    child.stderr.on('data', (data: Buffer) => {
+      const chunk = data.toString();
+      stderr += chunk;
+      // Parse time progress
+      const m = chunk.match(/time=(\d+):(\d+):(\d+)\.(\d+)/);
+      if (m && mainWindow) {
+        const secs = parseInt(m[1]) * 3600 + parseInt(m[2]) * 60 + parseInt(m[3]);
+        const percent = Math.min(95, Math.round((secs / Math.max(duration, 1)) * 100));
+        mainWindow.webContents.send('progress-update', { percent, label: `Rendering… ${percent}%` });
+      }
+    });
+
+    child.on('close', (code: number) => {
+      if (code === 0) {
+        mainWindow?.webContents.send('progress-update', { percent: 100, label: 'Done!' });
+        resolve({ success: true, outputPath: outFile });
+      } else {
+        resolve({ success: false, error: `ffmpeg exited ${code}: ${stderr.slice(-300)}` });
+      }
+    });
+
+    child.on('error', (err: Error) => resolve({ success: false, error: err.message }));
+  });
+});
+
+
 const carouselsDir = () => join(app.getPath('userData'), 'carousels');
 
 ipcMain.handle('save-carousel', async (_event, { title, slides, brandSnapshot }: {
