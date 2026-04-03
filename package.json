@@ -1,7 +1,7 @@
 {
   "name": "6fb-content-studio",
   "version": "1.0.1",
-  "description": "6FB Content Studio — Professional content creation tools for barbers",
+  "description": "6FB Content Studio \u2014 Professional content creation tools for barbers",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
