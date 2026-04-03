@@ -1,7 +1,7 @@
 {
   "name": "6fb-content-studio",
-  "version": "1.0.0",
-  "description": "6FB Content Studio \u2014 Professional content creation tools for barbers",
+  "version": "1.0.1",
+  "description": "6FB Content Studio — Professional content creation tools for barbers",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -58,7 +58,10 @@
         "zip"
       ],
       "category": "public.app-category.productivity",
-      "icon": "assets/icon.png"
+      "icon": "assets/icon.png",
+      "notarize": {
+        "teamId": "22X9VG6NUE"
+      }
     },
     "win": {
       "target": [
@@ -68,8 +71,9 @@
       "icon": "assets/icon.png"
     },
     "publish": {
-      "provider": "generic",
-      "url": "https://6fbmentorship.com/downloads"
+      "provider": "github",
+      "owner": "c50bossio",
+      "repo": "6fb-content-studio"
     }
   }
 }
