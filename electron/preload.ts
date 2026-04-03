@@ -150,4 +150,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('post-reel-to-instagram', data),
   postCarouselToInstagram: (data: { imagePaths: string[]; caption: string }) =>
     ipcRenderer.invoke('post-carousel-to-instagram', data),
+
+  // Analytics
+  getAnalytics: () =>
+    ipcRenderer.invoke('get-analytics'),
 });

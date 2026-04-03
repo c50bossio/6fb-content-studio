@@ -1,385 +1,345 @@
 import { useState, useEffect } from 'react';
 
-interface AnalyticsData {
-  counters: {
-    clipsCreated: number;
-    carouselsGenerated: number;
-    videosRendered: number;
-    postsScheduled: number;
-  };
-  activity: {
-    date: string;
-    clips: number;
-    carousels: number;
-    videos: number;
-  }[];
-  recentActions: {
-    id: string;
-    action: string;
-    detail: string;
-    timestamp: string;
-  }[];
+// ─── Types ──────────────────────────────────────────────────────────────
+interface LocalStats {
+  totalRuns: number;
+  totalClips: number;
+  postedClips: number;
+  totalCarousels: number;
+  totalBlogs: number;
+  totalScheduled: number;
+  postedScheduled: number;
 }
 
-export default function Analytics() {
-  const [data, setData] = useState<AnalyticsData | null>(null);
-  const [loading, setLoading] = useState(true);
+interface IgAccount {
+  username: string;
+  followers_count: number;
+  media_count: number;
+  profile_picture_url?: string;
+}
 
-  useEffect(() => {
-    loadAnalytics();
-  }, []);
+interface IgMedia {
+  id: string;
+  media_type: 'IMAGE' | 'VIDEO' | 'CAROUSEL_ALBUM';
+  caption?: string;
+  timestamp: string;
+  like_count?: number;
+  comments_count?: number;
+  thumbnail_url?: string;
+  media_url?: string;
+  insights?: { reach?: number; plays?: number; impressions?: number };
+}
 
-  const loadAnalytics = async () => {
-    try {
-      const result = await window.electronAPI.getAnalytics();
-      if (result) {
-        setData(result as AnalyticsData);
-      }
-    } catch {
-      // Browser fallback with mock data
-      setData({
-        counters: { clipsCreated: 0, carouselsGenerated: 0, videosRendered: 0, postsScheduled: 0 },
-        activity: getLast7Days().map(date => ({
-          date,
-          clips: 0,
-          carousels: 0,
-          videos: 0,
-        })),
-        recentActions: [],
-      });
-    }
-    setLoading(false);
-  };
+interface AnalyticsData {
+  localStats: LocalStats;
+  igConnected: boolean;
+  account: IgAccount | null;
+  media: IgMedia[];
+  error?: string;
+}
 
-  const STAT_CARDS = [
-    { key: 'clipsCreated', label: 'Clips Created', icon: '✂️', accent: 'from-purple-500/20 to-6fb-card', border: 'border-purple-500/20' },
-    { key: 'carouselsGenerated', label: 'Carousels Made', icon: '🎠', accent: 'from-6fb-green/20 to-6fb-card', border: 'border-6fb-green/20' },
-    { key: 'videosRendered', label: 'Videos Rendered', icon: '🎬', accent: 'from-blue-500/20 to-6fb-card', border: 'border-blue-500/20' },
-    { key: 'postsScheduled', label: 'Posts Scheduled', icon: '📅', accent: 'from-orange-500/20 to-6fb-card', border: 'border-orange-500/20' },
-  ];
+// ─── Helpers ────────────────────────────────────────────────────────────
+const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
+const relDate = (iso: string) => {
+  const d = Date.now() - new Date(iso).getTime();
+  if (d < 86400000) return `${Math.floor(d / 3600000)}h ago`;
+  if (d < 604800000) return `${Math.floor(d / 86400000)}d ago`;
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
 
-  const CONTENT_TYPES = [
-    { label: 'Clips', color: '#a855f7', key: 'clipsCreated' },
-    { label: 'Carousels', color: '#00c851', key: 'carouselsGenerated' },
-    { label: 'Videos', color: '#3b82f6', key: 'videosRendered' },
-    { label: 'Posts', color: '#f97316', key: 'postsScheduled' },
-  ];
-
-  // Chart dimensions
-  const chartW = 600;
-  const chartH = 200;
-  const barGap = 8;
-
-  const activityData = data?.activity || [];
-  const maxActivity = Math.max(
-    1,
-    ...activityData.map(d => d.clips + d.carousels + d.videos)
-  );
-
-  // Donut chart
-  const counters = data?.counters;
-  const total = counters
-    ? counters.clipsCreated + counters.carouselsGenerated + counters.videosRendered + counters.postsScheduled
-    : 0;
-
-  const donutSegments = (() => {
-    if (!counters || total === 0) return [];
-    const values = [
-      { value: counters.clipsCreated, color: '#a855f7' },
-      { value: counters.carouselsGenerated, color: '#00c851' },
-      { value: counters.videosRendered, color: '#3b82f6' },
-      { value: counters.postsScheduled, color: '#f97316' },
-    ];
-    let offset = 0;
-    return values.map(v => {
-      const pct = (v.value / total) * 100;
-      const seg = { pct, offset, color: v.color };
-      offset += pct;
-      return seg;
-    });
-  })();
-
-  if (loading) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="w-10 h-10 border-2 border-6fb-border border-t-6fb-green rounded-full animate-spin" />
-      </div>
-    );
-  }
-
+// ─── Stat Card ──────────────────────────────────────────────────────────
+function StatCard({ label, value, sub, color, icon }: {
+  label: string; value: string | number; sub?: string; color: string; icon: React.ReactNode;
+}) {
   return (
-    <div className="p-8 max-w-5xl mx-auto animate-page-in">
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center gap-3 mb-2">
-          <h1 className="text-3xl font-bold text-white">Analytics</h1>
-          <span className="px-2.5 py-1 bg-yellow-500/10 text-yellow-400 text-[10px] font-bold uppercase tracking-wider rounded-full border border-yellow-500/20">
-            Local Data
-          </span>
+    <div className="relative overflow-hidden rounded-2xl border border-[#1e1e1e] bg-[#111] p-5 flex flex-col gap-3"
+      style={{ boxShadow: `0 0 40px ${color}08` }}>
+      <div className="flex items-center justify-between">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center"
+          style={{ background: `${color}14`, border: `1px solid ${color}25` }}>
+          <div className="w-4.5 h-4.5" style={{ color }}>{icon}</div>
         </div>
-        <p className="text-sm text-6fb-text-secondary">
-          Track your content creation activity. All data stored locally.
-        </p>
+        <div className="absolute top-0 right-0 w-24 h-24 rounded-full blur-3xl opacity-20"
+          style={{ background: color, transform: 'translate(40%, -40%)' }} />
       </div>
-
-      {/* Stats Cards */}
-      <div className="grid grid-cols-4 gap-4 mb-8">
-        {STAT_CARDS.map(stat => (
-          <div
-            key={stat.key}
-            className={`bg-gradient-to-br ${stat.accent} rounded-xl border ${stat.border} p-4 transition-all hover:scale-[1.02]`}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs text-6fb-text-muted">{stat.label}</span>
-              <span className="text-lg">{stat.icon}</span>
-            </div>
-            <p className="text-3xl font-bold text-white">
-              {counters?.[stat.key as keyof typeof counters] ?? 0}
-            </p>
-          </div>
-        ))}
-      </div>
-
-      {/* Charts Row */}
-      <div className="grid grid-cols-[1fr_260px] gap-6 mb-8">
-        {/* Activity Bar Chart */}
-        <div className="bg-6fb-card rounded-2xl border border-6fb-border p-5">
-          <h2 className="text-sm font-bold text-white mb-4">7-Day Activity</h2>
-
-          <svg viewBox={`0 0 ${chartW} ${chartH + 30}`} className="w-full">
-            {/* Grid lines */}
-            {[0, 0.25, 0.5, 0.75, 1].map((pct) => (
-              <g key={pct}>
-                <line
-                  x1={0}
-                  y1={chartH - pct * chartH}
-                  x2={chartW}
-                  y2={chartH - pct * chartH}
-                  stroke="#333333"
-                  strokeWidth={0.5}
-                  strokeDasharray="4 4"
-                />
-                <text
-                  x={chartW + 4}
-                  y={chartH - pct * chartH + 4}
-                  fill="#555555"
-                  fontSize={10}
-                >
-                  {Math.round(maxActivity * pct)}
-                </text>
-              </g>
-            ))}
-
-            {/* Bars */}
-            {activityData.map((day, i) => {
-              const totalDay = day.clips + day.carousels + day.videos;
-              const barWidth = (chartW - barGap * activityData.length) / activityData.length;
-              const x = i * (barWidth + barGap);
-              const h = (totalDay / maxActivity) * chartH;
-
-              // Stacked segments
-              let yOffset = chartH;
-              const segments = [
-                { value: day.clips, color: '#a855f7' },
-                { value: day.carousels, color: '#00c851' },
-                { value: day.videos, color: '#3b82f6' },
-              ];
-
-              return (
-                <g key={i}>
-                  {/* Background bar */}
-                  <rect
-                    x={x}
-                    y={0}
-                    width={barWidth}
-                    height={chartH}
-                    fill="#1a1a1a"
-                    rx={4}
-                  />
-
-                  {/* Stacked colored segments */}
-                  {segments.map((seg, si) => {
-                    const segH = (seg.value / maxActivity) * chartH;
-                    yOffset -= segH;
-                    return (
-                      <rect
-                        key={si}
-                        x={x}
-                        y={yOffset}
-                        width={barWidth}
-                        height={segH}
-                        fill={seg.color}
-                        opacity={0.7}
-                        rx={si === segments.length - 1 ? 4 : 0}
-                      />
-                    );
-                  })}
-
-                  {/* Total label on top */}
-                  {totalDay > 0 && (
-                    <text
-                      x={x + barWidth / 2}
-                      y={chartH - h - 6}
-                      textAnchor="middle"
-                      fill="white"
-                      fontSize={11}
-                      fontWeight={600}
-                    >
-                      {totalDay}
-                    </text>
-                  )}
-
-                  {/* Day label */}
-                  <text
-                    x={x + barWidth / 2}
-                    y={chartH + 18}
-                    textAnchor="middle"
-                    fill="#555555"
-                    fontSize={10}
-                  >
-                    {formatDayLabel(day.date)}
-                  </text>
-                </g>
-              );
-            })}
-          </svg>
-
-          {/* Legend */}
-          <div className="flex items-center gap-4 mt-4">
-            {[
-              { label: 'Clips', color: '#a855f7' },
-              { label: 'Carousels', color: '#00c851' },
-              { label: 'Videos', color: '#3b82f6' },
-            ].map(leg => (
-              <div key={leg.label} className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-sm" style={{ backgroundColor: leg.color, opacity: 0.7 }} />
-                <span className="text-[10px] text-6fb-text-muted">{leg.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Donut Chart */}
-        <div className="bg-6fb-card rounded-2xl border border-6fb-border p-5 flex flex-col items-center">
-          <h2 className="text-sm font-bold text-white mb-4 self-start">Content Mix</h2>
-
-          <div className="relative w-40 h-40 mb-4">
-            <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-              {/* Background ring */}
-              <circle cx={50} cy={50} r={38} fill="none" stroke="#333333" strokeWidth={12} />
-
-              {/* Segments */}
-              {total > 0 ? (
-                donutSegments.map((seg, i) => (
-                  <circle
-                    key={i}
-                    cx={50}
-                    cy={50}
-                    r={38}
-                    fill="none"
-                    stroke={seg.color}
-                    strokeWidth={12}
-                    strokeDasharray={`${(seg.pct / 100) * 238.76} 238.76`}
-                    strokeDashoffset={-(seg.offset / 100) * 238.76}
-                    strokeLinecap="round"
-                    opacity={0.8}
-                  />
-                ))
-              ) : (
-                <circle cx={50} cy={50} r={38} fill="none" stroke="#222222" strokeWidth={12} />
-              )}
-            </svg>
-
-            {/* Center number */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <p className="text-2xl font-bold text-white">{total}</p>
-              <p className="text-[9px] text-6fb-text-muted uppercase tracking-wider">Total</p>
-            </div>
-          </div>
-
-          {/* Breakdown */}
-          <div className="space-y-2 w-full">
-            {CONTENT_TYPES.map(ct => (
-              <div key={ct.key} className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: ct.color }} />
-                  <span className="text-[11px] text-6fb-text-secondary">{ct.label}</span>
-                </div>
-                <span className="text-[11px] font-mono text-white">
-                  {counters?.[ct.key as keyof typeof counters] ?? 0}
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Recent Activity */}
-      <div className="bg-6fb-card rounded-2xl border border-6fb-border p-5">
-        <h2 className="text-sm font-bold text-white mb-4">Recent Activity</h2>
-
-        {(!data?.recentActions || data.recentActions.length === 0) ? (
-          <div className="text-center py-8">
-            <span className="text-3xl mb-2 block opacity-30">📊</span>
-            <p className="text-xs text-6fb-text-muted">
-              No activity yet. Create clips, carousels, or schedule posts to see history here.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {data.recentActions.slice(0, 10).map(action => (
-              <div
-                key={action.id}
-                className="flex items-center gap-3 bg-6fb-bg rounded-lg p-3 border border-6fb-border/50"
-              >
-                <div className="w-8 h-8 rounded-lg bg-6fb-border/50 flex items-center justify-center">
-                  <span className="text-sm">
-                    {action.action.includes('clip') ? '✂️'
-                      : action.action.includes('carousel') ? '🎠'
-                      : action.action.includes('video') ? '🎬'
-                      : '📱'}
-                  </span>
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs text-white font-medium">{action.action}</p>
-                  <p className="text-[10px] text-6fb-text-muted">{action.detail}</p>
-                </div>
-                <p className="text-[10px] text-6fb-text-muted">
-                  {formatRelativeTime(action.timestamp)}
-                </p>
-              </div>
-            ))}
-          </div>
-        )}
+      <div>
+        <p className="text-2xl font-bold text-white tracking-tight">{value}</p>
+        <p className="text-xs text-[#555] mt-0.5">{label}</p>
+        {sub && <p className="text-[10px] mt-1" style={{ color }}>{sub}</p>}
       </div>
     </div>
   );
 }
 
-function getLast7Days(): string[] {
-  const days: string[] = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push(d.toISOString().split('T')[0]);
+// ─── Media Card ─────────────────────────────────────────────────────────
+function MediaCard({ item }: { item: IgMedia }) {
+  const isReel = item.media_type === 'VIDEO';
+  const isCarousel = item.media_type === 'CAROUSEL_ALBUM';
+  const thumb = item.thumbnail_url || item.media_url;
+  const reach = item.insights?.reach ?? 0;
+  const plays = item.insights?.plays ?? 0;
+
+  return (
+    <div className="rounded-xl border border-[#1e1e1e] bg-[#111] overflow-hidden group hover:border-[#2a2a2a] transition-colors">
+      {/* Thumbnail */}
+      <div className="relative bg-[#0a0a0a]" style={{ aspectRatio: '9/16' }}>
+        {thumb ? (
+          <img src={thumb} alt="" className="absolute inset-0 w-full h-full object-cover" />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#222" strokeWidth={1} className="w-8 h-8">
+              <rect x="2" y="2" width="20" height="20" rx="2"/>
+            </svg>
+          </div>
+        )}
+
+        {/* Type badge */}
+        <div className="absolute top-2 left-2">
+          <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md backdrop-blur-sm"
+            style={isReel
+              ? { background: 'rgba(238,42,123,0.2)', color: '#f050a0', border: '1px solid rgba(238,42,123,0.3)' }
+              : isCarousel
+              ? { background: 'rgba(59,130,246,0.2)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.3)' }
+              : { background: 'rgba(100,100,100,0.2)', color: '#888', border: '1px solid rgba(100,100,100,0.3)' }
+            }>
+            {isReel ? 'Reel' : isCarousel ? 'Carousel' : 'Post'}
+          </span>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="p-2.5 flex flex-col gap-1.5">
+        <p className="text-[9px] text-[#444]">{relDate(item.timestamp)}</p>
+        <div className="flex gap-3">
+          <div className="flex items-center gap-1">
+            <svg viewBox="0 0 24 24" fill="currentColor" className="w-2.5 h-2.5 text-red-400">
+              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+            </svg>
+            <span className="text-[10px] text-[#666]">{fmt(item.like_count ?? 0)}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-2.5 h-2.5 text-blue-400">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span className="text-[10px] text-[#666]">{fmt(item.comments_count ?? 0)}</span>
+          </div>
+          {reach > 0 && (
+            <div className="flex items-center gap-1">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-2.5 h-2.5 text-[#00C851]">
+                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+              </svg>
+              <span className="text-[10px] text-[#666]">{fmt(reach)}</span>
+            </div>
+          )}
+          {plays > 0 && (
+            <div className="flex items-center gap-1">
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-2.5 h-2.5 text-purple-400">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+              <span className="text-[10px] text-[#666]">{fmt(plays)}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Analytics Page ─────────────────────────────────────────────────
+export default function Analytics() {
+  const [data, setData] = useState<AnalyticsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+
+  const load = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const result = await (window as any).electronAPI.getAnalytics();
+      setData(result);
+    } catch (e) {
+      setError(String(e));
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  if (loading) {
+    return (
+      <div className="h-full flex items-center justify-center bg-[#0f0f0f]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 border-2 border-[#1e1e1e] border-t-[#00C851] rounded-full animate-spin" />
+          <p className="text-xs text-[#444]">Loading analytics…</p>
+        </div>
+      </div>
+    );
   }
-  return days;
-}
 
-function formatDayLabel(dateStr: string): string {
-  const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString([], { weekday: 'short' });
-}
+  const ls = data?.localStats;
+  const account = data?.account;
+  const media = data?.media ?? [];
+  const igConnected = data?.igConnected ?? false;
 
-function formatRelativeTime(isoStr: string): string {
-  const now = Date.now();
-  const then = new Date(isoStr).getTime();
-  const diff = now - then;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return 'Just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  return `${days}d ago`;
+  // Engagement rate for top post
+  const topPost = [...media].sort((a, b) => ((b.like_count ?? 0) + (b.comments_count ?? 0)) - ((a.like_count ?? 0) + (a.comments_count ?? 0)))[0];
+  const totalEngagement = media.reduce((s, m) => s + (m.like_count ?? 0) + (m.comments_count ?? 0), 0);
+  const avgEngagement = media.length ? Math.round(totalEngagement / media.length) : 0;
+  const totalReach = media.reduce((s, m) => s + (m.insights?.reach ?? 0), 0);
+  const totalPlays = media.reduce((s, m) => s + (m.insights?.plays ?? 0), 0);
+
+  return (
+    <div className="h-full overflow-y-auto bg-[#0f0f0f]">
+      <div className="max-w-5xl mx-auto px-6 py-6">
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-lg font-bold text-white">Analytics</h1>
+            <p className="text-xs text-[#444] mt-0.5">Studio output + Instagram performance</p>
+          </div>
+          <button onClick={load}
+            className="flex items-center gap-1.5 text-xs text-[#555] hover:text-white transition-colors border border-[#1e1e1e] hover:border-[#2a2a2a] rounded-lg px-3 py-1.5">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" className="w-3 h-3">
+              <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+            </svg>
+            Refresh
+          </button>
+        </div>
+
+        {error && (
+          <div className="mb-4 bg-red-900/20 border border-red-800/30 rounded-xl px-4 py-3">
+            <p className="text-xs text-red-400">{error}</p>
+          </div>
+        )}
+
+        {/* IG Profile Banner (if connected) */}
+        {igConnected && account && (
+          <div className="mb-6 rounded-2xl border border-[#1e1e1e] bg-[#111] p-4 flex items-center gap-4">
+            {account.profile_picture_url ? (
+              <img src={account.profile_picture_url} alt=""
+                className="w-12 h-12 rounded-full border border-[#2a2a2a] object-cover shrink-0" />
+            ) : (
+              <div className="w-12 h-12 rounded-full bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center shrink-0">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#444" strokeWidth={1.5} className="w-5 h-5">
+                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+                </svg>
+              </div>
+            )}
+            <div className="flex-1">
+              <p className="text-sm font-bold text-white">@{account.username}</p>
+              <p className="text-xs text-[#555]">Connected Instagram account</p>
+            </div>
+            <div className="flex gap-6 text-center">
+              <div>
+                <p className="text-lg font-bold text-white">{fmt(account.followers_count)}</p>
+                <p className="text-[10px] text-[#444]">Followers</p>
+              </div>
+              <div>
+                <p className="text-lg font-bold text-white">{fmt(account.media_count)}</p>
+                <p className="text-[10px] text-[#444]">Posts</p>
+              </div>
+              {totalReach > 0 && (
+                <div>
+                  <p className="text-lg font-bold text-[#00C851]">{fmt(totalReach)}</p>
+                  <p className="text-[10px] text-[#444]">Total reach</p>
+                </div>
+              )}
+              {totalPlays > 0 && (
+                <div>
+                  <p className="text-lg font-bold text-purple-400">{fmt(totalPlays)}</p>
+                  <p className="text-[10px] text-[#444]">Reel plays</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* IG Not Connected */}
+        {!igConnected && (
+          <div className="mb-6 rounded-2xl border border-[#1e1e1e] bg-[#111] px-5 py-4 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background: 'linear-gradient(135deg, #f9ce34, #ee2a7b, #6228d7)' }}>
+              <svg viewBox="0 0 24 24" fill="white" width="14" height="14">
+                <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/>
+              </svg>
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white">Instagram not connected</p>
+              <p className="text-xs text-[#555]">Go to Settings → 6FB Account → Sync Instagram to unlock reach & engagement data</p>
+            </div>
+          </div>
+        )}
+
+        {/* Instagram Performance Stats */}
+        {igConnected && media.length > 0 && (
+          <div className="grid grid-cols-4 gap-3 mb-6">
+            <StatCard label="Avg engagement" value={fmt(avgEngagement)}
+              sub="per post" color="#00C851"
+              icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>}
+            />
+            <StatCard label="Total reach" value={fmt(totalReach)}
+              sub="last 12 posts" color="#3B82F6"
+              icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>}
+            />
+            <StatCard label="Reel plays" value={fmt(totalPlays)}
+              sub="last 12 posts" color="#8B5CF6"
+              icon={<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>}
+            />
+            <StatCard label="Best post" value={fmt((topPost?.like_count ?? 0) + (topPost?.comments_count ?? 0))}
+              sub="engagement" color="#F59E0B"
+              icon={<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>}
+            />
+          </div>
+        )}
+
+        {/* Studio Output Stats */}
+        <div className="mb-6">
+          <h2 className="text-xs font-bold text-[#444] uppercase tracking-widest mb-3">Studio Output</h2>
+          <div className="grid grid-cols-4 gap-3">
+            <StatCard label="Videos processed" value={ls?.totalRuns ?? 0}
+              sub={`${ls?.totalClips ?? 0} clips extracted`} color="#00C851"
+              icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"><rect x="2" y="2" width="20" height="20" rx="2"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>}
+            />
+            <StatCard label="Carousels made" value={ls?.totalCarousels ?? 0}
+              sub="ready to post" color="#3B82F6"
+              icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"><rect x="5" y="3" width="14" height="18" rx="2"/><line x1="1" y1="6" x2="1" y2="18"/><line x1="23" y1="6" x2="23" y2="18"/></svg>}
+            />
+            <StatCard label="Blog posts" value={ls?.totalBlogs ?? 0}
+              sub="written" color="#8B5CF6"
+              icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>}
+            />
+            <StatCard label="Posts published" value={ls?.postedScheduled ?? 0}
+              sub={`${ls?.totalScheduled ?? 0} scheduled`} color="#F59E0B"
+              icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>}
+            />
+          </div>
+        </div>
+
+        {/* Recent Posts Grid */}
+        {igConnected && media.length > 0 && (
+          <div>
+            <h2 className="text-xs font-bold text-[#444] uppercase tracking-widest mb-3">Recent Instagram Posts</h2>
+            <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
+              {media.map(item => <MediaCard key={item.id} item={item} />)}
+            </div>
+          </div>
+        )}
+
+        {/* Empty state */}
+        {igConnected && media.length === 0 && !loading && (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <div className="w-10 h-10 text-[#1e1e1e] mb-4">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1} className="w-full h-full">
+                <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>
+              </svg>
+            </div>
+            <p className="text-sm text-[#444]">No posts found</p>
+            <p className="text-xs text-[#2a2a2a] mt-1">Post your first Reel or Carousel from the Studio</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }

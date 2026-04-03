@@ -1163,3 +1163,87 @@ ipcMain.handle('post-carousel-to-instagram', async (_event, {
     return { success: false, error: String(err) };
   }
 });
+
+// ─── Analytics ────────────────────────────────────────────────────────
+ipcMain.handle('get-analytics', async () => {
+  const token = store.get('igAccessToken') as string | undefined;
+  const igUserId = store.get('igUserId') as string | undefined;
+
+  // ── Local studio stats ──
+  const clipsDir = join(app.getPath('userData'), 'clips');
+  let totalClips = 0;
+  let totalRuns = 0;
+  let postedClips = 0;
+  try {
+    const runs = readdirSync(clipsDir, { withFileTypes: true }).filter(d => d.isDirectory());
+    totalRuns = runs.length;
+    for (const run of runs) {
+      const runDir = join(clipsDir, run.name);
+      const specs = readdirSync(runDir).filter(f => f.endsWith('_spec.json'));
+      totalClips += specs.length;
+      for (const spec of specs) {
+        try {
+          const s = JSON.parse(readFileSync(join(runDir, spec), 'utf-8'));
+          if (s.status === 'composed') postedClips++;
+        } catch {}
+      }
+    }
+  } catch {}
+
+  const carouselsDir = join(app.getPath('userData'), 'carousels');
+  let totalCarousels = 0;
+  try {
+    totalCarousels = readdirSync(carouselsDir).filter(f => f.endsWith('.json')).length;
+  } catch {}
+
+  const blogsDir = join(app.getPath('userData'), 'blogs');
+  let totalBlogs = 0;
+  try {
+    totalBlogs = readdirSync(blogsDir).filter(f => f.endsWith('.json')).length;
+  } catch {}
+
+  const schedulerPath = join(app.getPath('userData'), 'scheduler.json');
+  let scheduledPosts: unknown[] = [];
+  let postedScheduled = 0;
+  try {
+    const data = JSON.parse(readFileSync(schedulerPath, 'utf-8')) as unknown[];
+    scheduledPosts = data;
+    postedScheduled = data.filter((p: any) => p.posted).length;
+  } catch {}
+
+  const localStats = { totalRuns, totalClips, postedClips, totalCarousels, totalBlogs, totalScheduled: scheduledPosts.length, postedScheduled };
+
+  // ── Instagram account + recent media ──
+  if (!token || !igUserId) {
+    return { success: true, localStats, igConnected: false, account: null, media: [] };
+  }
+
+  try {
+    const [accountRes, mediaRes] = await Promise.all([
+      fetch(`${IG_GRAPH}/${igUserId}?fields=username,followers_count,media_count,profile_picture_url&access_token=${token}`),
+      fetch(`${IG_GRAPH}/${igUserId}/media?fields=id,media_type,caption,timestamp,like_count,comments_count,thumbnail_url,media_url&limit=12&access_token=${token}`),
+    ]);
+
+    const account = await accountRes.json() as Record<string, unknown>;
+    const mediaData = await mediaRes.json() as { data?: unknown[] };
+
+    // Fetch insights for each media item (reach + plays for reels)
+    const mediaItems = mediaData.data ?? [];
+    const enriched = await Promise.all(
+      (mediaItems as any[]).map(async (item: any) => {
+        try {
+          const insightMetrics = item.media_type === 'VIDEO' ? 'reach,plays,impressions' : 'reach,impressions';
+          const ir = await fetch(`${IG_GRAPH}/${item.id}/insights?metric=${insightMetrics}&period=lifetime&access_token=${token}`);
+          const id = await ir.json() as { data?: any[] };
+          const insights: Record<string, number> = {};
+          for (const m of (id.data ?? [])) insights[m.name] = m.values?.[0]?.value ?? 0;
+          return { ...item, insights };
+        } catch { return item; }
+      })
+    );
+
+    return { success: true, localStats, igConnected: true, account, media: enriched };
+  } catch (err) {
+    return { success: true, localStats, igConnected: true, account: null, media: [], error: String(err) };
+  }
+});

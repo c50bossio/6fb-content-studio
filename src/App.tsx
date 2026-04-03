@@ -104,6 +104,18 @@ declare global {
       installUpdate: () => void;
       onUpdateAvailable: (cb: (info: { version: string }) => void) => () => void;
       onUpdateDownloaded: (cb: (info: { version: string }) => void) => () => void;
+      // Instagram Direct Posting
+      postReelToInstagram: (data: { filePath: string; caption: string }) => Promise<{ success: boolean; error?: string; mediaId?: string }>;
+      postCarouselToInstagram: (data: { imagePaths: string[]; caption: string }) => Promise<{ success: boolean; error?: string; mediaId?: string }>;
+      // Analytics
+      getAnalytics: () => Promise<{
+        success: boolean;
+        localStats: { totalRuns: number; totalClips: number; postedClips: number; totalCarousels: number; totalBlogs: number; totalScheduled: number; postedScheduled: number };
+        igConnected: boolean;
+        account: { username: string; followers_count: number; media_count: number; profile_picture_url?: string } | null;
+        media: unknown[];
+        error?: string;
+      }>;
     };
   }
 }
