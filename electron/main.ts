@@ -1031,3 +1031,135 @@ ipcMain.handle('disconnect-6fb', async () => {
   store.delete('igTokenExpiresAt');
   return { success: true };
 });
+
+// ─── Instagram Direct Posting ─────────────────────────────────────────
+const IG_GRAPH = 'https://graph.facebook.com/v18.0';
+
+async function pollIgContainer(containerId: string, token: string, maxWaitMs = 120000): Promise<void> {
+  const deadline = Date.now() + maxWaitMs;
+  while (Date.now() < deadline) {
+    await new Promise(r => setTimeout(r, 4000));
+    const r = await fetch(`${IG_GRAPH}/${containerId}?fields=status_code,status&access_token=${token}`);
+    const d = await r.json() as Record<string, string>;
+    if (d.status_code === 'FINISHED') return;
+    if (d.status_code === 'ERROR' || d.status_code === 'EXPIRED') {
+      throw new Error(`Instagram processing failed: ${d.status || d.status_code}`);
+    }
+  }
+  throw new Error('Timed out waiting for Instagram to process media');
+}
+
+// Post a video clip as an Instagram Reel
+ipcMain.handle('post-reel-to-instagram', async (_event, {
+  filePath, caption,
+}: { filePath: string; caption: string }) => {
+  const token = store.get('igAccessToken') as string | undefined;
+  const igUserId = store.get('igUserId') as string | undefined;
+  if (!token || !igUserId) return { success: false, error: 'Instagram not connected. Go to Settings → 6FB Account → Sync Instagram.' };
+
+  try {
+    // 1. Init resumable upload container
+    const initRes = await fetch(`${IG_GRAPH}/${igUserId}/media`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ media_type: 'REELS', upload_type: 'resumable', caption, access_token: token }),
+    });
+    const initData = await initRes.json() as Record<string, string>;
+    if (!initData.id || !initData.uri) {
+      return { success: false, error: initData.error?.toString() || 'Failed to start upload' };
+    }
+
+    // 2. Upload binary
+    const videoBuffer = readFileSync(filePath);
+    const uploadRes = await fetch(initData.uri, {
+      method: 'POST',
+      headers: {
+        'Authorization': `OAuth ${token}`,
+        'Content-Type': 'video/mp4',
+        'Content-Length': String(videoBuffer.byteLength),
+        'offset': '0',
+        'file_size': String(videoBuffer.byteLength),
+      },
+      body: videoBuffer,
+    });
+    if (!uploadRes.ok) {
+      const e = await uploadRes.text();
+      return { success: false, error: `Upload failed: ${e}` };
+    }
+
+    // 3. Poll until FINISHED
+    await pollIgContainer(initData.id, token);
+
+    // 4. Publish
+    const pubRes = await fetch(`${IG_GRAPH}/${igUserId}/media_publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ creation_id: initData.id, access_token: token }),
+    });
+    const pubData = await pubRes.json() as Record<string, string>;
+    if (!pubData.id) return { success: false, error: pubData.error?.toString() || 'Publish failed' };
+
+    return { success: true, mediaId: pubData.id };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+});
+
+// Post an image carousel to Instagram
+ipcMain.handle('post-carousel-to-instagram', async (_event, {
+  imagePaths, caption,
+}: { imagePaths: string[]; caption: string }) => {
+  const token = store.get('igAccessToken') as string | undefined;
+  const igUserId = store.get('igUserId') as string | undefined;
+  if (!token || !igUserId) return { success: false, error: 'Instagram not connected. Go to Settings → 6FB Account → Sync Instagram.' };
+  if (imagePaths.length < 2 || imagePaths.length > 10) {
+    return { success: false, error: 'Carousel requires 2–10 images' };
+  }
+
+  try {
+    // 1. Upload each image as a carousel item
+    const childIds: string[] = [];
+    for (const imgPath of imagePaths) {
+      const imgBuffer = readFileSync(imgPath);
+      const form = new FormData();
+      form.append('source', new Blob([imgBuffer], { type: 'image/png' }), 'slide.png');
+      form.append('is_carousel_item', 'true');
+      form.append('access_token', token);
+
+      const r = await fetch(`${IG_GRAPH}/${igUserId}/media`, { method: 'POST', body: form });
+      const d = await r.json() as Record<string, string>;
+      if (!d.id) throw new Error(`Image upload failed: ${d.error?.toString() || JSON.stringify(d)}`);
+      childIds.push(d.id);
+    }
+
+    // 2. Create carousel container
+    const carRes = await fetch(`${IG_GRAPH}/${igUserId}/media`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        media_type: 'CAROUSEL',
+        children: childIds.join(','),
+        caption,
+        access_token: token,
+      }),
+    });
+    const carData = await carRes.json() as Record<string, string>;
+    if (!carData.id) return { success: false, error: carData.error?.toString() || 'Carousel creation failed' };
+
+    // 3. Poll until FINISHED
+    await pollIgContainer(carData.id, token);
+
+    // 4. Publish
+    const pubRes = await fetch(`${IG_GRAPH}/${igUserId}/media_publish`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ creation_id: carData.id, access_token: token }),
+    });
+    const pubData = await pubRes.json() as Record<string, string>;
+    if (!pubData.id) return { success: false, error: pubData.error?.toString() || 'Publish failed' };
+
+    return { success: true, mediaId: pubData.id };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+});

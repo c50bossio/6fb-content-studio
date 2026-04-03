@@ -3,6 +3,7 @@ import type { BrandProfile, CarouselSlide } from '../App';
 import SlidePreview from '../components/carousel/SlidePreview';
 import { toPng } from 'html-to-image';
 import useGoogleFonts from '../hooks/useGoogleFonts';
+import InstagramPostModal from '../components/InstagramPostModal';
 
 interface Props {
   brandProfile: BrandProfile | null;
@@ -65,6 +66,8 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
   const [saving, setSaving] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportedPaths, setExportedPaths] = useState<string[]>([]);
+  const [showIgModal, setShowIgModal] = useState(false);
 
   const exportContainerRef = useRef<HTMLDivElement>(null);
 
@@ -196,13 +199,11 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
     if (!slides.length || !exportContainerRef.current || exporting) return;
     setExporting(true);
     try {
-      // Allow the hidden 1080x1350 preview to render safely on screen before capture
       const nodes = exportContainerRef.current.children;
       const dataUrls: string[] = [];
       const title = currentDeckTitle || 'Untitled';
       
       for (let i = 0; i < slides.length; i++) {
-        // High quality scale pixelRatio ensures the final image is exactly 1080x1350
         const dataUrl = await toPng(nodes[i] as HTMLElement, {
            quality: 1.0, 
            pixelRatio: 1,
@@ -213,6 +214,8 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
       
       const res = await window.electronAPI.exportCarouselDeck(title, dataUrls);
       if (res.success) {
+        // Store paths for Instagram posting
+        if (res.savedPaths?.length) setExportedPaths(res.savedPaths);
         alert(`Successfully exported deck to:\n${res.folderPath}`);
       } else {
         alert('Export failed: ' + res.error);
@@ -263,6 +266,7 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
   const allThumbs = selectedRun?.clips?.filter(c => c.thumbnailPath).map(c => c.thumbnailPath!).slice(0, 4) ?? [];
 
   return (
+    <>
     <div className="h-full flex overflow-hidden bg-[#0f0f0f]">
 
       {/* ═══ LEFT column ═══ */}
@@ -539,6 +543,18 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
                   className="flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] text-white hover:border-blue-500/50 hover:text-blue-400 transition-all disabled:opacity-40">
                   {exporting ? 'Exporting…' : 'Export PNGs'}
                 </button>
+                {exportedPaths.length >= 2 && (
+                  <button
+                    onClick={() => setShowIgModal(true)}
+                    className="flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-lg text-white transition-all disabled:opacity-40"
+                    style={{ background: 'linear-gradient(135deg, #f9ce34, #ee2a7b, #6228d7)' }}
+                    title="Post carousel to Instagram">
+                    <svg viewBox="0 0 24 24" fill="white" width="11" height="11">
+                      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/>
+                    </svg>
+                    Post
+                  </button>
+                )}
                 <button onClick={handleSave} disabled={saving || !slides.length}
                   className={`flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-lg border transition-all ${
                     justSaved ? 'border-[#00C851]/40 bg-[#00C851]/10 text-[#00C851]' : 'border-[#2a2a2a] bg-[#1a1a1a] text-white hover:border-[#3a3a3a]'
@@ -665,5 +681,16 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
         </div>
       </div>
     </div>
+
+    {/* Instagram post modal */}
+    {showIgModal && (
+      <InstagramPostModal
+        type="carousel"
+        imagePaths={exportedPaths}
+        defaultCaption={currentDeckTitle}
+        onClose={() => setShowIgModal(false)}
+      />
+    )}
+    </>
   );
 }

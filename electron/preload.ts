@@ -144,4 +144,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('update-downloaded', (_e, info) => callback(info));
     return () => ipcRenderer.removeAllListeners('update-downloaded');
   },
+
+  // Instagram Direct Posting
+  postReelToInstagram: (data: { filePath: string; caption: string }) =>
+    ipcRenderer.invoke('post-reel-to-instagram', data),
+  postCarouselToInstagram: (data: { imagePaths: string[]; caption: string }) =>
+    ipcRenderer.invoke('post-carousel-to-instagram', data),
 });
