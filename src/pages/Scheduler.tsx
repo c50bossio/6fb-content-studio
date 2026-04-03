@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
+import InstagramPostModal from '../components/InstagramPostModal';
 
+// ─── Types ───────────────────────────────────────────────────────────
 interface ScheduledPost {
   id: string;
   platform: 'instagram' | 'tiktok' | 'youtube';
@@ -9,6 +11,8 @@ interface ScheduledPost {
   status: 'scheduled' | 'due' | 'posted' | 'failed';
   createdAt: string;
   postedAt?: string;
+  thumbnailPath?: string;
+  mediaType?: 'reel' | 'carousel';
 }
 
 interface LibraryClip {
@@ -19,37 +23,332 @@ interface LibraryClip {
   contentType: string;
 }
 
+// ─── Constants ───────────────────────────────────────────────────────
 const PLATFORMS = [
-  { id: 'instagram' as const, name: 'Instagram', abbr: 'IG', color: 'from-pink-500/20 to-purple-500/20', border: 'border-pink-500/20', text: 'text-pink-400', badge: 'bg-pink-500/10 text-pink-400 border-pink-500/20' },
-  { id: 'tiktok'    as const, name: 'TikTok',    abbr: 'TT', color: 'from-cyan-500/20 to-blue-500/20',   border: 'border-cyan-500/20',   text: 'text-cyan-400',   badge: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20' },
-  { id: 'youtube'   as const, name: 'YouTube',   abbr: 'YT', color: 'from-red-500/20 to-orange-500/20',  border: 'border-red-500/20',    text: 'text-red-400',    badge: 'bg-red-500/10 text-red-400 border-red-500/20' },
+  { id: 'instagram' as const, name: 'Instagram', abbr: 'IG',
+    color: '#ee2a7b', bg: 'rgba(238,42,123,0.1)', border: 'rgba(238,42,123,0.25)',
+    gradient: 'linear-gradient(135deg, #f9ce34, #ee2a7b, #6228d7)' },
+  { id: 'tiktok' as const, name: 'TikTok', abbr: 'TT',
+    color: '#69C9D0', bg: 'rgba(105,201,208,0.1)', border: 'rgba(105,201,208,0.25)',
+    gradient: 'linear-gradient(135deg, #69C9D0, #EE1D52)' },
+  { id: 'youtube' as const, name: 'YouTube', abbr: 'YT',
+    color: '#FF0000', bg: 'rgba(255,0,0,0.1)', border: 'rgba(255,0,0,0.25)',
+    gradient: 'linear-gradient(135deg, #FF0000, #FF4500)' },
 ];
 
-const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
-const PLATFORM_URLS: Record<string, string> = {
-  instagram: 'https://www.instagram.com/',
-  tiktok: 'https://www.tiktok.com/upload',
-  youtube: 'https://studio.youtube.com/',
+// ─── Helpers ─────────────────────────────────────────────────────────
+const isSameDay = (a: Date, b: Date) =>
+  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+const fmt12 = (iso: string) =>
+  new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+
+const getStreak = (posts: ScheduledPost[]) => {
+  const posted = [...posts]
+    .filter(p => p.status === 'posted' && p.postedAt)
+    .sort((a, b) => new Date(b.postedAt!).getTime() - new Date(a.postedAt!).getTime());
+  if (!posted.length) return 0;
+  let streak = 0;
+  const today = new Date(); today.setHours(0,0,0,0);
+  let check = new Date(today);
+  for (let i = 0; i < 365; i++) {
+    const found = posted.some(p => isSameDay(new Date(p.postedAt!), check));
+    if (found) { streak++; check.setDate(check.getDate() - 1); }
+    else break;
+  }
+  return streak;
 };
 
+// ─── Post Chip (calendar cell) ────────────────────────────────────────
+function PostChip({ post, onClick }: { post: ScheduledPost; onClick: () => void }) {
+  const pl = PLATFORMS.find(p => p.id === post.platform)!;
+  const isDue = post.status === 'due';
+  const isPosted = post.status === 'posted';
+  return (
+    <button onClick={onClick}
+      className="w-full text-left rounded-lg overflow-hidden border transition-all hover:scale-[1.02] active:scale-[0.98]"
+      style={{ borderColor: isPosted ? '#00C85140' : isDue ? '#F59E0B60' : pl.border }}>
+      <div className="flex items-center gap-1.5 px-1.5 py-1"
+        style={{ background: isPosted ? 'rgba(0,200,81,0.07)' : pl.bg }}>
+        {post.thumbnailPath && (
+          <img src={`localfile://${post.thumbnailPath}`} alt=""
+            className="w-5 h-7 rounded object-cover shrink-0 border border-white/5" />
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1 mb-0.5">
+            <span className="text-[8px] font-black" style={{ color: pl.color }}>{pl.abbr}</span>
+            {isDue && <span className="text-[7px] text-amber-400 font-bold animate-pulse">DUE</span>}
+            {isPosted && <span className="text-[7px] text-[#00C851] font-bold">✓</span>}
+          </div>
+          <p className="text-[9px] text-white/70 truncate leading-tight">{post.caption}</p>
+          <p className="text-[8px] text-white/30 mt-0.5">{fmt12(post.scheduledAt)}</p>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+// ─── Post Detail Modal ────────────────────────────────────────────────
+function PostDetailModal({ post, onClose, onDelete, onMarkPosted, onPostNow }: {
+  post: ScheduledPost;
+  onClose: () => void;
+  onDelete: () => void;
+  onMarkPosted: () => void;
+  onPostNow: () => void;
+}) {
+  const pl = PLATFORMS.find(p => p.id === post.platform)!;
+  const canPost = post.status === 'scheduled' || post.status === 'due';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-80 bg-[#111] border border-[#222] rounded-2xl overflow-hidden shadow-2xl">
+        {/* Thumbnail */}
+        <div className="relative h-36 bg-[#0a0a0a]">
+          {post.thumbnailPath ? (
+            <img src={`localfile://${post.thumbnailPath}`} alt=""
+              className="absolute inset-0 w-full h-full object-cover" />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#1e1e1e" strokeWidth={1} className="w-10 h-10">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+            </div>
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent" />
+          <div className="absolute bottom-3 left-3 right-3">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[9px] font-black px-1.5 py-0.5 rounded border"
+                style={{ color: pl.color, borderColor: pl.border, background: pl.bg }}>
+                {pl.abbr}
+              </span>
+              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
+                post.status === 'posted' ? 'text-[#00C851] border-[#00C85140]' :
+                post.status === 'due' ? 'text-amber-400 border-amber-400/30 animate-pulse' :
+                post.status === 'failed' ? 'text-red-400 border-red-400/30' :
+                'text-[#666] border-[#333]'
+              }`}>
+                {post.status === 'scheduled' ? 'Scheduled' : post.status === 'posted' ? '✓ Posted' :
+                 post.status === 'due' ? '⏰ Due Now' : '✕ Failed'}
+              </span>
+            </div>
+          </div>
+          <button onClick={onClose}
+            className="absolute top-3 right-3 w-7 h-7 bg-black/50 rounded-full flex items-center justify-center text-white/50 hover:text-white transition-colors">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="p-4 flex flex-col gap-3">
+          <div>
+            <p className="text-xs font-bold text-white mb-1">
+              {new Date(post.scheduledAt).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+              {' · '}{fmt12(post.scheduledAt)}
+            </p>
+            <p className="text-xs text-[#555] leading-relaxed line-clamp-3">{post.caption}</p>
+          </div>
+
+          {canPost && (
+            <div className="flex flex-col gap-2">
+              <button onClick={onPostNow}
+                className="w-full py-2 rounded-xl text-xs font-bold text-white"
+                style={{ background: post.platform === 'instagram'
+                  ? 'linear-gradient(135deg, #f9ce34, #ee2a7b, #6228d7)'
+                  : pl.gradient }}>
+                Post Now
+              </button>
+              {post.status === 'due' && (
+                <button onClick={onMarkPosted}
+                  className="w-full py-2 rounded-xl text-xs font-semibold border border-[#00C851]/30 text-[#00C851] hover:bg-[#00C851]/10 transition-colors">
+                  Mark as Posted
+                </button>
+              )}
+            </div>
+          )}
+
+          <button onClick={onDelete}
+            className="w-full py-1.5 text-xs text-red-400/60 hover:text-red-400 transition-colors">
+            Delete post
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── New Post Modal ───────────────────────────────────────────────────
+function NewPostModal({ onClose, onSave }: {
+  onClose: () => void;
+  onSave: (post: Omit<ScheduledPost, 'id' | 'createdAt'>) => void;
+}) {
+  const [platform, setPlatform] = useState<'instagram' | 'tiktok' | 'youtube'>('instagram');
+  const [caption, setCaption] = useState('');
+  const [mediaPath, setMediaPath] = useState('');
+  const [thumbnailPath, setThumbnailPath] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [time, setTime] = useState('12:00');
+  const [clips, setClips] = useState<LibraryClip[]>([]);
+  const [showPicker, setShowPicker] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await window.electronAPI.scanLibrary() as { runs: { clips: LibraryClip[] }[] };
+        setClips(r.runs.flatMap(run => run.clips).filter(c => c.filePath).slice(0, 12));
+      } catch {}
+    })();
+  }, []);
+
+  const pickFile = async () => {
+    const r = await window.electronAPI.selectVideo();
+    if (!r.cancelled && r.filePath) setMediaPath(r.filePath);
+  };
+
+  const handleSave = () => {
+    if (!caption.trim() || !date) return;
+    onSave({
+      platform, caption, mediaPath, thumbnailPath,
+      scheduledAt: new Date(`${date}T${time}`).toISOString(),
+      status: 'scheduled',
+    });
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md"
+      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="w-[440px] bg-[#111] border border-[#222] rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#1c1c1c]">
+          <h2 className="text-sm font-bold text-white">Schedule Post</h2>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center text-[#444] hover:text-white transition-colors">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <div className="p-5 flex flex-col gap-4">
+          {/* Platform */}
+          <div>
+            <p className="text-[10px] font-bold text-[#444] uppercase tracking-wider mb-2">Platform</p>
+            <div className="grid grid-cols-3 gap-2">
+              {PLATFORMS.map(pl => (
+                <button key={pl.id} onClick={() => setPlatform(pl.id)}
+                  className="py-2 rounded-xl border text-xs font-bold transition-all"
+                  style={platform === pl.id
+                    ? { background: pl.bg, color: pl.color, borderColor: pl.border }
+                    : { background: 'transparent', color: '#555', borderColor: '#222' }}>
+                  {pl.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Caption */}
+          <div>
+            <p className="text-[10px] font-bold text-[#444] uppercase tracking-wider mb-2">Caption</p>
+            <textarea value={caption} onChange={e => setCaption(e.target.value)}
+              placeholder="Write your caption…" rows={3}
+              className="w-full bg-black border border-[#2a2a2a] rounded-xl px-3 py-2.5 text-xs text-white placeholder-[#333] resize-none focus:outline-none focus:border-[#00C851]/40 transition-colors" />
+          </div>
+
+          {/* Media */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[10px] font-bold text-[#444] uppercase tracking-wider">Media (optional)</p>
+              {clips.length > 0 && (
+                <button onClick={() => setShowPicker(v => !v)}
+                  className="text-[10px] text-[#555] hover:text-[#00C851] transition-colors">
+                  {showPicker ? 'Hide library' : 'Pick from library'}
+                </button>
+              )}
+            </div>
+
+            {showPicker && (
+              <div className="mb-3 border border-[#1e1e1e] rounded-xl p-3 bg-black/30">
+                <div className="grid grid-cols-4 gap-1.5 max-h-36 overflow-y-auto">
+                  {clips.map((clip, i) => (
+                    <button key={i} onClick={() => { setMediaPath(clip.filePath!); if (clip.thumbnailPath) setThumbnailPath(clip.thumbnailPath); setShowPicker(false); }}
+                      className={`rounded-lg overflow-hidden border transition-all ${mediaPath === clip.filePath ? 'border-[#00C851]' : 'border-[#1e1e1e] hover:border-[#333]'}`}>
+                      {clip.thumbnailPath ? (
+                        <img src={`localfile://${clip.thumbnailPath}`} alt="" className="w-full aspect-square object-cover" />
+                      ) : (
+                        <div className="w-full aspect-square bg-[#141414] flex items-center justify-center">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth={1.5} className="w-4 h-4">
+                            <polygon points="5 3 19 12 5 21 5 3"/>
+                          </svg>
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {mediaPath ? (
+              <div className="flex items-center gap-2 bg-black border border-[#2a2a2a] rounded-xl px-3 py-2">
+                {thumbnailPath && <img src={`localfile://${thumbnailPath}`} alt="" className="w-8 h-10 rounded object-cover shrink-0" />}
+                <p className="text-xs text-white flex-1 truncate">{mediaPath.split('/').pop()}</p>
+                <button onClick={() => { setMediaPath(''); setThumbnailPath(''); }} className="text-[#444] hover:text-red-400 transition-colors">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+            ) : (
+              <button onClick={pickFile}
+                className="w-full border border-dashed border-[#222] rounded-xl p-3 text-xs text-[#444] hover:border-[#333] hover:text-white transition-all">
+                Browse for file
+              </button>
+            )}
+          </div>
+
+          {/* Date + Time */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-[10px] font-bold text-[#444] uppercase tracking-wider mb-2">Date</p>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                className="w-full bg-black border border-[#2a2a2a] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#00C851]/40 transition-colors" />
+            </div>
+            <div>
+              <p className="text-[10px] font-bold text-[#444] uppercase tracking-wider mb-2">Time</p>
+              <input type="time" value={time} onChange={e => setTime(e.target.value)}
+                className="w-full bg-black border border-[#2a2a2a] rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#00C851]/40 transition-colors" />
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-2 pt-1">
+            <button onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl border border-[#222] text-xs text-[#555] hover:text-white hover:border-[#333] transition-colors">
+              Cancel
+            </button>
+            <button onClick={handleSave} disabled={!caption.trim() || !date}
+              className="flex-1 py-2.5 rounded-xl text-xs font-bold text-black disabled:opacity-40 transition-colors"
+              style={{ background: '#00C851' }}>
+              Schedule
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Scheduler Page ──────────────────────────────────────────────
 export default function Scheduler() {
   const [posts, setPosts] = useState<ScheduledPost[]>([]);
-  const [showModal, setShowModal] = useState(false);
+  const [view, setView] = useState<'month' | 'week' | 'queue'>('month');
+  const [monthOffset, setMonthOffset] = useState(0);
   const [weekOffset, setWeekOffset] = useState(0);
-  const [view, setView] = useState<'calendar' | 'queue'>('calendar');
-
-  // New post form
-  const [newPlatform, setNewPlatform] = useState<'instagram' | 'tiktok' | 'youtube'>('instagram');
-  const [newCaption, setNewCaption] = useState('');
-  const [newMediaPath, setNewMediaPath] = useState('');
-  const [newDate, setNewDate] = useState('');
-  const [newTime, setNewTime] = useState('12:00');
-
-  // Library picker
-  const [libraryClips, setLibraryClips] = useState<LibraryClip[]>([]);
-  const [showLibraryPicker, setShowLibraryPicker] = useState(false);
-  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [showNewModal, setShowNewModal] = useState(false);
+  const [selectedPost, setSelectedPost] = useState<ScheduledPost | null>(null);
+  const [igPostTarget, setIgPostTarget] = useState<ScheduledPost | null>(null);
 
   useEffect(() => {
     loadPosts();
@@ -57,482 +356,331 @@ export default function Scheduler() {
     return () => { cleanup?.(); };
   }, []);
 
-  useEffect(() => {
-    if (showModal) loadLibrary();
-  }, [showModal]);
-
   const loadPosts = async () => {
     try {
-      const result = await window.electronAPI.getScheduledPosts();
-      if (result && Array.isArray(result)) setPosts(result as ScheduledPost[]);
+      const r = await window.electronAPI.getScheduledPosts();
+      if (Array.isArray(r)) setPosts(r as ScheduledPost[]);
     } catch { setPosts([]); }
   };
 
-  const loadLibrary = async () => {
-    setLibraryLoading(true);
-    try {
-      const result = await window.electronAPI.scanLibrary() as { runs: { clips: LibraryClip[] }[] };
-      const clips = result.runs
-        .flatMap(r => r.clips)
-        .filter(c => c.filePath)
-        .slice(0, 12);
-      setLibraryClips(clips);
-    } catch { setLibraryClips([]); }
-    setLibraryLoading(false);
-  };
-
-  const handleSelectMedia = async () => {
-    const result = await window.electronAPI.selectVideo();
-    if (!result.cancelled && result.filePath) setNewMediaPath(result.filePath);
-  };
-
-  const handlePickFromLibrary = (clip: LibraryClip) => {
-    if (clip.filePath) setNewMediaPath(clip.filePath);
-    setShowLibraryPicker(false);
-  };
-
-  const handleAddPost = async () => {
-    if (!newCaption.trim() || !newDate) return;
-    const post: ScheduledPost = {
-      id: Date.now().toString(),
-      platform: newPlatform,
-      caption: newCaption,
-      mediaPath: newMediaPath,
-      scheduledAt: new Date(`${newDate}T${newTime}`).toISOString(),
-      status: 'scheduled',
-      createdAt: new Date().toISOString(),
-    };
+  const handleSavePost = async (data: Omit<ScheduledPost, 'id' | 'createdAt'>) => {
+    const post: ScheduledPost = { ...data, id: Date.now().toString(), createdAt: new Date().toISOString() };
     try { await window.electronAPI.saveScheduledPost({ ...post }); } catch {}
-    setPosts(prev => [...prev, post].sort((a, b) =>
-      new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()
-    ));
-    setNewCaption('');
-    setNewMediaPath('');
-    setNewDate('');
-    setNewTime('12:00');
-    setShowModal(false);
+    setPosts(prev => [...prev, post].sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()));
   };
 
-  const handleDeletePost = async (id: string) => {
+  const handleDelete = async (id: string) => {
     try { await window.electronAPI.deleteScheduledPost(id); } catch {}
     setPosts(prev => prev.filter(p => p.id !== id));
+    setSelectedPost(null);
   };
 
-  const handlePostNow = async (post: ScheduledPost) => {
-    try {
-      const result = await window.electronAPI.postToSocial(post.platform, { caption: post.caption, mediaPath: post.mediaPath });
-      setPosts(prev => prev.map(p => p.id === post.id ? { ...p, status: result.success ? 'posted' as const : 'failed' as const } : p));
-    } catch {
-      setPosts(prev => prev.map(p => p.id === post.id ? { ...p, status: 'failed' as const } : p));
+  const handleMarkPosted = async (id: string) => {
+    try { await window.electronAPI.markPostAsPosted(id); } catch {}
+    setPosts(prev => prev.map(p => p.id === id ? { ...p, status: 'posted', postedAt: new Date().toISOString() } : p));
+    setSelectedPost(null);
+  };
+
+  const handlePostNow = (post: ScheduledPost) => {
+    if (post.platform === 'instagram' && post.mediaPath) {
+      setIgPostTarget(post);
+      setSelectedPost(null);
+    } else {
+      // Non-IG: open in browser
+      const urls: Record<string, string> = { tiktok: 'https://www.tiktok.com/upload', youtube: 'https://studio.youtube.com/' };
+      (window as any).electronAPI.openPath(urls[post.platform] || 'https://www.instagram.com/');
     }
   };
 
-  const handleMarkPosted = async (postId: string) => {
-    try { await window.electronAPI.markPostAsPosted(postId); } catch {}
-    setPosts(prev => prev.map(p =>
-      p.id === postId ? { ...p, status: 'posted' as const, postedAt: new Date().toISOString() } : p
-    ));
+  // ── Computed ──
+  const streak = getStreak(posts);
+  const now = new Date();
+  const thisWeekPosts = posts.filter(p => {
+    const d = new Date(p.scheduledAt);
+    const start = new Date(now); start.setDate(now.getDate() - now.getDay()); start.setHours(0,0,0,0);
+    const end = new Date(start); end.setDate(start.getDate() + 7);
+    return d >= start && d < end;
+  });
+  const upcoming = posts.filter(p => p.status !== 'posted').length;
+  const due = posts.filter(p => p.status === 'due').length;
+
+  // ── Month grid ──
+  const getMonthData = () => {
+    const d = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1);
+    const year = d.getFullYear(); const month = d.getMonth();
+    const firstDay = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const cells: (Date | null)[] = [];
+    for (let i = 0; i < firstDay; i++) cells.push(null);
+    for (let i = 1; i <= daysInMonth; i++) cells.push(new Date(year, month, i));
+    return { cells, year, month };
   };
 
-  const handleCopyCaption = (caption: string) => navigator.clipboard.writeText(caption);
-
+  // ── Week days ──
   const getWeekDays = () => {
-    const today = new Date();
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - today.getDay() + weekOffset * 7);
-    return Array.from({ length: 7 }).map((_, i) => {
-      const d = new Date(startOfWeek);
-      d.setDate(startOfWeek.getDate() + i);
-      return d;
-    });
+    const start = new Date(now);
+    start.setDate(now.getDate() - now.getDay() + weekOffset * 7);
+    return Array.from({ length: 7 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d; });
   };
 
+  const { cells, year, month } = getMonthData();
   const weekDays = getWeekDays();
-  const getPostsForDay = (date: Date) => posts.filter(p => new Date(p.scheduledAt).toDateString() === date.toDateString());
-  const isToday = (date: Date) => date.toDateString() === new Date().toDateString();
-
-  const statusBadge = (status: ScheduledPost['status']) => {
-    switch (status) {
-      case 'scheduled': return 'bg-6fb-green/10 text-6fb-green border-6fb-green/20';
-      case 'due':       return 'bg-orange-500/10 text-orange-400 border-orange-500/20 animate-pulse';
-      case 'posted':    return 'bg-blue-500/10 text-blue-400 border-blue-500/20';
-      case 'failed':    return 'bg-red-500/10 text-red-400 border-red-500/20';
-    }
-  };
-
-  const platformAbbr = (platform: ScheduledPost['platform']) =>
-    PLATFORMS.find(p => p.id === platform)?.abbr || 'NA';
-  const platformBadge = (platform: ScheduledPost['platform']) =>
-    PLATFORMS.find(p => p.id === platform)?.badge || '';
+  const getPostsForDay = (day: Date) => posts.filter(p => isSameDay(new Date(p.scheduledAt), day));
 
   return (
-    <div className="p-8 max-w-5xl mx-auto animate-page-in">
+    <div className="h-full flex flex-col overflow-hidden bg-[#0f0f0f]">
+
+      {/* Instagram post modal (triggered by "Post Now" for IG) */}
+      {igPostTarget && igPostTarget.mediaPath && (
+        <InstagramPostModal
+          type="reel"
+          filePath={igPostTarget.mediaPath}
+          defaultCaption={igPostTarget.caption}
+          onClose={() => setIgPostTarget(null)}
+        />
+      )}
+
+      {/* New post modal */}
+      {showNewModal && <NewPostModal onClose={() => setShowNewModal(false)} onSave={handleSavePost} />}
+
+      {/* Post detail modal */}
+      {selectedPost && (
+        <PostDetailModal
+          post={selectedPost}
+          onClose={() => setSelectedPost(null)}
+          onDelete={() => handleDelete(selectedPost.id)}
+          onMarkPosted={() => handleMarkPosted(selectedPost.id)}
+          onPostNow={() => handlePostNow(selectedPost)}
+        />
+      )}
+
       {/* Header */}
-      <div className="flex items-start justify-between mb-6">
-        <div>
-          <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold text-white">Scheduler</h1>
-            <span className="px-2.5 py-1 bg-orange-500/10 text-orange-400 text-[10px] font-bold uppercase tracking-wider rounded-full border border-orange-500/20">
-              Beta
-            </span>
-          </div>
-          <p className="text-sm text-6fb-text-secondary">Plan and schedule content across platforms.</p>
+      <div className="shrink-0 border-b border-[#1a1a1a] px-5 py-3.5 flex items-center gap-4">
+        <div className="flex-1">
+          <h1 className="text-sm font-bold text-white">Content Calendar</h1>
+          <p className="text-[10px] text-[#444] mt-0.5">Plan and schedule your posts</p>
         </div>
-        <button
-          onClick={() => setShowModal(true)}
-          className="bg-6fb-green hover:bg-6fb-green-hover text-white font-semibold px-4 py-2.5 rounded-lg transition-colors flex items-center gap-2 text-sm"
-        >
-          <span>+</span> New Post
+
+        {/* Quick stats */}
+        <div className="flex items-center gap-4">
+          {streak > 0 && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+              <span className="text-base">🔥</span>
+              <div>
+                <p className="text-sm font-bold text-amber-400 leading-none">{streak}</p>
+                <p className="text-[8px] text-amber-400/60">day streak</p>
+              </div>
+            </div>
+          )}
+          <div className="text-center">
+            <p className="text-sm font-bold text-white">{thisWeekPosts.length}</p>
+            <p className="text-[8px] text-[#444]">this week</p>
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-bold text-[#00C851]">{upcoming}</p>
+            <p className="text-[8px] text-[#444]">upcoming</p>
+          </div>
+          {due > 0 && (
+            <div className="text-center">
+              <p className="text-sm font-bold text-amber-400 animate-pulse">{due}</p>
+              <p className="text-[8px] text-[#444]">due now</p>
+            </div>
+          )}
+        </div>
+
+        <button onClick={() => setShowNewModal(true)}
+          className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl text-black"
+          style={{ background: '#00C851' }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3 h-3">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          New Post
         </button>
       </div>
 
-      {/* View Toggle */}
-      <div className="flex items-center gap-2 mb-6">
-        <div className="bg-6fb-card rounded-lg border border-6fb-border p-1 flex gap-1">
-          {(['calendar', 'queue'] as const).map(v => (
-            <button
-              key={v}
-              onClick={() => setView(v)}
-              className={`px-4 py-1.5 rounded-md text-xs font-medium transition-all capitalize ${
-                view === v ? 'bg-6fb-green/10 text-6fb-green' : 'text-6fb-text-muted hover:text-white'
-              }`}
-            >
-              {v === 'calendar' ? 'Calendar' : 'Queue'}
+      {/* View tabs + nav */}
+      <div className="shrink-0 border-b border-[#1a1a1a] px-5 py-2 flex items-center gap-3">
+        <div className="flex bg-[#141414] rounded-lg border border-[#1e1e1e] p-0.5">
+          {(['month', 'week', 'queue'] as const).map(v => (
+            <button key={v} onClick={() => setView(v)}
+              className={`px-3 py-1.5 rounded-md text-[11px] font-semibold capitalize transition-all ${
+                view === v ? 'bg-[#222] text-white' : 'text-[#444] hover:text-[#888]'
+              }`}>
+              {v}
             </button>
           ))}
         </div>
 
-        {view === 'calendar' && (
+        {/* Month navigation */}
+        {view === 'month' && (
           <div className="flex items-center gap-2 ml-auto">
-            <button
-              onClick={() => setWeekOffset(w => w - 1)}
-              className="w-8 h-8 rounded-lg border border-6fb-border text-6fb-text-muted hover:text-white hover:border-6fb-text-muted transition-colors flex items-center justify-center text-sm"
-            >
-              ‹
+            <button onClick={() => setMonthOffset(o => o - 1)}
+              className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#1e1e1e] text-[#444] hover:text-white hover:border-[#333] transition-colors">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3"><polyline points="15 18 9 12 15 6"/></svg>
             </button>
-            <button
-              onClick={() => setWeekOffset(0)}
-              className="text-xs text-6fb-text-secondary hover:text-white transition-colors px-2"
-            >
-              Today
+            <p className="text-xs font-semibold text-white w-28 text-center">{MONTH_NAMES[month]} {year}</p>
+            <button onClick={() => setMonthOffset(o => o + 1)}
+              className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#1e1e1e] text-[#444] hover:text-white hover:border-[#333] transition-colors">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
-            <button
-              onClick={() => setWeekOffset(w => w + 1)}
-              className="w-8 h-8 rounded-lg border border-6fb-border text-6fb-text-muted hover:text-white hover:border-6fb-text-muted transition-colors flex items-center justify-center text-sm"
-            >
-              ›
+            {monthOffset !== 0 && (
+              <button onClick={() => setMonthOffset(0)} className="text-[10px] text-[#444] hover:text-white transition-colors">Today</button>
+            )}
+          </div>
+        )}
+
+        {/* Week navigation */}
+        {view === 'week' && (
+          <div className="flex items-center gap-2 ml-auto">
+            <button onClick={() => setWeekOffset(o => o - 1)}
+              className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#1e1e1e] text-[#444] hover:text-white hover:border-[#333] transition-colors">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3"><polyline points="15 18 9 12 15 6"/></svg>
+            </button>
+            <button onClick={() => setWeekOffset(0)} className="text-[10px] text-[#444] hover:text-white transition-colors px-1">This Week</button>
+            <button onClick={() => setWeekOffset(o => o + 1)}
+              className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#1e1e1e] text-[#444] hover:text-white hover:border-[#333] transition-colors">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
           </div>
         )}
       </div>
 
-      {/* Calendar View */}
-      {view === 'calendar' && (
-        <div className="grid grid-cols-7 gap-2 animate-fade-in">
-          {weekDays.map((day, i) => {
-            const dayPosts = getPostsForDay(day);
-            const today = isToday(day);
-            return (
-              <div
-                key={i}
-                className={`bg-6fb-card rounded-xl border p-3 min-h-[180px] ${today ? 'border-6fb-green/40' : 'border-6fb-border'}`}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <p className={`text-[10px] font-bold uppercase tracking-wider ${today ? 'text-6fb-green' : 'text-6fb-text-muted'}`}>
-                    {DAYS[i]}
-                  </p>
-                  <p className={`text-lg font-bold ${today ? 'text-6fb-green' : 'text-white'}`}>{day.getDate()}</p>
-                </div>
-                <div className="space-y-2">
-                  {dayPosts.map(post => (
-                    <div key={post.id} className="bg-6fb-bg rounded-lg p-2 border border-6fb-border/50">
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${platformBadge(post.platform)}`}>
-                          {platformAbbr(post.platform)}
-                        </span>
-                        <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${statusBadge(post.status)}`}>
-                          {post.status}
-                        </span>
-                      </div>
-                      <p className="text-[10px] text-6fb-text-secondary line-clamp-2">{post.caption}</p>
-                      <p className="text-[9px] text-6fb-text-muted mt-1">
-                        {new Date(post.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </p>
-                    </div>
-                  ))}
-                  {dayPosts.length === 0 && (
-                    <p className="text-[10px] text-6fb-text-muted/50 text-center py-4">No posts</p>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {/* Content */}
+      <div className="flex-1 overflow-auto p-4">
 
-      {/* Queue View */}
-      {view === 'queue' && (
-        <div className="space-y-3 animate-fade-in">
-          {posts.length === 0 ? (
-            <div className="bg-6fb-card rounded-xl border border-6fb-border p-12 text-center">
-              <div className="w-10 h-10 mx-auto mb-4 text-6fb-text-muted/30">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
-                  <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-                </svg>
-              </div>
-              <p className="text-sm text-6fb-text-secondary mb-1">No posts scheduled</p>
-              <p className="text-xs text-6fb-text-muted">Click "New Post" to get started</p>
+        {/* ── Month View ── */}
+        {view === 'month' && (
+          <div>
+            {/* Day labels */}
+            <div className="grid grid-cols-7 mb-1">
+              {DAY_LABELS.map(d => (
+                <p key={d} className="text-[9px] font-bold text-[#333] uppercase tracking-widest text-center py-1">{d}</p>
+              ))}
             </div>
-          ) : (
-            posts.map(post => {
-              const platform = PLATFORMS.find(p => p.id === post.platform)!;
-              return (
-                <div
-                  key={post.id}
-                  className={`bg-gradient-to-r ${platform.color} rounded-xl border ${platform.border} p-4 flex items-center gap-4`}
-                >
-                  <span className={`text-xs font-black px-2 py-1 rounded border ${platform.badge} shrink-0`}>
-                    {platform.abbr}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="text-sm font-semibold text-white">{platform.name}</p>
-                      <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border ${statusBadge(post.status)}`}>
-                        {post.status}
-                      </span>
-                    </div>
-                    <p className="text-xs text-6fb-text-secondary truncate">{post.caption}</p>
-                    <p className="text-[10px] text-6fb-text-muted mt-1">
-                      {new Date(post.scheduledAt).toLocaleString([], {
-                        weekday: 'short', month: 'short', day: 'numeric',
-                        hour: '2-digit', minute: '2-digit',
-                      })}
+            {/* Calendar grid */}
+            <div className="grid grid-cols-7 gap-1">
+              {cells.map((day, i) => {
+                if (!day) return <div key={i} />;
+                const dayPosts = getPostsForDay(day);
+                const today = isSameDay(day, now);
+                const isPast = day < new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                return (
+                  <div key={i}
+                    className={`min-h-[90px] rounded-xl border p-1.5 transition-colors ${
+                      today ? 'border-[#00C851]/40 bg-[#00C851]/5' :
+                      isPast ? 'border-[#141414] bg-[#0a0a0a]/50' :
+                      'border-[#1a1a1a] bg-[#111] hover:border-[#222]'
+                    }`}>
+                    <p className={`text-[10px] font-bold mb-1 text-right ${today ? 'text-[#00C851]' : isPast ? 'text-[#333]' : 'text-[#555]'}`}>
+                      {day.getDate()}
                     </p>
+                    <div className="flex flex-col gap-0.5">
+                      {dayPosts.slice(0, 3).map(post => (
+                        <PostChip key={post.id} post={post} onClick={() => setSelectedPost(post)} />
+                      ))}
+                      {dayPosts.length > 3 && (
+                        <p className="text-[8px] text-[#444] text-center">+{dayPosts.length - 3} more</p>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex gap-2 shrink-0">
-                    {(post.status === 'scheduled' || post.status === 'due') && (
-                      <>
-                        <button
-                          onClick={() => handleCopyCaption(post.caption)}
-                          className="text-xs bg-white/5 text-6fb-text-secondary px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors font-medium border border-6fb-border"
-                        >
-                          Copy
-                        </button>
-                        <a
-                          href={PLATFORM_URLS[post.platform]}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs bg-white/5 text-6fb-text-secondary px-3 py-1.5 rounded-lg hover:bg-white/10 transition-colors font-medium border border-6fb-border"
-                        >
-                          Open {platform.name}
-                        </a>
-                      </>
-                    )}
-                    {post.status === 'due' && (
-                      <button
-                        onClick={() => handleMarkPosted(post.id)}
-                        className="text-xs bg-6fb-green/10 text-6fb-green px-3 py-1.5 rounded-lg hover:bg-6fb-green/20 transition-colors font-medium border border-6fb-green/20"
-                      >
-                        Mark Posted
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ── Week View ── */}
+        {view === 'week' && (
+          <div className="grid grid-cols-7 gap-2 h-full">
+            {weekDays.map((day, i) => {
+              const dayPosts = getPostsForDay(day);
+              const today = isSameDay(day, now);
+              return (
+                <div key={i} className={`rounded-xl border p-2.5 flex flex-col min-h-[400px] ${today ? 'border-[#00C851]/40 bg-[#00C851]/5' : 'border-[#1a1a1a] bg-[#111]'}`}>
+                  <div className="flex items-center justify-between mb-3">
+                    <p className={`text-[9px] font-bold uppercase tracking-wider ${today ? 'text-[#00C851]' : 'text-[#444]'}`}>{DAY_LABELS[i]}</p>
+                    <p className={`text-sm font-bold ${today ? 'text-[#00C851]' : 'text-[#555]'}`}>{day.getDate()}</p>
+                  </div>
+                  <div className="flex flex-col gap-1.5 flex-1">
+                    {dayPosts.map(post => (
+                      <PostChip key={post.id} post={post} onClick={() => setSelectedPost(post)} />
+                    ))}
+                    {dayPosts.length === 0 && (
+                      <button onClick={() => setShowNewModal(true)}
+                        className="flex-1 flex items-center justify-center text-[10px] text-[#222] hover:text-[#444] transition-colors rounded-lg border border-dashed border-[#1a1a1a] hover:border-[#2a2a2a]">
+                        +
                       </button>
                     )}
-                    {post.status === 'scheduled' && (
-                      <button
-                        onClick={() => handlePostNow(post)}
-                        className="text-xs bg-6fb-green/10 text-6fb-green px-3 py-1.5 rounded-lg hover:bg-6fb-green/20 transition-colors font-medium border border-6fb-green/20"
-                      >
-                        Post Now
-                      </button>
-                    )}
-                    <button
-                      onClick={() => handleDeletePost(post.id)}
-                      className="text-xs text-6fb-text-muted hover:text-red-400 px-2 py-1.5 transition-colors"
-                    >
-                      ✕
-                    </button>
                   </div>
                 </div>
               );
-            })
-          )}
-        </div>
-      )}
-
-      {/* Platform Connect Cards */}
-      <div className="mt-8">
-        <h2 className="text-sm font-bold text-6fb-text-muted uppercase tracking-wider mb-3">Connected Platforms</h2>
-        <div className="grid grid-cols-3 gap-3">
-          {PLATFORMS.map(p => (
-            <div key={p.id} className={`bg-6fb-card rounded-xl border ${p.border} p-4 flex items-center justify-between`}>
-              <div className="flex items-center gap-3">
-                <span className={`text-xs font-black px-2 py-1 rounded border ${p.badge}`}>{p.abbr}</span>
-                <div>
-                  <p className="text-sm font-medium text-white">{p.name}</p>
-                  <p className="text-[10px] text-6fb-text-muted">Not connected</p>
-                </div>
-              </div>
-              <span className="text-[9px] bg-6fb-border rounded px-2 py-1 text-6fb-text-muted uppercase font-bold">Soon</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* New Post Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
-          <div className="bg-6fb-card border border-6fb-border rounded-2xl w-full max-w-lg p-6 shadow-2xl animate-slide-up max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-lg font-bold text-white">Schedule Post</h2>
-              <button
-                onClick={() => setShowModal(false)}
-                className="w-8 h-8 rounded-lg bg-6fb-bg border border-6fb-border flex items-center justify-center text-6fb-text-muted hover:text-white transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Platform */}
-            <label className="text-[10px] font-bold text-6fb-text-muted uppercase tracking-wider mb-2 block">Platform</label>
-            <div className="grid grid-cols-3 gap-2 mb-4">
-              {PLATFORMS.map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => setNewPlatform(p.id)}
-                  className={`flex items-center justify-center gap-2 py-2.5 rounded-lg border text-xs font-medium transition-all ${
-                    newPlatform === p.id
-                      ? 'border-6fb-green bg-6fb-green/10 text-6fb-green'
-                      : 'border-6fb-border text-6fb-text-secondary hover:border-6fb-text-muted'
-                  }`}
-                >
-                  <span className={`text-[10px] font-black px-1.5 py-0.5 rounded border ${p.badge}`}>{p.abbr}</span>
-                  <span>{p.name}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Caption */}
-            <label className="text-[10px] font-bold text-6fb-text-muted uppercase tracking-wider mb-2 block">Caption</label>
-            <textarea
-              value={newCaption}
-              onChange={e => setNewCaption(e.target.value)}
-              placeholder="Write your caption..."
-              rows={3}
-              className="w-full bg-6fb-bg border border-6fb-border rounded-lg px-3 py-2 text-white text-sm placeholder-6fb-text-muted focus:outline-none focus:border-6fb-green transition-colors resize-none mb-4"
-            />
-
-            {/* Media — file picker + library */}
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-[10px] font-bold text-6fb-text-muted uppercase tracking-wider">Media</label>
-              {libraryClips.length > 0 && (
-                <button
-                  onClick={() => setShowLibraryPicker(v => !v)}
-                  className={`text-[10px] font-semibold transition-colors ${showLibraryPicker ? 'text-6fb-green' : 'text-6fb-text-muted hover:text-white'}`}
-                >
-                  {showLibraryPicker ? 'Hide Library' : 'Pick from Library'}
-                </button>
-              )}
-            </div>
-
-            {/* Library Picker */}
-            {showLibraryPicker && (
-              <div className="mb-3 bg-6fb-bg border border-6fb-border rounded-xl p-3 animate-fade-in">
-                <p className="text-[10px] text-6fb-text-muted uppercase tracking-wider font-bold mb-2">Recent Clips</p>
-                {libraryLoading ? (
-                  <div className="flex items-center justify-center py-4">
-                    <div className="w-5 h-5 border-2 border-6fb-border border-t-6fb-green rounded-full animate-spin" />
-                  </div>
-                ) : libraryClips.length === 0 ? (
-                  <p className="text-xs text-6fb-text-muted text-center py-3">No clips extracted yet</p>
-                ) : (
-                  <div className="grid grid-cols-3 gap-2 max-h-48 overflow-y-auto">
-                    {libraryClips.map((clip, i) => (
-                      <button
-                        key={i}
-                        onClick={() => handlePickFromLibrary(clip)}
-                        className={`rounded-lg border overflow-hidden text-left transition-all hover:border-6fb-green/50 group ${
-                          newMediaPath === clip.filePath ? 'border-6fb-green' : 'border-6fb-border'
-                        }`}
-                      >
-                        {clip.thumbnailPath ? (
-                          <img
-                            src={`localfile://${clip.thumbnailPath}`}
-                            alt={clip.title}
-                            className="w-full h-14 object-cover"
-                          />
-                        ) : (
-                          <div className="w-full h-14 bg-6fb-card flex items-center justify-center">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} className="w-5 h-5 text-6fb-text-muted">
-                              <polygon points="5 3 19 12 5 21 5 3"/>
-                            </svg>
-                          </div>
-                        )}
-                        <div className="p-1.5">
-                          <p className="text-[9px] text-6fb-text-secondary truncate font-medium group-hover:text-white transition-colors">{clip.title}</p>
-                          <p className="text-[8px] text-6fb-text-muted uppercase">{clip.contentType}</p>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Selected or browse */}
-            {!newMediaPath ? (
-              <button
-                onClick={handleSelectMedia}
-                className="w-full border border-dashed border-6fb-border rounded-lg p-3 text-xs text-6fb-text-secondary hover:border-6fb-green/50 hover:text-white transition-all mb-4"
-              >
-                Browse for a file
-              </button>
-            ) : (
-              <div className="bg-6fb-bg border border-6fb-border rounded-lg px-3 py-2 flex items-center justify-between mb-4">
-                <p className="text-xs text-white truncate max-w-[300px]">{newMediaPath.split('/').pop()}</p>
-                <button onClick={() => setNewMediaPath('')} className="text-xs text-6fb-text-muted hover:text-red-400 ml-2 shrink-0">✕</button>
-              </div>
-            )}
-
-            {/* Date / Time */}
-            <div className="grid grid-cols-2 gap-3 mb-6">
-              <div>
-                <label className="text-[10px] font-bold text-6fb-text-muted uppercase tracking-wider mb-2 block">Date</label>
-                <input
-                  type="date"
-                  value={newDate}
-                  onChange={e => setNewDate(e.target.value)}
-                  className="w-full bg-6fb-bg border border-6fb-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-6fb-green transition-colors"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-6fb-text-muted uppercase tracking-wider mb-2 block">Time</label>
-                <input
-                  type="time"
-                  value={newTime}
-                  onChange={e => setNewTime(e.target.value)}
-                  className="w-full bg-6fb-bg border border-6fb-border rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-6fb-green transition-colors"
-                />
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowModal(false)}
-                className="flex-1 border border-6fb-border text-6fb-text-secondary py-2.5 rounded-lg text-sm hover:text-white transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddPost}
-                disabled={!newCaption.trim() || !newDate}
-                className="flex-1 bg-6fb-green hover:bg-6fb-green-hover disabled:bg-6fb-border disabled:text-6fb-text-muted text-white font-semibold py-2.5 rounded-lg text-sm transition-colors"
-              >
-                Schedule
-              </button>
-            </div>
+            })}
           </div>
-        </div>
-      )}
+        )}
+
+        {/* ── Queue View ── */}
+        {view === 'queue' && (
+          <div>
+            {posts.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#1e1e1e" strokeWidth={1} className="w-10 h-10 mb-4">
+                  <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
+                  <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                </svg>
+                <p className="text-sm text-[#444]">No posts scheduled</p>
+                <p className="text-xs text-[#2a2a2a] mt-1">Click "New Post" to get started</p>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 max-w-2xl mx-auto">
+                {/* Group by date */}
+                {Object.entries(
+                  posts.reduce((acc: Record<string, ScheduledPost[]>, p) => {
+                    const key = new Date(p.scheduledAt).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+                    (acc[key] = acc[key] || []).push(p);
+                    return acc;
+                  }, {})
+                ).map(([dateLabel, dayPosts]) => (
+                  <div key={dateLabel}>
+                    <p className="text-[10px] font-bold text-[#333] uppercase tracking-wider mb-2 mt-4 first:mt-0">{dateLabel}</p>
+                    {dayPosts.map(post => {
+                      const pl = PLATFORMS.find(p => p.id === post.platform)!;
+                      return (
+                        <button key={post.id} onClick={() => setSelectedPost(post)}
+                          className="w-full flex items-center gap-3 p-3 rounded-xl border border-[#1a1a1a] bg-[#111] hover:border-[#2a2a2a] transition-colors mb-1.5 text-left">
+                          {post.thumbnailPath ? (
+                            <img src={`localfile://${post.thumbnailPath}`} alt="" className="w-10 h-14 rounded-lg object-cover shrink-0 border border-[#222]" />
+                          ) : (
+                            <div className="w-10 h-14 rounded-lg shrink-0 flex items-center justify-center border border-[#1e1e1e]"
+                              style={{ background: pl.bg }}>
+                              <span className="text-[8px] font-black" style={{ color: pl.color }}>{pl.abbr}</span>
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="text-[9px] font-bold" style={{ color: pl.color }}>{pl.name}</span>
+                              <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border ${
+                                post.status === 'posted' ? 'text-[#00C851] border-[#00C85140]' :
+                                post.status === 'due' ? 'text-amber-400 border-amber-400/30' :
+                                'text-[#444] border-[#222]'
+                              }`}>
+                                {post.status === 'due' ? '⏰ Due' : post.status === 'posted' ? '✓ Posted' : fmt12(post.scheduledAt)}
+                              </span>
+                            </div>
+                            <p className="text-xs text-[#666] truncate">{post.caption}</p>
+                          </div>
+                          <svg viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth={2} className="w-3 h-3 shrink-0">
+                            <polyline points="9 18 15 12 9 6"/>
+                          </svg>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
