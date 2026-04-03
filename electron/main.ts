@@ -3,6 +3,7 @@ import { join } from 'path';
 import { existsSync, readdirSync, readFileSync, mkdirSync } from 'fs';
 import { pathToFileURL } from 'url';
 import { runClipExtractor, checkPythonDeps } from './python-bridge';
+import { autoUpdater } from 'electron-updater';
 
 // electron-store: handle ESM default export
 import Store from 'electron-store';
@@ -54,6 +55,7 @@ app.whenReady().then(() => {
   });
   createWindow();
   startSchedulerDaemon();
+  initAutoUpdater();
 });
 
 app.on('window-all-closed', () => {
@@ -898,6 +900,46 @@ function startSchedulerDaemon() {
     }
   }, 60_000);
 }
+
+// ─── Auto-Updater ─────────────────────────────────────────────────────
+function initAutoUpdater() {
+  if (process.env.NODE_ENV === 'development') return;
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on('update-available', (info) => {
+    mainWindow?.webContents.send('update-available', {
+      version: info.version,
+      releaseNotes: info.releaseNotes ?? null,
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    mainWindow?.webContents.send('update-downloaded', { version: info.version });
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[updater]', err.message);
+  });
+
+  // Check on launch, then every 4 hours
+  autoUpdater.checkForUpdates().catch(() => {});
+  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 4 * 60 * 60 * 1000);
+}
+
+ipcMain.handle('check-for-update', async () => {
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return { success: true, updateInfo: result?.updateInfo ?? null };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('install-update', () => {
+  autoUpdater.quitAndInstall(false, true);
+});
 
 // ─── 6FB Account (Content Manager integration) ───────────────────────
 const CONTENT_MANAGER = 'https://content.6fbmentorship.com/apps/content';

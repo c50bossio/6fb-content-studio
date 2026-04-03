@@ -128,4 +128,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-6fb-account'),
   disconnect6FB: () =>
     ipcRenderer.invoke('disconnect-6fb'),
+
+  // Auto-Updater
+  checkForUpdate: () =>
+    ipcRenderer.invoke('check-for-update'),
+  installUpdate: () =>
+    ipcRenderer.invoke('install-update'),
+  onUpdateAvailable: (callback: (info: { version: string }) => void) => {
+    ipcRenderer.on('update-available', (_e, info) => callback(info));
+    return () => ipcRenderer.removeAllListeners('update-available');
+  },
+  onUpdateDownloaded: (callback: (info: { version: string }) => void) => {
+    ipcRenderer.on('update-downloaded', (_e, info) => callback(info));
+    return () => ipcRenderer.removeAllListeners('update-downloaded');
+  },
 });

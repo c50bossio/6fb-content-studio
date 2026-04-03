@@ -9,6 +9,7 @@ import BlogWriter from './pages/BlogWriter';
 import Settings from './pages/Settings';
 import Scheduler from './pages/Scheduler';
 import { useStudioStats } from './hooks/useStudioStats';
+import UpdateBanner from './components/UpdateBanner';
 
 export interface BrandProfile {
   brandName: string;
@@ -97,6 +98,11 @@ declare global {
       syncInstagramCredentials: () => Promise<{ success: boolean; username?: string; tokenExpiresAt?: string; error?: string }>;
       get6FBAccount: () => Promise<{ email: string | null; igUsername: string | null; igTokenExpiresAt: string | null; connected: boolean }>;
       disconnect6FB: () => Promise<{ success: boolean }>;
+      // Auto-Updater
+      checkForUpdate: () => Promise<{ success: boolean; updateInfo?: unknown }>;
+      installUpdate: () => void;
+      onUpdateAvailable: (cb: (info: { version: string }) => void) => () => void;
+      onUpdateDownloaded: (cb: (info: { version: string }) => void) => () => void;
     };
   }
 }
@@ -210,6 +216,7 @@ export default function App() {
         {currentPage === 'analytics'  && <ComingSoon title="Content Analytics" />}
         {currentPage === 'settings'   && <Settings />}
       </main>
+      <UpdateBanner />
     </div>
   );
 }
