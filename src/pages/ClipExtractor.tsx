@@ -62,6 +62,14 @@ interface LibraryRun {
   clips: Clip[];
 }
 
+interface VideoPlanSummary {
+  id: string;
+  topic: string;
+  targetLength: string;
+  timeline: { type: string; label: string; timestamp: string; endTimestamp: string }[];
+  createdAt: string;
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const fmtFull = (s: number) => {
@@ -634,7 +642,14 @@ export default function ClipExtractor({ onClipCreated }: { onClipCreated?: () =>
     } catch {}
   }, []);
 
-  useEffect(() => { loadLibrary(); }, [loadLibrary]);
+  const [savedPlans, setSavedPlans] = useState<VideoPlanSummary[]>([]);
+  const [selectedPlanId, setSelectedPlanId] = useState<string>('');
+
+  useEffect(() => {
+    (window.electronAPI as any).listVideoPlans?.().then((r: any) => {
+      if (r?.plans) setSavedPlans(r.plans);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const cleanup = window.electronAPI.onProgress(d => setProgress(d));
@@ -656,10 +671,19 @@ export default function ClipExtractor({ onClipCreated }: { onClipCreated?: () =>
     setProcessing(true);
     setError('');
     setProgress({ percent: 0, label: 'Starting…' });
+
+    // Build Drop Zone context from selected plan
+    const selectedPlan = savedPlans.find(p => p.id === selectedPlanId);
+    const dropZones = selectedPlan?.timeline
+      .filter(e => e.type === 'dropzone')
+      .map(e => ({ label: e.label, timestamp: e.timestamp, endTimestamp: e.endTimestamp })) ?? [];
+
     try {
       const result = await window.electronAPI.extractClips(videoPath, {
-        outputFormat: '9x16', contentType: 'auto', numClips: 5, autoTrack: true
+        outputFormat: '9x16', contentType: 'auto', numClips: 5, autoTrack: true,
+        ...(dropZones.length > 0 ? { planContext: { topic: selectedPlan!.topic, dropZones } } : {}),
       });
+
       if (result.success) {
         const raw: Clip[] = (result as any).data?.clips || [{
           start: 0, end: 0, score: 0.99, duration: 0,
@@ -792,7 +816,36 @@ export default function ClipExtractor({ onClipCreated }: { onClipCreated?: () =>
           </div>
         </div>
 
-        {/* Content */}
+          {/* Video Plan Selector — shown when video is selected */}
+          {videoPath && savedPlans.length > 0 && (
+            <div className="mb-3 px-1">
+              <div className="flex items-center gap-2 bg-[#0f0f0f] border border-[#222] rounded-xl px-3 py-2.5">
+                <svg className="w-3.5 h-3.5 text-[#00C851] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                </svg>
+                <select
+                  value={selectedPlanId}
+                  onChange={e => setSelectedPlanId(e.target.value)}
+                  className="flex-1 bg-transparent text-xs text-[#888] focus:outline-none cursor-pointer appearance-none"
+                >
+                  <option value="">No Video Plan linked (standard extraction)</option>
+                  {savedPlans.map(p => (
+                    <option key={p.id} value={p.id}>
+                      🟢 {p.topic} — {p.timeline.filter(e => e.type === 'dropzone').length} Drop Zones
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {selectedPlanId && (
+                <p className="text-[10px] text-[#00C851]/70 mt-1 px-1">
+                  Drop Zone timestamps will guide clip scoring — moments matching your planned hooks score highest.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Content */}
         <div className="flex-1 overflow-y-auto p-5">
 
           {/* Hero Progress */}

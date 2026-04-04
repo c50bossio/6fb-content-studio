@@ -126,7 +126,7 @@ ipcMain.handle('select-output-dir', async () => {
 
 ipcMain.handle('extract-clips', async (_event, { videoPath, options }: {
   videoPath: string;
-  options: { outputFormat?: string; contentType?: string; numClips?: number; startSec?: number; endSec?: number };
+  options: { outputFormat?: string; contentType?: string; numClips?: number; startSec?: number; endSec?: number; planContext?: { topic: string; dropZones: { label: string; timestamp: string; endTimestamp: string }[] } };
 }) => {
   const outputDir = join(app.getPath('userData'), 'clips', Date.now().toString());
   const bp = (store.get('brandProfile') as Record<string, unknown>) || DEFAULT_BRAND;
@@ -140,6 +140,7 @@ ipcMain.handle('extract-clips', async (_event, { videoPath, options }: {
       startSec: options.startSec,
       endSec: options.endSec,
       brandName: (bp.brandName as string) || '6fbarber',
+      planContext: options.planContext,
     },
     mainWindow,
   );

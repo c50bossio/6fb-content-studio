@@ -22,6 +22,10 @@ interface ClipExtractorOptions {
   endSec?: number;
   configPath?: string;
   brandName?: string;
+  planContext?: {
+    topic: string;
+    dropZones: { label: string; timestamp: string; endTimestamp: string }[];
+  };
 }
 
 interface ExtractResult {
@@ -110,10 +114,15 @@ export function runClipExtractor(
     
     const proc: ChildProcess = spawn(venvPythonPath, args, {
       cwd: join(IX_CLIP_EXTRACTOR, '..'),
-      env: { 
-        ...process.env, 
+      env: {
+        ...process.env,
         PYTHONUNBUFFERED: '1',
         ANTHROPIC_API_KEY: storedApiKey,
+        // Pass Drop Zone context so the pipeline can boost scoring for planned hooks
+        ...(options.planContext ? {
+          PLAN_TOPIC: options.planContext.topic,
+          PLAN_DROP_ZONES: JSON.stringify(options.planContext.dropZones),
+        } : {}),
       },
     });
 
