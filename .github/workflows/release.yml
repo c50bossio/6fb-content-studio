@@ -54,30 +54,25 @@ jobs:
           # Add to search list
           security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
 
-      # ── 4. Build + sign ────────────────────────────────────────────
+      # ── 4. Build ───────────────────────────────────────────────────
       - name: Build (electron-vite)
         run: npm run build
 
-      - name: Package macOS (signed)
+      # ── 5. Package → signed + styled DMG via electron-builder ──────
+      - name: Package macOS (signed DMG)
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           CSC_KEYCHAIN: ${{ runner.temp }}/build.keychain
-        run: npx electron-builder --mac --publish never
-
-      # ── 5. Build DMG (from signed app) ────────────────────────────
-      - name: Build DMG
         run: |
           TAG=${GITHUB_REF_NAME}
           VERSION=${TAG#v}
-          hdiutil create \
-            -volname "6FB Content Studio" \
-            -srcfolder "release/mac-arm64/6FB Content Studio.app" \
-            -ov -format UDZO \
-            -o "release/6FB Content Studio-${VERSION}-arm64.dmg"
-          echo "DMG_PATH=release/6FB Content Studio-${VERSION}-arm64.dmg" >> $GITHUB_ENV
+          npx electron-builder --mac dmg --publish never
+          # electron-builder names it like: release/6FB Content Studio-1.0.6-arm64.dmg
+          DMG=$(ls release/*.dmg | head -1)
+          echo "DMG_PATH=${DMG}" >> $GITHUB_ENV
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
-      # ── 6. Notarize DMG ────────────────────────────────────────────
+      # ── 6. Notarize the styled DMG ─────────────────────────────────
       - name: Notarize DMG
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -90,8 +85,8 @@ jobs:
             --team-id "$APPLE_TEAM_ID" \
             --wait
 
-      # ── 7. Staple DMG ──────────────────────────────────────────────
-      - name: Staple notarization ticket to DMG
+      # ── 7. Staple ticket onto DMG ──────────────────────────────────
+      - name: Staple notarization ticket
         run: |
           xcrun stapler staple "$DMG_PATH"
 
