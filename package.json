@@ -9,6 +9,7 @@
     "preview": "electron-vite preview",
     "package": "electron-vite build && electron-builder",
     "package:mac": "electron-vite build && electron-builder --mac",
+    "package:mac:pkg": "electron-vite build && electron-builder --mac --config.mac.target=pkg",
     "package:win": "electron-vite build && electron-builder --win"
   },
   "dependencies": {
@@ -16,6 +17,7 @@
     "electron-store": "^10.0.0",
     "electron-updater": "^6.3.0",
     "execa": "^9.5.0",
+    "html-to-image": "^1.11.13",
     "openai": "^6.27.0"
   },
   "devDependencies": {
@@ -53,12 +55,25 @@
       }
     ],
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip",
+        "pkg"
+      ],
       "category": "public.app-category.productivity",
       "icon": "assets/icon.png"
     },
+    "pkg": {
+      "installLocation": "/Applications",
+      "allowAnywhere": false,
+      "allowCurrentUserHome": false,
+      "overwriteAction": "upgrade"
+    },
     "win": {
-      "target": ["nsis", "portable"],
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "assets/icon.png"
     },
     "publish": {

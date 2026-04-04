@@ -1,0 +1,6 @@
+6FB Content Studio has been installed successfully.
+
+You can find it in your Applications folder. On first launch you will be guided through
+a quick setup to enter your AI API key.
+
+Thank you for being part of 6FB Mentorship.

@@ -1,0 +1,7 @@
+Welcome to 6FB Content Studio
+
+The all-in-one AI content creation suite built for barbers and barbershop owners.
+
+This installer will place 6FB Content Studio in your Applications folder.
+
+Click Continue to review the license agreement.
