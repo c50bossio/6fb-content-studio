@@ -22,6 +22,7 @@ interface ClipExtractorOptions {
   endSec?: number;
   configPath?: string;
   brandName?: string;
+  contentStrategy?: string;
   planContext?: {
     topic: string;
     dropZones: { label: string; timestamp: string; endTimestamp: string }[];
@@ -118,6 +119,8 @@ export function runClipExtractor(
         ...process.env,
         PYTHONUNBUFFERED: '1',
         ANTHROPIC_API_KEY: storedApiKey,
+        // Content strategy changes what Claude looks for
+        CONTENT_STRATEGY: options.contentStrategy || 'talking_head',
         // Pass Drop Zone context so the pipeline can boost scoring for planned hooks
         ...(options.planContext ? {
           PLAN_TOPIC: options.planContext.topic,
