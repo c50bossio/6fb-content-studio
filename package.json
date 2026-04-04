@@ -1,7 +1,7 @@
 {
   "name": "6fb-content-studio",
   "version": "1.0.5",
-  "description": "6FB Content Studio \u2014 Professional content creation tools for barbers",
+  "description": "6FB Content Studio — Professional content creation tools for barbers",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
-    "electron-store": "^10.0.0",
+    "electron-store": "^8.2.0",
     "electron-updater": "^6.3.0",
     "execa": "^9.5.0",
     "html-to-image": "^1.11.13",

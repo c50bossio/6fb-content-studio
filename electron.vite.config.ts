@@ -6,24 +6,20 @@ export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
     build: {
-      lib: { formats: ['cjs'] },
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'electron/main.ts')
-        },
-        output: { format: 'cjs' }
+        }
       }
     }
   },
   preload: {
     plugins: [externalizeDepsPlugin()],
     build: {
-      lib: { formats: ['cjs'] },
       rollupOptions: {
         input: {
           index: resolve(__dirname, 'electron/preload.ts')
-        },
-        output: { format: 'cjs' }
+        }
       }
     }
   },
