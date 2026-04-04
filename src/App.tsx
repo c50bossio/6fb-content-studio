@@ -3,6 +3,7 @@ import Sidebar from './components/Sidebar';
 import Dashboard from './pages/Dashboard';
 import Setup from './pages/Setup';
 import ClipExtractor from './pages/ClipExtractor';
+import VideoPlanner from './pages/VideoPlanner';
 import CarouselStudio from './pages/CarouselStudio';
 import BrandStudio from './pages/BrandStudio';
 import BlogWriter from './pages/BlogWriter';
@@ -122,7 +123,7 @@ declare global {
   }
 }
 
-export type Page = 'dashboard' | 'clips' | 'carousel' | 'brand' | 'editor' | 'schedule' | 'analytics' | 'blog' | 'settings';
+export type Page = 'dashboard' | 'planner' | 'clips' | 'carousel' | 'brand' | 'editor' | 'schedule' | 'analytics' | 'blog' | 'settings';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
@@ -223,6 +224,7 @@ export default function App() {
       <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
       <main className="flex-1 overflow-y-auto">
         {currentPage === 'dashboard'  && <Dashboard onNavigate={setCurrentPage} stats={stats} hasBrandProfile={!!brandProfile} />}
+        {currentPage === 'planner'   && <VideoPlanner />}
         {currentPage === 'clips'      && <ClipExtractor onClipCreated={onClipCreated} />}
         {currentPage === 'carousel'   && <CarouselStudio brandProfile={brandProfile} onNavigateToBrand={() => setCurrentPage('brand')} onCarouselCreated={onCarouselCreated} hasClaudeKey={hasClaudeKey} />}
         {currentPage === 'brand'      && <BrandStudio onSave={setBrandProfile} />}
