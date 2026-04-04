@@ -29,7 +29,7 @@ export default function Settings() {
   const [loading, setLoading] = useState(true);
   const [resetConfirm, setResetConfirm] = useState(false);
 
-  // 6FB Account
+  // API Keys
   const [account, setAccount] = useState<SixFBAccount | null>(null);
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
@@ -37,6 +37,11 @@ export default function Settings() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [syncLoading, setSyncLoading] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
+
+  // Content Planner token
+  const [contentToken, setContentToken] = useState('');
+  const [contentTokenSaved, setContentTokenSaved] = useState(false);
+  const [hasContentToken, setHasContentToken] = useState(false);
 
   const api = (window as unknown as { electronAPI: Record<string, (...args: unknown[]) => Promise<unknown>> }).electronAPI;
   const isElectron = !!api?.checkSystemHealth;
@@ -48,6 +53,9 @@ export default function Settings() {
         setLoading(false);
       }).catch(() => setLoading(false));
       (api.get6FBAccount() as Promise<SixFBAccount>).then(setAccount).catch(() => {});
+      (api.getAllSettings() as Promise<{ contentPlannerToken: boolean }>).then(s => {
+        setHasContentToken(!!s?.contentPlannerToken);
+      }).catch(() => {});
     } else {
       setHealth({
         deps: { python: false, ffmpeg: false, mediapipe: false, clipExtractor: false },
@@ -57,6 +65,21 @@ export default function Settings() {
       setLoading(false);
     }
   }, []);
+
+  const saveContentToken = async () => {
+    if (!contentToken.trim() || !isElectron) return;
+    await api.saveApiKey({ provider: 'contentPlanner', key: contentToken.trim() });
+    setHasContentToken(true);
+    setContentToken('');
+    setContentTokenSaved(true);
+    setTimeout(() => setContentTokenSaved(false), 2000);
+  };
+
+  const removeContentToken = async () => {
+    if (!isElectron) return;
+    await api.deleteApiKey('contentPlanner');
+    setHasContentToken(false);
+  };
 
   const handleLogin6FB = async () => {
     if (!loginEmail.trim() || !loginPassword.trim()) return;
@@ -282,7 +305,7 @@ export default function Settings() {
         <div className="bg-6fb-card border border-6fb-border rounded-xl p-5 space-y-2">
           <div className="flex justify-between">
             <span className="text-sm text-6fb-text-muted">Version</span>
-            <span className="text-sm text-white font-mono">1.1.0</span>
+            <span className="text-sm text-white font-mono">1.4.0</span>
           </div>
           <div className="flex justify-between">
             <span className="text-sm text-6fb-text-muted">Platform</span>
@@ -366,6 +389,52 @@ export default function Settings() {
                 {syncMsg && <p className={`text-xs mt-2 ${syncMsg.startsWith('Connected') ? 'text-6fb-green' : 'text-red-400'}`}>{syncMsg}</p>}
               </div>
             </div>
+          )}
+        </div>
+      </section>
+
+      {/* Content Planner Integration */}
+      <section className="mb-8">
+        <h2 className="text-base sm:text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-6fb-green shrink-0">
+            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+          </svg>
+          Content Planner (content.6fbmentorship.com)
+        </h2>
+        <div className="bg-6fb-card border border-6fb-border rounded-xl p-5 space-y-3">
+          {hasContentToken ? (
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-white flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-6fb-green inline-block" />
+                  Connected
+                </p>
+                <p className="text-xs text-6fb-text-muted">Video Planner will show your daily brief &amp; week plan as topic suggestions.</p>
+              </div>
+              <button onClick={removeContentToken} className="text-xs text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg border border-red-500/20 hover:border-red-500/40 transition-colors">Remove</button>
+            </div>
+          ) : (
+            <>
+              <p className="text-xs text-6fb-text-muted">
+                Paste your <code className="text-6fb-green bg-6fb-bg px-1 rounded">auth_token</code> cookie from content.6fbmentorship.com to sync your daily brief into the Video Planner.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={contentToken}
+                  onChange={e => setContentToken(e.target.value)}
+                  placeholder="Paste auth_token cookie value…"
+                  className="flex-1 bg-6fb-bg border border-6fb-border rounded-lg px-3 py-2 text-white text-sm placeholder-6fb-text-muted focus:outline-none focus:border-6fb-green transition-colors"
+                />
+                <button
+                  onClick={saveContentToken}
+                  disabled={!contentToken.trim()}
+                  className="px-4 py-2 bg-6fb-green text-black text-xs font-bold rounded-lg disabled:opacity-40 hover:bg-6fb-green-hover transition-colors"
+                >
+                  {contentTokenSaved ? 'Saved ✓' : 'Save'}
+                </button>
+              </div>
+            </>
           )}
         </div>
       </section>

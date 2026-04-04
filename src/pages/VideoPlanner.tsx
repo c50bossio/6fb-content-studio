@@ -210,6 +210,7 @@ export default function VideoPlanner() {
   const [trendingTopics, setTrendingTopics]     = useState<string[]>([]);
   const [fetchingTrending, setFetchingTrending] = useState(false);
   const [showTrending, setShowTrending]         = useState(false);
+  const [briefData, setBriefData]               = useState<{ today: { topic: string; hookIdea?: string } | null; week: { day: string; topic: string | null; status: string }[] } | null>(null);
   const [expandedBody, setExpandedBody]         = useState<number | null>(null);
   const { copy: copyAll, copied: copiedAll }    = useCopy();
 
@@ -225,9 +226,24 @@ export default function VideoPlanner() {
   async function fetchTrending() {
     setFetchingTrending(true);
     try {
-      const result = await (window.electronAPI as any).getTrendingTopics?.();
-      setTrendingTopics(result?.topics?.length ? result.topics : FALLBACK_TRENDING);
-    } catch { setTrendingTopics(FALLBACK_TRENDING); }
+      // Try the real Content Planner API first
+      const result = await (window.electronAPI as any).fetchTodayBrief?.();
+      if (result?.success && result.data) {
+        setBriefData(result.data);
+        // Also populate trending from week plan
+        const weekTopics = (result.data.week || [])
+          .filter((p: any) => p.topic)
+          .map((p: any) => p.topic as string);
+        setTrendingTopics(weekTopics.length ? weekTopics : FALLBACK_TRENDING);
+      } else {
+        // No token or API error — fall back to curated list
+        setBriefData(null);
+        setTrendingTopics(FALLBACK_TRENDING);
+      }
+    } catch {
+      setBriefData(null);
+      setTrendingTopics(FALLBACK_TRENDING);
+    }
     setShowTrending(true);
     setFetchingTrending(false);
   }
@@ -306,10 +322,30 @@ export default function VideoPlanner() {
                 </button>
               </div>
 
-              {showTrending && trendingTopics.length > 0 && (
+              {showTrending && (
                 <div className="mt-2 bg-6fb-card border border-6fb-border rounded-xl overflow-hidden shadow-xl">
+                  {/* Today's Brief — if connected */}
+                  {briefData?.today && (
+                    <div className="px-3 py-2.5 border-b border-6fb-border bg-[#00C851]/5">
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="text-[9px] font-bold text-[#00C851] uppercase tracking-wider">📋 Today's Plan</span>
+                      </div>
+                      <button
+                        onClick={() => { setTopic(briefData.today!.topic); setShowTrending(false); }}
+                        className="w-full text-left text-sm font-semibold text-white hover:text-[#00C851] transition-colors mb-1"
+                      >
+                        {briefData.today.topic}
+                      </button>
+                      {briefData.today.hookIdea && (
+                        <p className="text-[10px] text-6fb-text-muted leading-snug">Hook: {briefData.today.hookIdea}</p>
+                      )}
+                    </div>
+                  )}
+                  {/* Week plan or fallback */}
                   <div className="px-3 py-2 border-b border-6fb-border">
-                    <span className="text-[10px] text-6fb-text-muted uppercase font-semibold tracking-wider">Trending in your niche</span>
+                    <span className="text-[10px] text-6fb-text-muted uppercase font-semibold tracking-wider">
+                      {briefData ? 'This Week' : 'Trending in your niche'}
+                    </span>
                   </div>
                   {trendingTopics.map((t, i) => (
                     <button key={i} onClick={() => { setTopic(t); setShowTrending(false); }}

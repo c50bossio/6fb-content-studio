@@ -85,6 +85,7 @@ ipcMain.handle('get-all-settings', async () => {
       claude: !!store.get('apiKeys.claude'),
       openai: !!store.get('apiKeys.openai'),
     },
+    contentPlannerToken: !!(store.get('apiKeys.contentPlanner') as string | undefined),
     setupComplete: store.get('setupComplete', false),
   };
 });
@@ -93,6 +94,23 @@ ipcMain.handle('complete-setup', async () => {
   store.set('setupComplete', true);
   return { success: true };
 });
+
+// Content Planner Brief — fetches today's topic + week plan from content.6fbmentorship.com
+ipcMain.handle('fetch-today-brief', async () => {
+  const token = store.get('apiKeys.contentPlanner') as string | undefined;
+  if (!token) return { success: false, error: 'No Content Planner token. Add it in Settings.' };
+  try {
+    const res = await fetch('https://content.6fbmentorship.com/api/me/today-brief', {
+      headers: { Authorization: `Bearer ${token}`, Cookie: `auth_token=${token}` },
+    });
+    if (!res.ok) return { success: false, error: `API returned ${res.status}` };
+    const data = await res.json();
+    return { success: true, data };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+});
+
 
 // File Dialogs
 ipcMain.handle('select-video', async () => {
