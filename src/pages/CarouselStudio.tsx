@@ -89,7 +89,6 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
   // Frame extraction
   const [useFrames, setUseFrames] = useState(true);
   const [extractingFrames, setExtractingFrames] = useState(false);
-  const [slideRatio, setSlideRatio] = useState<'4/3' | '4/5'>('4/5');
 
   const loadLibrary = useCallback(async () => {
     try {
@@ -540,17 +539,6 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
                 className="bg-transparent text-sm font-semibold text-white border-b border-transparent hover:border-[#2a2a2a] focus:border-[#00C851] focus:outline-none transition-colors px-0.5 min-w-0 max-w-72"
                 placeholder="Deck title…" />
               <div className="flex items-center gap-2 shrink-0">
-                {/* Slide ratio toggle */}
-                <div className="flex items-center bg-[#111] border border-[#222] rounded-lg overflow-hidden">
-                  {(['4/3', '4/5'] as const).map(r => (
-                    <button key={r} onClick={() => setSlideRatio(r)}
-                      className={`text-[10px] font-bold px-2.5 py-1.5 transition-all ${
-                        slideRatio === r ? 'bg-[#00C851] text-black' : 'text-[#555] hover:text-white'
-                      }`}>
-                      {r === '4/3' ? '4:3' : '4:5'}
-                    </button>
-                  ))}
-                </div>
                 <button onClick={handleExport} disabled={exporting || !slides.length}
                   className="flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] text-white hover:border-blue-500/50 hover:text-blue-400 transition-all disabled:opacity-40">
                   {exporting ? 'Exporting…' : 'Export PNGs'}
@@ -582,7 +570,7 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
                 {slides.map((slide, i) => (
                   <div key={i} className="shrink-0 w-[55px]">
                     <SlidePreview slide={slide} brand={localBrand} slideIndex={i} totalSlides={slides.length}
-                      isActive={activeSlide === i} onClick={() => setActiveSlide(i)} showVideoFrames={useFrames} ratio={slideRatio} />
+                      isActive={activeSlide === i} onClick={() => setActiveSlide(i)} showVideoFrames={useFrames} />
                     <p className="text-[8px] text-center text-[#333] mt-1 truncate px-0.5">{slide.heading?.slice(0, 12) || `Slide ${i+1}`}</p>
                   </div>
                 ))}
@@ -593,7 +581,7 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
             <div className="flex-1 overflow-auto p-5 flex gap-5">
               {/* Big preview + template picker */}
               <div className="shrink-0 w-[170px]">
-                <SlidePreview slide={slides[activeSlide]} brand={localBrand} slideIndex={activeSlide} totalSlides={slides.length} isActive showVideoFrames={useFrames} ratio={slideRatio} />
+                <SlidePreview slide={slides[activeSlide]} brand={localBrand} slideIndex={activeSlide} totalSlides={slides.length} isActive showVideoFrames={useFrames} />
                 <div className="mt-3 grid grid-cols-3 gap-1">
                   {TEMPLATES.map(t => (
                     <button key={t} onClick={() => switchTemplate(t)}
@@ -685,14 +673,11 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
       {/* Hidden DOM element for ultra-high-res 1080x1350 PNG EXPORTS */}
       <div className="fixed top-0 left-0 pointer-events-none" style={{ transform: 'translateX(-9999px) scale(1)' }}>
         <div ref={exportContainerRef} className="flex gap-4">
-          {slides.map((slide, idx) => {
-              const exportH = slideRatio === '4/3' ? 810 : 1350;
-              return (
-                <div key={`export-${idx}`} style={{ width: 1080, height: exportH }}>
-                  <SlidePreview slide={slide} brand={localBrand} slideIndex={idx} totalSlides={slides.length} showVideoFrames={useFrames} ratio={slideRatio} />
-                </div>
-              );
-            })}
+          {slides.map((slide, idx) => (
+            <div key={`export-${idx}`} style={{ width: 1080, height: 1350 }}>
+              <SlidePreview slide={slide} brand={localBrand} slideIndex={idx} totalSlides={slides.length} showVideoFrames={useFrames} />
+            </div>
+          ))}
         </div>
       </div>
     </div>
