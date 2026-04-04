@@ -9,6 +9,7 @@ interface SlidePreviewProps {
   isActive?: boolean;
   onClick?: () => void;
   showVideoFrames?: boolean;
+  ratio?: '4/3' | '4/5';
 }
 
 type TemplateProps = { slide: CarouselSlide; brand: BrandProfile; slideIndex: number; totalSlides: number; showVideoFrames?: boolean };
@@ -357,13 +358,13 @@ const TEMPLATES: Record<BrandProfile['layoutStyle'], (props: TemplateProps) => R
 };
 
 // ─── Public Component ────────────────────────────────────────────
-export default function SlidePreview({ slide, brand, slideIndex, totalSlides, isActive, onClick, showVideoFrames = true }: SlidePreviewProps) {
+export default function SlidePreview({ slide, brand, slideIndex, totalSlides, isActive, onClick, showVideoFrames = true, ratio = '4/3' }: SlidePreviewProps) {
   const TemplateComp = TEMPLATES[brand.layoutStyle] || TEMPLATES.bold;
   return (
     <div onClick={onClick}
       className={`relative overflow-hidden rounded-xl border transition-all cursor-pointer select-none
         ${isActive ? 'border-[#00C851] shadow-lg shadow-[#00C851]/10 scale-[1.02]' : 'border-[#222] hover:border-[#333]'}`}
-      style={{ aspectRatio: '4/5' }}>
+      style={{ aspectRatio: ratio }}>
       <TemplateComp slide={slide} brand={brand} slideIndex={slideIndex} totalSlides={totalSlides} showVideoFrames={showVideoFrames} />
     </div>
   );
