@@ -156,4 +156,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Analytics
   getAnalytics: () =>
     ipcRenderer.invoke('get-analytics'),
+
+  // Video Planner
+  generateVideoPlan: (data: { prompt: string }) =>
+    ipcRenderer.invoke('generate-video-plan', data),
+  saveVideoPlan: (plan: object) =>
+    ipcRenderer.invoke('save-video-plan', plan),
+  listVideoPlans: () =>
+    ipcRenderer.invoke('list-video-plans'),
 });

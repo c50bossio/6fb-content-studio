@@ -1412,3 +1412,54 @@ ipcMain.handle('get-analytics', async () => {
     return { success: true, localStats, igConnected: true, account: null, media: [], error: String(err) };
   }
 });
+
+// ── Video Planner ─────────────────────────────────────────────────────────
+
+ipcMain.handle('generate-video-plan', async (_event, { prompt }: { prompt: string }) => {
+  const apiKey = store.get('apiKeys.claude') as string;
+  if (!apiKey) return { success: false, error: 'No Claude API key configured. Add it in Settings.' };
+  try {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const client = new Anthropic({ apiKey });
+    const message = await client.messages.create({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 2048,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const raw = (message.content[0] as { type: string; text: string }).text.trim();
+    // Strip markdown fences if present
+    const json = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    const plan = JSON.parse(json);
+    return { success: true, plan };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('save-video-plan', async (_event, plan: object) => {
+  try {
+    const plansDir = join(app.getPath('userData'), 'video-plans');
+    mkdirSync(plansDir, { recursive: true });
+    const id = (plan as any).id ?? Date.now().toString();
+    writeFileSync(join(plansDir, `${id}.json`), JSON.stringify(plan, null, 2));
+    return { success: true, id };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('list-video-plans', async () => {
+  try {
+    const plansDir = join(app.getPath('userData'), 'video-plans');
+    if (!existsSync(plansDir)) return { plans: [] };
+    const files = readdirSync(plansDir).filter(f => f.endsWith('.json'));
+    const plans = files.map(f => {
+      try { return JSON.parse(readFileSync(join(plansDir, f), 'utf-8')); }
+      catch { return null; }
+    }).filter(Boolean).sort((a: any, b: any) => b.createdAt?.localeCompare(a.createdAt ?? '') ?? 0);
+    return { plans };
+  } catch (err) {
+    return { plans: [], error: String(err) };
+  }
+});
+
