@@ -358,7 +358,7 @@ const TEMPLATES: Record<BrandProfile['layoutStyle'], (props: TemplateProps) => R
 };
 
 // ─── Public Component ────────────────────────────────────────────
-export default function SlidePreview({ slide, brand, slideIndex, totalSlides, isActive, onClick, showVideoFrames = true, ratio = '4/3' }: SlidePreviewProps) {
+export default function SlidePreview({ slide, brand, slideIndex, totalSlides, isActive, onClick, showVideoFrames = true, ratio = '4/5' }: SlidePreviewProps) {
   const TemplateComp = TEMPLATES[brand.layoutStyle] || TEMPLATES.bold;
   return (
     <div onClick={onClick}

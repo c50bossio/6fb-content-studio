@@ -89,7 +89,7 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
   // Frame extraction
   const [useFrames, setUseFrames] = useState(true);
   const [extractingFrames, setExtractingFrames] = useState(false);
-  const [slideRatio, setSlideRatio] = useState<'4/3' | '4/5'>('4/3');
+  const [slideRatio, setSlideRatio] = useState<'4/3' | '4/5'>('4/5');
 
   const loadLibrary = useCallback(async () => {
     try {
