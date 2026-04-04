@@ -5,6 +5,7 @@ import type { StudioStats } from '../hooks/useStudioStats';
 interface DashboardProps {
   onNavigate: (page: Page) => void;
   stats: StudioStats;
+  hasBrandProfile?: boolean;
 }
 
 // ─── SVG Icons ────────────────────────────────────────────────────
@@ -125,9 +126,31 @@ const STATS = [
   { label: 'Videos Rendered',   key: 'videosRendered'   as const, Icon: Icons.Video     },
 ];
 
-export default function Dashboard({ onNavigate, stats }: DashboardProps) {
+export default function Dashboard({ onNavigate, stats, hasBrandProfile }: DashboardProps) {
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
+      {/* Brand Profile Setup Nudge */}
+      {hasBrandProfile === false && (
+        <div 
+          onClick={() => onNavigate('brand')}
+          className="mb-8 p-4 rounded-xl cursor-pointer hover:scale-[1.01] transition-all bg-6fb-card border border-6fb-border flex items-center gap-4 group"
+          style={{ backgroundImage: 'linear-gradient(to right, rgba(245, 158, 11, 0.05), transparent)' }}
+        >
+          <div className="w-10 h-10 rounded-full flex items-center justify-center bg-[#F59E0B]/20 text-[#F59E0B]">
+            <Icons.Brand />
+          </div>
+          <div className="flex-1">
+            <h3 className="text-sm font-bold text-white mb-0.5">Action Required: Set up your Brand Profile</h3>
+            <p className="text-xs text-6fb-text-secondary">
+              Configure your colors, fonts, and logo so the AI can automatically style your clips and carousels.
+            </p>
+          </div>
+          <div className="text-[#F59E0B] opacity-0 group-hover:opacity-100 transition-opacity">
+            →
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-white mb-1">Welcome back</h1>

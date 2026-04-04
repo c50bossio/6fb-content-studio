@@ -26,6 +26,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Clip Extraction (Python bridge)
   extractClips: (videoPath: string, options: Record<string, unknown>) =>
     ipcRenderer.invoke('extract-clips', { videoPath, options }),
+  readClipTranscript: (clipPath: string) =>
+    ipcRenderer.invoke('read-clip-transcript', clipPath),
 
   // Carousel Generation
   generateCarousel: (data: { topic: string; type: string; keyPoints: string[]; brandProfile?: object }) =>

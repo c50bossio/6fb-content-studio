@@ -63,7 +63,11 @@ export default function VideoEditor() {
   const [outputDir, setOutputDir] = useState('');
 
   // Panel
-  const [panel, setPanel] = useState<'caption' | 'music' | 'format'>('caption');
+  const [panel, setPanel] = useState<'caption' | 'music' | 'format' | 'transcript'>('transcript');
+  
+  // Transcript data
+  const [transcript, setTranscript] = useState<{ word: string; start: number; end: number }[] | null>(null);
+  const [deletedWords, setDeletedWords] = useState<Set<number>>(new Set());
 
   // Library
   const [libraryClips, setLibraryClips] = useState<LibraryClip[]>([]);
@@ -91,7 +95,7 @@ export default function VideoEditor() {
     setLibraryLoading(false);
   };
 
-  const openClip = (path: string) => {
+  const openClip = async (path: string) => {
     setClipPath(path);
     setPlaying(false);
     setCurrentTime(0);
@@ -99,6 +103,15 @@ export default function VideoEditor() {
     setResult(null);
     setShowLibrary(false);
     if (videoRef.current) videoRef.current.currentTime = 0;
+    
+    // Load transcript if available
+    try {
+      const ts = await window.electronAPI.readClipTranscript(path);
+      setTranscript(ts);
+    } catch {
+      setTranscript(null);
+    }
+    setDeletedWords(new Set());
   };
 
   const handlePickFile = async () => {
@@ -151,6 +164,35 @@ export default function VideoEditor() {
     setExporting(true);
     setResult(null);
     setProgress({ percent: 0, label: 'Preparing…' });
+
+    // Compute Text-Based Cuts
+    let cuts: { start: number; end: number }[] | undefined = undefined;
+    if (transcript && deletedWords.size > 0) {
+      cuts = [];
+      let currentCutStart = trimStart;
+      let inDeletedRegion = false;
+      const finalEnd = trimEnd || duration;
+      
+      transcript.forEach((w, i) => {
+        if (w.start < trimStart || w.end > finalEnd) return; // Ignore words outside manual trim
+        
+        const isDeleted = deletedWords.has(i);
+        if (isDeleted && !inDeletedRegion) {
+          // Entered a deleted region: finish the current keep region
+          if (w.start > currentCutStart) cuts!.push({ start: currentCutStart, end: w.start });
+          inDeletedRegion = true;
+        } else if (!isDeleted && inDeletedRegion) {
+          // Exited a deleted region: start a new keep region
+          currentCutStart = w.start;
+          inDeletedRegion = false;
+        }
+      });
+      // Add final keep region
+      if (!inDeletedRegion && currentCutStart < finalEnd) {
+        cuts.push({ start: currentCutStart, end: finalEnd });
+      }
+    }
+
     try {
       const r = await window.electronAPI.renderVideo('clip-editor', {
         clipPath,
@@ -160,6 +202,7 @@ export default function VideoEditor() {
         caption: caption.text ? caption : null,
         music: musicPath ? { path: musicPath, volume: musicVolume } : null,
         outputDir: outputDir || undefined,
+        cuts,
       }) as { success: boolean; outputPath?: string; error?: string };
 
       if (r.success) {
@@ -512,6 +555,56 @@ export default function VideoEditor() {
                 </button>
               </div>
             </>
+          )}
+
+          {/* ── Transcript Panel ── */}
+          {panel === 'transcript' && (
+            <div className="space-y-4">
+              <p className="text-[10px] text-[#00C851] bg-[#00C851]/10 px-2 py-1 flex rounded w-fit mb-4 border border-[#00C851]/20">Wave 4 Preview: Text-Based Editing Foundation</p>
+              
+              {transcript ? (
+                <div className="bg-[#111] p-4 rounded-xl border border-[#222] leading-relaxed text-sm">
+                  {transcript.map((w, i) => {
+                    const isActive = currentTime >= w.start && currentTime <= w.end;
+                    const isDeleted = deletedWords.has(i);
+                    return (
+                      <span 
+                        key={i} 
+                        className={`mr-1 transition-colors select-none ${
+                          isDeleted ? 'line-through text-red-500/50 hover:text-red-400/80 bg-red-500/5 cursor-pointer' 
+                          : isActive ? 'text-[#00C851] font-bold bg-[#00C851]/10 rounded px-0.5' 
+                          : 'text-[#888] hover:text-white cursor-pointer'
+                        }`}
+                        onClick={() => {
+                          setDeletedWords(prev => {
+                            const next = new Set(prev);
+                            if (next.has(i)) next.delete(i);
+                            else next.add(i);
+                            return next;
+                          });
+                          if (!isDeleted && videoRef.current) {
+                            videoRef.current.currentTime = w.start;
+                            setCurrentTime(w.start);
+                          }
+                        }}
+                      >
+                        {w.word}
+                      </span>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center p-8 bg-[#111] rounded-xl border border-[#222]">
+                  <div className="w-10 h-10 rounded-full bg-[#1a1a1a] flex items-center justify-center mx-auto mb-3">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+                      <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
+                    </svg>
+                  </div>
+                  <p className="text-sm font-medium text-[#777]">No transcript found</p>
+                  <p className="text-[10px] text-[#555] mt-1">This clip wasn't processed by the AI extractor.</p>
+                </div>
+              )}
+            </div>
           )}
         </div>
 

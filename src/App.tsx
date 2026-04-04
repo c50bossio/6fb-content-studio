@@ -7,6 +7,7 @@ import CarouselStudio from './pages/CarouselStudio';
 import BrandStudio from './pages/BrandStudio';
 import BlogWriter from './pages/BlogWriter';
 import Settings from './pages/Settings';
+import VideoEditor from './pages/VideoEditor';
 import Scheduler from './pages/Scheduler';
 import { useStudioStats } from './hooks/useStudioStats';
 import UpdateBanner from './components/UpdateBanner';
@@ -54,6 +55,7 @@ declare global {
       // Carousel
       generateCarousel: (data: { topic: string; type: string; keyPoints: string[]; brandProfile?: BrandProfile }) => Promise<{ success: boolean; slides?: CarouselSlide[]; error?: string }>;
       extractCarousel: (data: { transcript: string; brandProfile: BrandProfile; contentType: string }) => Promise<{ success: boolean; slides?: CarouselSlide[]; error?: string }>;
+      readClipTranscript: (clipPath: string) => Promise<{ word: string; start: number; end: number }[] | null>;
       readTranscript: (runPath: string) => Promise<{ success: boolean; transcript?: string; format?: string; error?: string }>;
       autoMatchCarouselFrames: (data: { runPath: string; timestamps: string[] }) => Promise<{ success: boolean; frames?: (string | null)[]; error?: string }>;
       // Carousel Persistence & Export
@@ -74,7 +76,7 @@ declare global {
       saveBrandProfile: (profile: BrandProfile) => Promise<{ success: boolean }>;
       getBrandProfile: () => Promise<BrandProfile>;
       // System
-      renderVideo: (compositionId: string, props: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
+      renderVideo: (compositionId: string, props: Record<string, unknown> & { cuts?: {start: number, end: number}[] }) => Promise<{ success: boolean; error?: string }>;
       postToSocial: (platform: string, content: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
       checkSystemHealth: () => Promise<unknown>;
       resetApp: () => Promise<{ success: boolean }>;
@@ -145,6 +147,7 @@ export default function App() {
         selectLogo: async () => ({ cancelled: true }),
         selectImageFile: async () => ({ cancelled: true }),
         extractClips: async () => ({ success: false, error: 'Electron required' }),
+        readClipTranscript: async () => null,
         // Carousel Persistence & Export
         exportCarouselDeck: async () => ({ success: false, error: 'Not implemented in browser' }),
         saveCarousel: async () => ({ success: false, error: 'Not implemented in browser' }),
@@ -219,12 +222,12 @@ export default function App() {
     <div className="h-screen bg-6fb-bg flex overflow-hidden">
       <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
       <main className="flex-1 overflow-y-auto">
-        {currentPage === 'dashboard'  && <Dashboard onNavigate={setCurrentPage} stats={stats} />}
+        {currentPage === 'dashboard'  && <Dashboard onNavigate={setCurrentPage} stats={stats} hasBrandProfile={!!brandProfile} />}
         {currentPage === 'clips'      && <ClipExtractor onClipCreated={onClipCreated} />}
         {currentPage === 'carousel'   && <CarouselStudio brandProfile={brandProfile} onNavigateToBrand={() => setCurrentPage('brand')} onCarouselCreated={onCarouselCreated} hasClaudeKey={hasClaudeKey} />}
         {currentPage === 'brand'      && <BrandStudio onSave={setBrandProfile} />}
         {currentPage === 'blog'       && <BlogWriter brandProfile={brandProfile} onBlogCreated={onBlogCreated} hasClaudeKey={hasClaudeKey} />}
-        {currentPage === 'editor'     && <ComingSoon title="Video Editor" />}
+        {currentPage === 'editor'     && <VideoEditor />}
         {currentPage === 'schedule'   && <Scheduler />}
         {currentPage === 'analytics'  && <ComingSoon title="Content Analytics" />}
         {currentPage === 'settings'   && <Settings />}

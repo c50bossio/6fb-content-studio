@@ -146,6 +146,43 @@ ipcMain.handle('extract-clips', async (_event, { videoPath, options }: {
   return result;
 });
 
+ipcMain.handle('read-clip-transcript', async (_event, clipPath: string) => {
+  // Looks for words.json or captions.json in the same folder as the clip 
+  try {
+    const { dirname, join } = require('path');
+    const { existsSync, readFileSync } = require('fs');
+    
+    // Fallback search paths for the transcript JSON
+    const dir = dirname(clipPath);
+    const wordsPath = join(dir, 'words.json');
+    const captionsPath = join(dir, 'captions.json');
+    const clipSpecPath = join(dir, 'clip_spec.json');
+
+    if (existsSync(wordsPath)) {
+      return JSON.parse(readFileSync(wordsPath, 'utf-8'));
+    } else if (existsSync(captionsPath)) {
+      return JSON.parse(readFileSync(captionsPath, 'utf-8'));
+    } else if (existsSync(clipSpecPath)) {
+      const spec = JSON.parse(readFileSync(clipSpecPath, 'utf-8'));
+      if (spec.words) return spec.words;
+    }
+    
+    // Also check for the raw video's words.json located in the parent dir
+    // E.g. parent/source-30s_words.json
+    const parentDir = dirname(dir);
+    const files = require('fs').readdirSync(parentDir);
+    const parentWords = files.find((f: string) => f.endsWith('_words.json'));
+    if (parentWords) {
+      return JSON.parse(readFileSync(join(parentDir, parentWords), 'utf-8'));
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Failed to read clip transcript:', error);
+    return null;
+  }
+});
+
 // ─── System Health Check ──────────────────────────────────────────
 
 ipcMain.handle('check-system-health', async () => {
@@ -659,69 +696,87 @@ ipcMain.handle('render-video', async (_event, props: {
   caption?: { text: string; fontWeight: string; fontSize: number; color: string; position: 'top' | 'center' | 'bottom'; bgOpacity: number } | null;
   music?: { path: string; volume: number } | null;
   outputDir?: string;
+  cuts?: { start: number; end: number }[];
 }) => {
-  const { clipPath, trimStart, trimEnd, outputFormat, caption, music, outputDir } = props;
+  const { clipPath, trimStart, trimEnd, outputFormat, caption, music, outputDir, cuts } = props;
   const ffmpeg = findFfmpeg();
   const outDir = outputDir || app.getPath('downloads');
   if (!existsSync(outDir)) { try { mkdirSync(outDir, { recursive: true }); } catch {} }
   const outFile = join(outDir, `6fb_edit_${Date.now()}.mp4`);
-  const duration = trimEnd - trimStart;
+  
+  // Calculate duration correctly depending on if cuts exist
+  let duration = trimEnd - trimStart;
+  if (cuts && cuts.length > 0) {
+    duration = cuts.reduce((acc, c) => acc + (c.end - c.start), 0);
+  }
 
-  // ── Build ffmpeg args ──
   const args: string[] = ['-y', '-i', clipPath];
-  if (music?.path && existsSync(music.path)) args.push('-i', music.path);
+  const hasMusic = music?.path && existsSync(music.path);
+  if (hasMusic) args.push('-i', music.path);
 
-  // Trim (input side — fast seeking)
-  args.push('-ss', String(trimStart), '-t', String(duration));
+  // If we lack cuts, perform the standard fast-seek trim on input
+  if (!cuts || cuts.length === 0) {
+    args.push('-ss', String(trimStart), '-t', String(duration));
+  }
 
-  // ── Video filters ──
+  // ── Build Filtergraph ──
   const vf: string[] = [];
-
-  // Scale + crop for output format
   if (outputFormat === '9x16') {
     vf.push('scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920');
   } else if (outputFormat === '1x1') {
     vf.push('scale=1080:1080:force_original_aspect_ratio=increase,crop=1080:1080');
   }
-  // 16x9: no crop, keep natural
 
-  // Caption drawtext overlay
   if (caption?.text) {
     const safeText = caption.text.replace(/'/g, "\\'").replace(/:/g, '\\:');
-    const hexColor = caption.color.startsWith('#')
-      ? '0x' + caption.color.slice(1) + 'FF'
-      : caption.color;
-    const yExpr = caption.position === 'top'    ? 'h*0.08'
-                : caption.position === 'center' ? '(h-text_h)/2'
-                : 'h*0.82';
+    const hexColor = caption.color.startsWith('#') ? '0x' + caption.color.slice(1) + 'FF' : caption.color;
+    const yExpr = caption.position === 'top' ? 'h*0.08' : caption.position === 'center' ? '(h-text_h)/2' : 'h*0.82';
     const bgAlpha = (caption.bgOpacity / 100).toFixed(2);
     const fontSize = Math.max(24, Math.round(caption.fontSize * 0.7));
     const fontBold = caption.fontWeight !== 'normal' ? ':style=Bold' : '';
-    vf.push(
-      `drawtext=text='${safeText}'` +
-      `:fontsize=${fontSize}${fontBold}` +
-      `:fontcolor=${hexColor}` +
-      `:x=(w-text_w)/2:y=${yExpr}` +
-      `:box=1:boxcolor=black@${bgAlpha}:boxborderw=12`
-    );
+    vf.push(`drawtext=text='${safeText}':fontsize=${fontSize}${fontBold}:fontcolor=${hexColor}:x=(w-text_w)/2:y=${yExpr}:box=1:boxcolor=black@${bgAlpha}:boxborderw=12`);
   }
 
-  if (vf.length > 0) args.push('-vf', vf.join(','));
+  let filterComplex = '';
+  let currentV = '0:v';
+  let currentA = '0:a';
 
-  // ── Audio ──
-  const hasMusic = music?.path && existsSync(music.path);
+  // 1. Text-Based Concat
+  if (cuts && cuts.length > 0) {
+    cuts.forEach((c, i) => {
+      filterComplex += `[0:v]trim=start=${c.start}:end=${c.end},setpts=PTS-STARTPTS[v${i}];`;
+      filterComplex += `[0:a]atrim=start=${c.start}:end=${c.end},asetpts=PTS-STARTPTS[a${i}];`;
+    });
+    filterComplex += `${cuts.map((_, i) => `[v${i}][a${i}]`).join('')}concat=n=${cuts.length}:v=1:a=1[concatv][concata];`;
+    currentV = '[concatv]';
+    currentA = '[concata]';
+  }
+
+  // 2. Video Filters
+  if (vf.length > 0) {
+    filterComplex += `${currentV}${vf.join(',')}[finalv];`;
+    currentV = '[finalv]';
+  }
+
+  // 3. Audio Mixing
   if (hasMusic) {
     const vol = (music!.volume).toFixed(2);
-    args.push(
-      '-filter_complex', `[1:a]volume=${vol}[mv];[0:a][mv]amix=inputs=2:duration=first[aout]`,
-      '-map', '0:v', '-map', '[aout]',
-    );
+    filterComplex += `[1:a]volume=${vol}[mv];${currentA}[mv]amix=inputs=2:duration=first[finala];`;
+    currentA = '[finala]';
   }
 
-  // ── Codec selection ──
-  const needsEncode = vf.length > 0 || hasMusic;
+  const needsEncode = filterComplex.length > 0 || vf.length > 0 || hasMusic || (cuts && cuts.length > 0);
+
+  if (filterComplex.length > 0) {
+    args.push('-filter_complex', filterComplex.replace(/;$/, ''));
+    args.push('-map', currentV, '-map', currentA);
+  } else if (vf.length > 0) {
+    // Fallback if no music/cuts but has visual filters (legacy safety)
+    args.push('-vf', vf.join(','));
+  }
+
   if (needsEncode) {
-    args.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '22', '-c:a', 'aac', '-b:a', '128k');
+    args.push('-c:v', 'libx264', '-preset', 'fast', '-crf', '22', '-c:a', 'aac', '-b:a', '128k', '-async', '1');
   } else {
     args.push('-c', 'copy');
   }
