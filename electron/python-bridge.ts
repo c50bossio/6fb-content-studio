@@ -117,6 +117,15 @@ export function runClipExtractor(
       cwd: join(IX_CLIP_EXTRACTOR, '..'),
       env: {
         ...process.env,
+        // Electron strips the shell PATH — inject homebrew and standard binary dirs
+        // so ffmpeg, ffprobe, and other tools are always found
+        PATH: [
+          '/opt/homebrew/bin',
+          '/usr/local/bin',
+          '/usr/bin',
+          '/bin',
+          process.env.PATH || '',
+        ].join(':'),
         PYTHONUNBUFFERED: '1',
         ANTHROPIC_API_KEY: storedApiKey,
         // Content strategy changes what Claude looks for
