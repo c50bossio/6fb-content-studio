@@ -64,32 +64,8 @@ jobs:
           CSC_KEYCHAIN: ${{ runner.temp }}/build.keychain
         run: npx electron-builder --mac --publish never
 
-      # ── 5. Notarize ────────────────────────────────────────────────
-      - name: Zip app for notarization
-        run: |
-          ditto -c -k --keepParent \
-            "release/mac-arm64/6FB Content Studio.app" \
-            /tmp/notarize.zip
-
-      - name: Submit to Apple notary service
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          xcrun notarytool submit /tmp/notarize.zip \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait
-
-      # ── 6. Staple ──────────────────────────────────────────────────
-      - name: Staple notarization ticket
-        run: |
-          xcrun stapler staple "release/mac-arm64/6FB Content Studio.app"
-
-      # ── 7. Build final DMG ─────────────────────────────────────────
-      - name: Build notarized DMG
+      # ── 5. Build DMG (from signed app) ────────────────────────────
+      - name: Build DMG
         run: |
           TAG=${GITHUB_REF_NAME}
           VERSION=${TAG#v}
@@ -98,11 +74,26 @@ jobs:
             -srcfolder "release/mac-arm64/6FB Content Studio.app" \
             -ov -format UDZO \
             -o "release/6FB Content Studio-${VERSION}-arm64.dmg"
-          # Wait for Apple CloudKit to index the DMG ticket
-          sleep 30
-          xcrun stapler staple "release/6FB Content Studio-${VERSION}-arm64.dmg"
           echo "DMG_PATH=release/6FB Content Studio-${VERSION}-arm64.dmg" >> $GITHUB_ENV
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
+
+      # ── 6. Notarize DMG ────────────────────────────────────────────
+      - name: Notarize DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          xcrun notarytool submit "$DMG_PATH" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+      # ── 7. Staple DMG ──────────────────────────────────────────────
+      - name: Staple notarization ticket to DMG
+        run: |
+          xcrun stapler staple "$DMG_PATH"
 
       # ── 8. Publish to GitHub Releases ──────────────────────────────
       - name: Create GitHub Release
