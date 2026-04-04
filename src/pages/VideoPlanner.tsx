@@ -1,4 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+
+// ── Copy hook ─────────────────────────────────────────────────────────────
+function useCopy() {
+  const [copied, setCopied] = useState(false);
+  const copy = useCallback((text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, []);
+  return { copy, copied };
+}
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -392,6 +404,39 @@ export default function VideoPlanner() {
               </div>
               <div className="flex items-center gap-2">
                 <button
+                  onClick={() => {
+                    const fullText = [
+                      `VIDEO PLAN: ${plan.topic}`,
+                      `${VIDEO_TYPES.find(t => t.value === plan.videoType)?.label} — ${TARGET_LENGTHS.find(l => l.value === plan.targetLength)?.label}`,
+                      `Perspective: ${PERSPECTIVES.find(p => p.value === plan.perspective)?.label}`,
+                      '',
+                      `[HOOK — ${plan.hook.timestamp}, ${plan.hook.duration}]`,
+                      `"${plan.hook.script}"`,
+                      '',
+                      `[INTRO — ${plan.intro.timestamp}, ${plan.intro.duration}]`,
+                      `"${plan.intro.script}"`,
+                      '',
+                      ...plan.sections.flatMap((s, i) => [
+                        `[SECTION ${i+1}: ${s.title} — ${s.timestamp}, ${s.duration}]`,
+                        ...(s.notes ? [`Note: ${s.notes}`] : []),
+                        ...s.keyPoints.map(p => `• ${p}`),
+                        '',
+                      ]),
+                      `[CALL TO ACTION — ${plan.cta.timestamp}, ${plan.cta.duration}]`,
+                      `"${plan.cta.script}"`,
+                      ...(plan.recordingTips?.length ? ['', 'RECORDING TIPS:', ...plan.recordingTips.map(t => `→ ${t}`)] : []),
+                    ].join('\n');
+                    navigator.clipboard.writeText(fullText);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-6fb-text-secondary hover:text-white bg-6fb-card border border-6fb-border hover:border-6fb-green/30 transition-all"
+                >
+                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                    <rect x="9" y="9" width="13" height="13" rx="2"/>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                  </svg>
+                  Copy All
+                </button>
+                <button
                   onClick={handleSave}
                   disabled={saving}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
@@ -445,10 +490,20 @@ export default function VideoPlanner() {
                     Section {i + 1}
                   </span>
                   <span className="text-sm font-semibold text-white flex-1">{section.title}</span>
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
                     <span className="text-[10px] text-6fb-text-muted">{section.timestamp}</span>
                     <span className="text-[10px] text-6fb-text-muted">·</span>
                     <span className="text-[10px] text-6fb-text-muted">{section.duration}</span>
+                    <button
+                      onClick={e => { e.stopPropagation(); navigator.clipboard.writeText(`[${section.title}]\n${section.keyPoints.map(p => `• ${p}`).join('\n')}`); }}
+                      className="ml-1 p-1 rounded text-6fb-text-muted hover:text-white hover:bg-white/5 transition-colors"
+                      title="Copy section"
+                    >
+                      <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                        <rect x="9" y="9" width="13" height="13" rx="2"/>
+                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                      </svg>
+                    </button>
                     <svg className={`w-3.5 h-3.5 text-6fb-text-muted transition-transform ${activeSection === i ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
                       <polyline points="6 9 12 15 18 9"/>
                     </svg>
@@ -513,6 +568,7 @@ function PlanBlock({
 }: {
   label: string; color: string; timestamp: string; duration: string; content: string; type: 'script' | 'points';
 }) {
+  const { copy, copied } = useCopy();
   return (
     <div className="bg-6fb-card border border-6fb-border rounded-xl overflow-hidden">
       <div className="flex items-center gap-3 px-4 py-2.5 border-b border-6fb-border/40">
@@ -523,6 +579,22 @@ function PlanBlock({
           <span className="text-[10px] text-6fb-text-muted">{timestamp}</span>
           <span className="text-[10px] text-6fb-text-muted">·</span>
           <span className="text-[10px] text-6fb-text-muted">{duration}</span>
+          <button
+            onClick={() => copy(content)}
+            className="ml-1 p-1 rounded text-6fb-text-muted hover:text-white hover:bg-white/5 transition-colors"
+            title="Copy"
+          >
+            {copied ? (
+              <svg className="w-3 h-3 text-6fb-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}>
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            ) : (
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <rect x="9" y="9" width="13" height="13" rx="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+            )}
+          </button>
         </div>
       </div>
       <div className="px-4 py-3">
