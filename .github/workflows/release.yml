@@ -98,6 +98,8 @@ jobs:
             -srcfolder "release/mac-arm64/6FB Content Studio.app" \
             -ov -format UDZO \
             -o "release/6FB Content Studio-${VERSION}-arm64.dmg"
+          # Wait for Apple CloudKit to index the DMG ticket
+          sleep 30
           xcrun stapler staple "release/6FB Content Studio-${VERSION}-arm64.dmg"
           echo "DMG_PATH=release/6FB Content Studio-${VERSION}-arm64.dmg" >> $GITHUB_ENV
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
