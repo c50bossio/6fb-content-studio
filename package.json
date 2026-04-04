@@ -63,6 +63,27 @@
         "teamId": "22X9VG6NUE"
       }
     },
+    "dmg": {
+      "background": "assets/dmg-background.png",
+      "window": {
+        "width": 660,
+        "height": 400
+      },
+      "contents": [
+        {
+          "x": 180,
+          "y": 170,
+          "type": "file"
+        },
+        {
+          "x": 480,
+          "y": 170,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "iconSize": 120
+    },
     "win": {
       "target": [
         "nsis",
