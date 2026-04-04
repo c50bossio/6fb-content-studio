@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-all-settings'),
   completeSetup: () =>
     ipcRenderer.invoke('complete-setup'),
+  fetchTodayBrief: () =>
+    ipcRenderer.invoke('fetch-today-brief'),
 
   // File Dialogs
   selectVideo: () =>

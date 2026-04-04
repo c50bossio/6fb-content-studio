@@ -178,7 +178,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
           <NavIcons.settings />
           <span>Settings</span>
         </button>
-        <p className="text-[9px] text-6fb-text-muted mt-2.5">v1.1.0</p>
+        <p className="text-[9px] text-6fb-text-muted mt-2.5">v1.4.0</p>
       </div>
     </aside>
   );

@@ -68,7 +68,7 @@ export default function Settings() {
 
   const saveContentToken = async () => {
     if (!contentToken.trim() || !isElectron) return;
-    await api.saveApiKey({ provider: 'contentPlanner', key: contentToken.trim() });
+    await api.saveApiKey('contentPlanner', contentToken.trim());
     setHasContentToken(true);
     setContentToken('');
     setContentTokenSaved(true);
