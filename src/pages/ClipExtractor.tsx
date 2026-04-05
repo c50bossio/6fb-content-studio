@@ -269,6 +269,19 @@ function ClipPreviewModal({ clip, onClose, onTrimApplied }: {
             <p className="text-[10px] text-[#555] font-mono">{fmtFull(clip.start)} – {fmtFull(clip.end)}</p>
           </div>
 
+          {/* Show in Finder */}
+          {clip.clipPath && (
+            <button
+              onClick={() => (window as any).electronAPI.showInFinder(clip.clipPath)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#252525] text-[11px] text-[#555] hover:text-white hover:border-[#333] transition-colors"
+            >
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+              Show in Finder
+            </button>
+          )}
+
           {/* Score breakdown */}
           <div className="bg-[#141414] border border-[#222] rounded-xl p-3 flex flex-col gap-2.5">
             <div className="flex items-center justify-between mb-0.5">
@@ -373,14 +386,14 @@ function ClipPreviewModal({ clip, onClose, onTrimApplied }: {
             </button>
           )}
 
-          {/* Open in Finder */}
+          {/* Show in Finder */}
           {clip.clipPath && (
             <button
-              onClick={() => (window as any).electronAPI.openPath(clip.clipPath)}
+              onClick={() => (window as any).electronAPI.showInFinder(clip.clipPath)}
               className="flex items-center justify-center gap-1.5 py-2 rounded-lg border border-[#222] text-[11px] text-[#555] hover:text-white hover:border-[#333] transition-colors"
             >
               <div className="w-3 h-3"><Icon.Folder /></div>
-              Open in Finder
+              Show in Finder
             </button>
           )}
         </div>

@@ -90,6 +90,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('reset-app'),
   openPath: (path: string) =>
     ipcRenderer.invoke('open-path', path),
+  showInFinder: (path: string) =>
+    ipcRenderer.invoke('show-in-finder', path),
 
   // Library / CRUD
   scanLibrary: () =>

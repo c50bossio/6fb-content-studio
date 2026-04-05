@@ -8,3 +8,4 @@ python/
 *.log
 .DS_Store
 certs/
+.env.build

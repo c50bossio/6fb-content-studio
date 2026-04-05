@@ -300,6 +300,12 @@ ipcMain.handle('open-path', async (_event, path: string) => {
   return { success: true };
 });
 
+ipcMain.handle('show-in-finder', async (_event, path: string) => {
+  shell.showItemInFolder(path);
+  return { success: true };
+});
+
+
 // Carousel Generation (uses student's Claude API key)
 ipcMain.handle('generate-carousel', async (_event, { topic, type, keyPoints, brandProfile }: {
   topic: string;
