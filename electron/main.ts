@@ -78,7 +78,8 @@ app.whenReady().then(() => {
       if (rangeHeader) {
         const [startStr, endStr] = rangeHeader.replace('bytes=', '').split('-');
         const start = parseInt(startStr, 10);
-        const end = endStr ? parseInt(endStr, 10) : Math.min(start + 1024 * 1024 - 1, totalSize - 1);
+        // When end is omitted (bytes=0-), serve to EOF — 1MB cap caused playback to stop after 1 second
+        const end = (endStr && endStr.length > 0) ? parseInt(endStr, 10) : totalSize - 1;
         const chunkSize = end - start + 1;
 
         const stream = createReadStream(filePath, { start, end });
