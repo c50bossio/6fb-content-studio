@@ -792,7 +792,11 @@ export default function ClipExtractor({ onClipCreated }: { onClipCreated?: () =>
 
           <div className="flex-1 min-w-0">
             <h1 className="text-sm font-bold text-white">Clip Extractor</h1>
-            {videoName && <p className="text-[10px] text-[#444] mt-0.5 truncate">{videoName}</p>}
+            {videoName && (
+              <p className="text-[10px] text-[#00C851] mt-0.5 truncate font-medium">
+                ● {videoName}
+              </p>
+            )}
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
@@ -919,14 +923,24 @@ export default function ClipExtractor({ onClipCreated }: { onClipCreated?: () =>
             </>
           )}
 
-          {/* Empty state */}
+          {/* Video loaded — prominent ready state */}
           {clips.length === 0 && videoPath && !processing && (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <div className="w-10 h-10 text-[#1e1e1e] mb-4"><Icon.Film /></div>
-              <p className="text-sm text-[#444]">No clips yet</p>
-              <p className="text-xs text-[#2a2a2a] mt-1">Click Extract Clips to begin</p>
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-full max-w-sm bg-[#0d1f13] border border-[#00C851]/30 rounded-2xl px-6 py-8 flex flex-col items-center gap-3 shadow-[0_0_40px_rgba(0,200,81,0.06)]">
+                <div className="w-12 h-12 rounded-full bg-[#00C851]/10 border border-[#00C851]/20 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-[#00C851]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                    <path d="M15 10l4.553-2.069A1 1 0 0121 8.87v6.26a1 1 0 01-1.447.9L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white">Video loaded</p>
+                  <p className="text-xs text-[#00C851]/80 mt-0.5 font-medium truncate max-w-[240px]">{videoName}</p>
+                </div>
+                <p className="text-xs text-[#555] mt-1">Hit <span className="text-white font-semibold">Extract Clips</span> to begin AI analysis</p>
+              </div>
             </div>
           )}
+
         </div>
       </div>
     </div>
