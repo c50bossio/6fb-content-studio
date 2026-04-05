@@ -7,3 +7,4 @@ release/
 python/
 *.log
 .DS_Store
+certs/
