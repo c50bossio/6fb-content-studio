@@ -12,6 +12,10 @@ const ElectronStore = (Store as unknown as { default: typeof Store }).default ||
 const store = new ElectronStore();
 let mainWindow: BrowserWindow | null = null;
 
+// Disable GPU hardware acceleration — prevents green-screen video rendering in Electron's Chromium layer
+app.disableHardwareAcceleration();
+
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1280,

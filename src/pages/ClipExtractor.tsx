@@ -116,10 +116,10 @@ function ScoreBar({ label, value, color, icon }: { label: string; value: number;
 }
 
 // ─── Preview Modal ────────────────────────────────────────────────────
-function ClipPreviewModal({ clip, onClose, onTrimApplied }: {
+function ClipPreviewModal({ clip, onClose, onOpenInEditor }: {
   clip: Clip;
   onClose: () => void;
-  onTrimApplied: (start: number, end: number) => void;
+  onOpenInEditor?: (clip: Clip) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -170,7 +170,6 @@ function ClipPreviewModal({ clip, onClose, onTrimApplied }: {
       });
       if (res.success) {
         setTrimMsg('✓ Saved');
-        onTrimApplied(trimStart, trimEnd);
         // Reload video
         if (videoRef.current) { videoRef.current.load(); videoRef.current.currentTime = 0; setCurrentTime(0); }
       } else {
@@ -300,76 +299,18 @@ function ClipPreviewModal({ clip, onClose, onTrimApplied }: {
               icon={<Icon.VolumeX />} />
           </div>
 
-          {/* Trim controls */}
-          {clip.filePath && clip.specPath && (
-            <div className="bg-[#141414] border border-[#222] rounded-xl p-3 flex flex-col gap-2.5">
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <div className="w-3 h-3 text-[#555]"><Icon.Scissors /></div>
-                <p className="text-[9px] font-bold text-[#555] uppercase tracking-wider">Trim</p>
-              </div>
 
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <p className="text-[9px] text-[#444] mb-1">In</p>
-                  <input
-                    type="number" min={0} max={trimEnd - 1} step={0.5}
-                    value={trimStart.toFixed(1)}
-                    onChange={e => setTrimStart(Math.max(0, Math.min(trimEnd - 1, parseFloat(e.target.value) || 0)))}
-                    className="w-full bg-black border border-[#2a2a2a] rounded-lg px-2 py-1.5 text-xs text-white font-mono text-center focus:outline-none focus:border-[#00C851]/50"
-                  />
-                </div>
-                <div className="flex-1">
-                  <p className="text-[9px] text-[#444] mb-1">Out</p>
-                  <input
-                    type="number" min={trimStart + 1} max={duration} step={0.5}
-                    value={trimEnd.toFixed(1)}
-                    onChange={e => setTrimEnd(Math.min(duration, Math.max(trimStart + 1, parseFloat(e.target.value) || duration)))}
-                    className="w-full bg-black border border-[#2a2a2a] rounded-lg px-2 py-1.5 text-xs text-white font-mono text-center focus:outline-none focus:border-[#00C851]/50"
-                  />
-                </div>
-              </div>
-
-              <p className="text-[9px] text-[#444] text-center">
-                {fmtFull(trimEnd - trimStart)} selected
-              </p>
-
-              {/* Trim range slider */}
-              <div className="relative h-5 flex items-center">
-                <div className="absolute inset-x-0 h-1 bg-white/5 rounded-full" />
-                <div className="absolute h-1 rounded-full bg-[#00C851]/30"
-                  style={{
-                    left: `${(trimStart / (duration || 1)) * 100}%`,
-                    width: `${((trimEnd - trimStart) / (duration || 1)) * 100}%`,
-                  }}
-                />
-                {/* In handle */}
-                <input type="range" min={0} max={duration} step={0.5} value={trimStart}
-                  onChange={e => setTrimStart(Math.min(parseFloat(e.target.value), trimEnd - 1))}
-                  className="absolute inset-x-0 w-full h-1 appearance-none bg-transparent pointer-events-auto cursor-pointer"
-                  style={{ accentColor: '#00C851', zIndex: 2 }}
-                />
-                {/* Out handle */}
-                <input type="range" min={0} max={duration} step={0.5} value={trimEnd}
-                  onChange={e => setTrimEnd(Math.max(parseFloat(e.target.value), trimStart + 1))}
-                  className="absolute inset-x-0 w-full h-1 appearance-none bg-transparent pointer-events-auto cursor-pointer"
-                  style={{ accentColor: '#F59E0B', zIndex: 3 }}
-                />
-              </div>
-
-              <button
-                onClick={handleTrim}
-                disabled={trimming}
-                className="w-full py-2 rounded-lg text-[11px] font-bold transition-colors disabled:opacity-50"
-                style={{ background: '#00C851', color: '#000' }}
-              >
-                {trimming ? 'Trimming…' : 'Apply Trim'}
-              </button>
-              {trimMsg && (
-                <p className={`text-[10px] text-center ${trimMsg.startsWith('✓') ? 'text-[#00C851]' : 'text-red-400'}`}>
-                  {trimMsg}
-                </p>
-              )}
-            </div>
+          {/* Edit in Video Editor */}
+          {clip.filePath && (
+            <button
+              onClick={() => { onClose(); onOpenInEditor?.(clip); }}
+              className="flex items-center justify-center gap-1.5 py-2 rounded-lg border border-[#252525] text-[11px] text-[#777] hover:text-white hover:border-[#333] transition-colors"
+            >
+              <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+              </svg>
+              Edit in Video Editor
+            </button>
           )}
 
           {/* Post as Reel */}
@@ -604,7 +545,7 @@ function LibraryPanel({ runs, selectedRunId, onSelect, onDeleteRun, onRefresh, o
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────
-export default function ClipExtractor({ onClipCreated }: { onClipCreated?: () => void } = {}) {
+export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { onClipCreated?: () => void; onNavigateToEditor?: (clip: Clip) => void } = {}) {
   const [videoPath, setVideoPath]         = useState<string | null>(() => localStorage.getItem('clipex:videoPath'));
   const [processing, setProcessing]       = useState(false);
   const [progress, setProgress]           = useState({ percent: 0, label: '' });
@@ -777,7 +718,7 @@ export default function ClipExtractor({ onClipCreated }: { onClipCreated?: () =>
         <ClipPreviewModal
           clip={previewClip}
           onClose={() => setPreviewClip(null)}
-          onTrimApplied={(start, end) => handleTrimApplied(previewClip, start, end)}
+          onOpenInEditor={(clip) => { setPreviewClip(null); onNavigateToEditor?.(clip); }}
         />
       )}
 
