@@ -5,16 +5,21 @@ import { pathToFileURL } from 'url';
 import { runClipExtractor, checkPythonDeps } from './python-bridge';
 import { autoUpdater } from 'electron-updater';
 
+// ── MUST be called before app.whenReady() ──────────────────────────────────
+// Disables GPU hardware acceleration & accelerated video decode.
+// Without these, Chromium's VideoToolbox decoder on Apple Silicon renders
+// solid green frames for H.264 video instead of actual video content.
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('disable-accelerated-video-decode');
+app.commandLine.appendSwitch('disable-accelerated-video-encode');
+app.commandLine.appendSwitch('disable-gpu-memory-buffer-video-frames');
+
 // electron-store: handle ESM default export
 import Store from 'electron-store';
 const ElectronStore = (Store as unknown as { default: typeof Store }).default || Store;
 
 const store = new ElectronStore();
 let mainWindow: BrowserWindow | null = null;
-
-// Disable GPU hardware acceleration — prevents green-screen video rendering in Electron's Chromium layer
-app.disableHardwareAcceleration();
-
 
 function createWindow() {
   mainWindow = new BrowserWindow({
