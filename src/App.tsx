@@ -130,6 +130,7 @@ export default function App() {
   const [setupComplete, setSetupComplete] = useState<boolean | null>(null);
   const [hasClaudeKey, setHasClaudeKey] = useState<boolean>(false);
   const [brandProfile, setBrandProfile] = useState<BrandProfile | null>(null);
+  const [editorClipPath, setEditorClipPath] = useState<string | null>(null);
   const { stats, increment } = useStudioStats();
 
   const onClipCreated = useCallback(() => increment('clipsCreated'), [increment]);
@@ -225,11 +226,11 @@ export default function App() {
       <main className="flex-1 overflow-y-auto">
         {currentPage === 'dashboard'  && <Dashboard onNavigate={setCurrentPage} stats={stats} hasBrandProfile={!!brandProfile} />}
         {currentPage === 'planner'   && <VideoPlanner />}
-        {currentPage === 'clips'      && <ClipExtractor onClipCreated={onClipCreated} onNavigateToEditor={() => setCurrentPage('editor')} />}
+        {currentPage === 'clips'      && <ClipExtractor onClipCreated={onClipCreated} onNavigateToEditor={(clip) => { setEditorClipPath(clip.filePath || null); setCurrentPage('editor'); }} />}
         {currentPage === 'carousel'   && <CarouselStudio brandProfile={brandProfile} onNavigateToBrand={() => setCurrentPage('brand')} onCarouselCreated={onCarouselCreated} hasClaudeKey={hasClaudeKey} />}
         {currentPage === 'brand'      && <BrandStudio onSave={setBrandProfile} />}
         {currentPage === 'blog'       && <BlogWriter brandProfile={brandProfile} onBlogCreated={onBlogCreated} hasClaudeKey={hasClaudeKey} />}
-        {currentPage === 'editor'     && <VideoEditor />}
+        {currentPage === 'editor'     && <VideoEditor initialClipPath={editorClipPath} />}
         {currentPage === 'schedule'   && <Scheduler />}
         {currentPage === 'analytics'  && <ComingSoon title="Content Analytics" />}
         {currentPage === 'settings'   && <Settings />}

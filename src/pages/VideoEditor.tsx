@@ -21,6 +21,14 @@ interface LibraryClip {
   thumbnailPath: string | null;
   contentType: string;
   duration?: number;
+  specPath?: string;
+}
+
+interface LibraryRun {
+  runId: string;
+  timestamp: number;
+  sourceVideo: string;
+  clips: LibraryClip[];
 }
 
 // ─── Constants ───────────────────────────────────────────────────────
@@ -34,17 +42,23 @@ const FORMATS: { id: OutputFormat; label: string; desc: string; w: number; h: nu
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 const fmtTime = (s: number) => {
-  if (isNaN(s)) return '0:00';
+  if (isNaN(s) || !isFinite(s)) return '0:00';
   const m = Math.floor(s / 60);
   return `${m}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
 };
 
+const fmtDate = (ts: number) => {
+  const d = new Date(ts);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+};
+
 // ─── Main Component ───────────────────────────────────────────────────
-export default function VideoEditor() {
+export default function VideoEditor({ initialClipPath }: { initialClipPath?: string | null } = {}) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  // Clip
-  const [clipPath, setClipPath] = useState('');
+  // Clip state
+  const [clipPath, setClipPath] = useState(initialClipPath || '');
+  const [clipTitle, setClipTitle] = useState('');
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -63,16 +77,16 @@ export default function VideoEditor() {
   const [outputDir, setOutputDir] = useState('');
 
   // Panel
-  const [panel, setPanel] = useState<'caption' | 'music' | 'format' | 'transcript'>('transcript');
-  
-  // Transcript data
+  const [panel, setPanel] = useState<'caption' | 'music' | 'format' | 'transcript'>('caption');
+
+  // Transcript
   const [transcript, setTranscript] = useState<{ word: string; start: number; end: number }[] | null>(null);
   const [deletedWords, setDeletedWords] = useState<Set<number>>(new Set());
 
   // Library
-  const [libraryClips, setLibraryClips] = useState<LibraryClip[]>([]);
-  const [showLibrary, setShowLibrary] = useState(false);
+  const [runs, setRuns] = useState<LibraryRun[]>([]);
   const [libraryLoading, setLibraryLoading] = useState(false);
+  const [expandedRuns, setExpandedRuns] = useState<Set<string>>(new Set());
 
   // Export
   const [exporting, setExporting] = useState(false);
@@ -86,32 +100,43 @@ export default function VideoEditor() {
     return () => { cleanup?.(); };
   }, []);
 
+  // Auto-load clip if passed via props
+  useEffect(() => {
+    if (initialClipPath) openClip(initialClipPath);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialClipPath]);
+
   const loadLibrary = async () => {
     setLibraryLoading(true);
     try {
-      const r = await window.electronAPI.scanLibrary() as { runs: { clips: LibraryClip[] }[] };
-      setLibraryClips(r.runs.flatMap(run => run.clips).filter(c => c.filePath).slice(0, 16));
-    } catch { setLibraryClips([]); }
+      const r = await window.electronAPI.scanLibrary() as { runs: LibraryRun[] };
+      setRuns(r.runs || []);
+      // Auto-expand the most recent run
+      if (r.runs?.length > 0) {
+        setExpandedRuns(new Set([r.runs[0].runId]));
+      }
+    } catch { setRuns([]); }
     setLibraryLoading(false);
   };
 
-  const openClip = async (path: string) => {
+  const openClip = async (path: string, title?: string) => {
     setClipPath(path);
+    setClipTitle(title || path.split('/').pop() || '');
     setPlaying(false);
     setCurrentTime(0);
     setTrimStart(0);
     setResult(null);
-    setShowLibrary(false);
-    if (videoRef.current) videoRef.current.currentTime = 0;
-    
-    // Load transcript if available
+    if (videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+    }
     try {
       const ts = await window.electronAPI.readClipTranscript(path);
       setTranscript(ts);
+      setDeletedWords(new Set());
     } catch {
       setTranscript(null);
     }
-    setDeletedWords(new Set());
   };
 
   const handlePickFile = async () => {
@@ -131,10 +156,7 @@ export default function VideoEditor() {
     const v = videoRef.current;
     if (!v || !clipPath) return;
     if (v.paused) {
-      // Loop within trim region
-      if (v.currentTime < trimStart || v.currentTime >= trimEnd) {
-        v.currentTime = trimStart;
-      }
+      if (v.currentTime < trimStart || v.currentTime >= trimEnd) v.currentTime = trimStart;
       v.play();
       setPlaying(true);
     } else {
@@ -147,10 +169,7 @@ export default function VideoEditor() {
     const v = videoRef.current;
     if (!v) return;
     setCurrentTime(v.currentTime);
-    // Loop at trim end
-    if (v.currentTime >= trimEnd && !v.paused) {
-      v.currentTime = trimStart;
-    }
+    if (v.currentTime >= trimEnd && !v.paused) v.currentTime = trimStart;
   };
 
   const handleScrub = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -159,50 +178,47 @@ export default function VideoEditor() {
     if (videoRef.current) videoRef.current.currentTime = t;
   };
 
+  const toggleRun = (runId: string) => {
+    setExpandedRuns(prev => {
+      const next = new Set(prev);
+      if (next.has(runId)) next.delete(runId);
+      else next.add(runId);
+      return next;
+    });
+  };
+
   const handleExport = async () => {
     if (!clipPath || exporting) return;
     setExporting(true);
     setResult(null);
     setProgress({ percent: 0, label: 'Preparing…' });
 
-    // Compute Text-Based Cuts
     let cuts: { start: number; end: number }[] | undefined = undefined;
     if (transcript && deletedWords.size > 0) {
       cuts = [];
       let currentCutStart = trimStart;
       let inDeletedRegion = false;
       const finalEnd = trimEnd || duration;
-      
       transcript.forEach((w, i) => {
-        if (w.start < trimStart || w.end > finalEnd) return; // Ignore words outside manual trim
-        
+        if (w.start < trimStart || w.end > finalEnd) return;
         const isDeleted = deletedWords.has(i);
         if (isDeleted && !inDeletedRegion) {
-          // Entered a deleted region: finish the current keep region
           if (w.start > currentCutStart) cuts!.push({ start: currentCutStart, end: w.start });
           inDeletedRegion = true;
         } else if (!isDeleted && inDeletedRegion) {
-          // Exited a deleted region: start a new keep region
           currentCutStart = w.start;
           inDeletedRegion = false;
         }
       });
-      // Add final keep region
-      if (!inDeletedRegion && currentCutStart < finalEnd) {
-        cuts.push({ start: currentCutStart, end: finalEnd });
-      }
+      if (!inDeletedRegion && currentCutStart < finalEnd) cuts.push({ start: currentCutStart, end: finalEnd });
     }
 
     try {
       const r = await window.electronAPI.renderVideo('clip-editor', {
-        clipPath,
-        trimStart,
-        trimEnd: trimEnd || duration,
-        outputFormat,
-        caption: caption.text ? caption : null,
+        clipPath, trimStart, trimEnd: trimEnd || duration,
+        outputFormat, caption: caption.text ? caption : null,
         music: musicPath ? { path: musicPath, volume: musicVolume } : null,
-        outputDir: outputDir || undefined,
-        cuts,
+        outputDir: outputDir || undefined, cuts,
       }) as { success: boolean; outputPath?: string; error?: string };
 
       if (r.success) {
@@ -217,80 +233,161 @@ export default function VideoEditor() {
     setExporting(false);
   };
 
-  // ── Caption preview position ──
   const cpPos = { top: 'top-4', center: 'top-1/2 -translate-y-1/2', bottom: 'bottom-4' }[caption.position];
-
-  // ── Live preview frame ──
-  const previewStyle = outputFormat === '9x16' ? 'aspect-[9/16] max-h-[440px]'
-    : outputFormat === '1x1' ? 'aspect-square max-h-[360px]'
-    : 'aspect-video w-full max-h-[280px]';
+  const previewStyle = outputFormat === '9x16' ? 'aspect-[9/16] max-h-[400px]'
+    : outputFormat === '1x1' ? 'aspect-square max-h-[340px]'
+    : 'aspect-video w-full max-h-[260px]';
 
   return (
     <div className="h-full flex overflow-hidden bg-[#0f0f0f]">
-      {/* ─── LEFT: Player + Timeline ─── */}
+
+      {/* ─── LEFT: Clip Library ─────────────────────────────────── */}
+      <div className="w-[220px] shrink-0 flex flex-col border-r border-[#1a1a1a] bg-[#0a0a0a]">
+        {/* Header */}
+        <div className="shrink-0 px-3 py-3 border-b border-[#1a1a1a] flex items-center justify-between">
+          <div>
+            <p className="text-[11px] font-bold text-white">Clip Library</p>
+            <p className="text-[9px] text-[#444] mt-0.5">{runs.reduce((a, r) => a + r.clips.length, 0)} clips</p>
+          </div>
+          <button onClick={loadLibrary}
+            className="w-6 h-6 flex items-center justify-center text-[#444] hover:text-white transition-colors">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+              <path strokeLinecap="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+          </button>
+        </div>
+
+        {/* Runs list */}
+        <div className="flex-1 overflow-y-auto">
+          {libraryLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-4 h-4 border border-[#333] border-t-[#00C851] rounded-full animate-spin" />
+            </div>
+          ) : runs.length === 0 ? (
+            <div className="p-4 text-center">
+              <svg viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth={1.5} className="w-8 h-8 mx-auto mb-2">
+                <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+              </svg>
+              <p className="text-[10px] text-[#444]">No clips yet</p>
+              <p className="text-[9px] text-[#333] mt-1">Use Clip Extractor first</p>
+            </div>
+          ) : (
+            <div className="py-1">
+              {runs.map(run => {
+                const isExpanded = expandedRuns.has(run.runId);
+                const sourceName = run.sourceVideo?.replace(/\.[^.]+$/, '') || 'Unknown';
+                return (
+                  <div key={run.runId}>
+                    {/* Run header */}
+                    <button
+                      onClick={() => toggleRun(run.runId)}
+                      className="w-full flex items-center gap-1.5 px-3 py-2 hover:bg-white/5 transition-colors"
+                    >
+                      <svg viewBox="0 0 24 24" fill="none" stroke="#444" strokeWidth={2}
+                        className={`w-3 h-3 shrink-0 transition-transform ${isExpanded ? 'rotate-90' : ''}`}>
+                        <polyline points="9 18 15 12 9 6"/>
+                      </svg>
+                      <div className="flex-1 min-w-0 text-left">
+                        <p className="text-[10px] font-semibold text-[#666] truncate">{sourceName}</p>
+                        <p className="text-[8px] text-[#333]">{fmtDate(run.timestamp)} · {run.clips.length} clips</p>
+                      </div>
+                    </button>
+
+                    {/* Clips in run */}
+                    {isExpanded && (
+                      <div className="pb-1">
+                        {run.clips.filter(c => c.filePath).map(clip => {
+                          const isActive = clipPath === clip.filePath;
+                          return (
+                            <button
+                              key={clip.clipId}
+                              onClick={() => openClip(clip.filePath!, clip.title)}
+                              className={`w-full flex items-center gap-2 px-3 py-1.5 transition-all ${
+                                isActive ? 'bg-[#00C851]/10 border-l-2 border-[#00C851]' : 'pl-[13px] hover:bg-white/5 border-l-2 border-transparent'
+                              }`}
+                            >
+                              {/* Thumbnail */}
+                              <div className="w-9 h-9 rounded-lg overflow-hidden shrink-0 bg-[#141414]">
+                                {clip.thumbnailPath ? (
+                                  <img src={`localfile://${clip.thumbnailPath}`} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth={1.5} className="w-3.5 h-3.5">
+                                      <polygon points="5 3 19 12 5 21 5 3"/>
+                                    </svg>
+                                  </div>
+                                )}
+                              </div>
+                              {/* Info */}
+                              <div className="flex-1 min-w-0 text-left">
+                                <p className={`text-[10px] font-medium truncate leading-tight ${isActive ? 'text-[#00C851]' : 'text-[#888]'}`}>
+                                  {clip.title || 'Untitled'}
+                                </p>
+                                {clip.duration && (
+                                  <p className="text-[8px] text-[#444]">{fmtTime(clip.duration)}</p>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Browse external file */}
+        <div className="shrink-0 p-3 border-t border-[#1a1a1a]">
+          <button onClick={handlePickFile}
+            className="w-full flex items-center justify-center gap-1.5 py-2 rounded-lg border border-[#222] text-[10px] text-[#555] hover:text-white hover:border-[#333] transition-colors">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3">
+              <path strokeLinecap="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+            </svg>
+            Browse file…
+          </button>
+        </div>
+      </div>
+
+      {/* ─── CENTER: Player + Timeline ─────────────────────────── */}
       <div className="flex-1 flex flex-col overflow-hidden border-r border-[#1a1a1a]">
 
         {/* Header */}
         <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-[#1a1a1a]">
           <div>
             <h1 className="text-sm font-bold text-white">Video Editor</h1>
-            <p className="text-[10px] text-[#444] mt-0.5">Trim · Captions · Music · Export</p>
+            <p className="text-[10px] text-[#444] mt-0.5 truncate max-w-[280px]">
+              {clipTitle || 'Select a clip from the library'}
+            </p>
           </div>
-          <div className="flex gap-2">
-            <button onClick={() => setShowLibrary(v => !v)}
-              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${showLibrary ? 'border-[#00C851]/40 text-[#00C851]' : 'border-[#222] text-[#555] hover:text-white'}`}>
-              Library
+          {clipPath && (
+            <button
+              onClick={() => (window.electronAPI as any).showInFinder?.(clipPath)}
+              className="flex items-center gap-1 text-[10px] text-[#555] hover:text-white transition-colors px-2 py-1 rounded border border-transparent hover:border-[#222]">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3">
+                <path strokeLinecap="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/>
+              </svg>
+              Show in Finder
             </button>
-            <button onClick={handlePickFile}
-              className="text-xs px-3 py-1.5 rounded-lg border border-[#222] text-[#555] hover:text-white transition-colors">
-              Browse…
-            </button>
-          </div>
+          )}
         </div>
-
-        {/* Library strip */}
-        {showLibrary && (
-          <div className="shrink-0 border-b border-[#1a1a1a] bg-black p-3">
-            {libraryLoading ? (
-              <p className="text-[10px] text-[#444] py-2">Loading…</p>
-            ) : libraryClips.length === 0 ? (
-              <p className="text-[10px] text-[#444] py-2">No clips yet — use Clip Extractor first</p>
-            ) : (
-              <div className="flex gap-2 overflow-x-auto">
-                {libraryClips.map((clip, i) => (
-                  <button key={i} onClick={() => openClip(clip.filePath!)}
-                    className={`shrink-0 flex flex-col rounded-xl overflow-hidden border transition-all hover:border-[#00C851]/50 ${clipPath === clip.filePath ? 'border-[#00C851]' : 'border-[#1e1e1e]'}`}
-                    style={{ width: 64 }}>
-                    {clip.thumbnailPath ? (
-                      <img src={`localfile://${clip.thumbnailPath}`} alt="" className="w-full h-[72px] object-cover" />
-                    ) : (
-                      <div className="w-full h-[72px] bg-[#141414] flex items-center justify-center">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth={1.5} className="w-4 h-4"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                      </div>
-                    )}
-                    <p className="text-[8px] text-[#555] truncate px-1 py-0.5">{clip.title || '—'}</p>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Video player */}
         <div className="flex-1 flex items-center justify-center overflow-hidden p-4 bg-black">
           {!clipPath ? (
-            <button onClick={handlePickFile}
-              className="flex flex-col items-center gap-4 border-2 border-dashed border-[#1e1e1e] rounded-2xl p-12 text-center hover:border-[#00C851]/30 hover:bg-[#00C851]/5 transition-all group">
-              <div className="w-14 h-14 rounded-2xl bg-[#141414] border border-[#2a2a2a] flex items-center justify-center">
-                <svg viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth={1} strokeLinecap="round" className="w-7 h-7">
+            <div className="flex flex-col items-center gap-3 text-center">
+              <div className="w-16 h-16 rounded-2xl bg-[#111] border border-[#1e1e1e] flex items-center justify-center">
+                <svg viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth={1} strokeLinecap="round" className="w-8 h-8">
                   <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/>
                 </svg>
               </div>
               <div>
-                <p className="text-sm font-semibold text-[#555] group-hover:text-white transition-colors">Select a clip to edit</p>
-                <p className="text-xs text-[#333] mt-1">Or pick from your Library above</p>
+                <p className="text-sm font-semibold text-[#444]">Pick a clip from the library</p>
+                <p className="text-xs text-[#333] mt-1">Or browse a file below</p>
               </div>
-            </button>
+            </div>
           ) : (
             <div className={`relative ${previewStyle} overflow-hidden rounded-xl bg-black`}>
               <video
@@ -302,10 +399,10 @@ export default function VideoEditor() {
                 onEnded={() => setPlaying(false)}
                 muted={!!musicPath}
               />
-              {/* Caption preview overlay */}
+              {/* Caption overlay */}
               {caption.text && (
                 <div className={`absolute left-3 right-3 ${cpPos} flex justify-center`}>
-                  <div className="px-3 py-1.5 rounded-lg text-center max-w-[90%] text-shadow"
+                  <div className="px-3 py-1.5 rounded-lg text-center max-w-[90%]"
                     style={{
                       background: `rgba(0,0,0,${caption.bgOpacity / 100})`,
                       color: caption.color,
@@ -332,24 +429,20 @@ export default function VideoEditor() {
 
         {/* Timeline */}
         {clipPath && duration > 0 && (
-          <div className="shrink-0 border-t border-[#1a1a1a] p-4 bg-[#0a0a0a]">
+          <div className="shrink-0 border-t border-[#1a1a1a] px-4 py-3 bg-[#0a0a0a] space-y-3">
             {/* Seek bar */}
-            <div className="relative mb-3">
-              {/* Trim range highlight */}
+            <div className="relative">
               <div className="absolute top-0 bottom-0 rounded-full bg-[#00C851]/20 pointer-events-none"
-                style={{
-                  left: `${(trimStart / duration) * 100}%`,
-                  width: `${((trimEnd - trimStart) / duration) * 100}%`,
-                }} />
+                style={{ left: `${(trimStart / duration) * 100}%`, width: `${((trimEnd - trimStart) / duration) * 100}%` }} />
               <input type="range" min={0} max={duration} step={0.05} value={currentTime}
                 onChange={handleScrub}
                 className="w-full h-1.5 appearance-none rounded-full cursor-pointer relative z-10"
                 style={{ background: `linear-gradient(to right, #00C851 ${(currentTime / duration) * 100}%, #1a1a1a ${(currentTime / duration) * 100}%)` }} />
             </div>
 
-            {/* Time display */}
-            <div className="flex items-center justify-between text-[10px] font-mono text-[#444] mb-3">
-              <span>{fmtTime(currentTime)}</span>
+            {/* Controls row */}
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono text-[#444]">{fmtTime(currentTime)}</span>
               <button onClick={togglePlay}
                 className="w-8 h-8 rounded-full border border-[#2a2a2a] bg-[#141414] flex items-center justify-center text-white hover:border-[#00C851]/40 transition-colors">
                 {playing
@@ -357,10 +450,10 @@ export default function VideoEditor() {
                   : <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5"><polygon points="6 3 20 12 6 21 6 3"/></svg>
                 }
               </button>
-              <span>{fmtTime(duration)}</span>
+              <span className="text-[10px] font-mono text-[#444]">{fmtTime(duration)}</span>
             </div>
 
-            {/* Trim controls */}
+            {/* Trim */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <div className="flex items-center justify-between mb-1">
@@ -381,27 +474,26 @@ export default function VideoEditor() {
                   className="w-full accent-[#00C851]" />
               </div>
             </div>
-
-            <p className="text-[9px] text-[#333] mt-2 text-center">
-              Duration: <span className="text-[#555] font-mono">{fmtTime(trimEnd - trimStart)}</span>
-              {' '}of {fmtTime(duration)}
+            <p className="text-[9px] text-[#333] text-center">
+              {fmtTime(trimEnd - trimStart)} selected of {fmtTime(duration)}
             </p>
           </div>
         )}
       </div>
 
-      {/* ─── RIGHT: Controls + Export ─── */}
-      <div className="w-[300px] shrink-0 flex flex-col border-l border-[#1a1a1a] overflow-y-auto">
+      {/* ─── RIGHT: Edit Controls ───────────────────────────────── */}
+      <div className="w-[280px] shrink-0 flex flex-col border-l border-[#1a1a1a] overflow-y-auto">
 
         {/* Tabs */}
         <div className="shrink-0 flex border-b border-[#1a1a1a]">
           {([
-            { id: 'caption', label: 'Captions' },
-            { id: 'music',   label: 'Music' },
-            { id: 'format',  label: 'Format' },
+            { id: 'caption',    label: 'Captions' },
+            { id: 'music',      label: 'Music' },
+            { id: 'format',     label: 'Format' },
+            { id: 'transcript', label: 'Script' },
           ] as const).map(t => (
             <button key={t.id} onClick={() => setPanel(t.id)}
-              className={`flex-1 py-2.5 text-[11px] font-semibold transition-colors border-b-2 ${
+              className={`flex-1 py-2.5 text-[10px] font-semibold transition-colors border-b-2 ${
                 panel === t.id ? 'text-white border-[#00C851]' : 'text-[#444] border-transparent hover:text-[#666]'
               }`}>
               {t.label}
@@ -480,7 +572,7 @@ export default function VideoEditor() {
           {/* ── Music Panel ── */}
           {panel === 'music' && (
             <>
-              <p className="text-[10px] text-[#444]">Add background music that will be mixed with your video audio.</p>
+              <p className="text-[10px] text-[#444]">Add background music mixed with your video audio.</p>
               {!musicPath ? (
                 <button onClick={async () => {
                   const r = await window.electronAPI.selectVideo();
@@ -521,16 +613,15 @@ export default function VideoEditor() {
           {/* ── Format Panel ── */}
           {panel === 'format' && (
             <>
-              <p className="text-[9px] text-[#444]">Output aspect ratio — the video will be scaled and cropped.</p>
+              <p className="text-[9px] text-[#444]">Output aspect ratio — video will be scaled and cropped.</p>
               <div className="flex flex-col gap-2">
                 {FORMATS.map(f => (
                   <button key={f.id} onClick={() => setOutputFormat(f.id)}
                     className={`flex items-center gap-3 p-3 rounded-xl border text-left transition-all ${
                       outputFormat === f.id ? 'border-[#00C851]/40 bg-[#00C851]/7' : 'border-[#1e1e1e] hover:border-[#2a2a2a]'
                     }`}>
-                    <div className={`rounded border shrink-0 flex items-center justify-center ${
-                      outputFormat === f.id ? 'border-[#00C851]/40' : 'border-[#2a2a2a]'
-                    }`} style={{ width: f.w * 6, height: f.h * 6, background: outputFormat === f.id ? 'rgba(0,200,81,0.1)' : '#141414' }}>
+                    <div className={`rounded border shrink-0 flex items-center justify-center ${outputFormat === f.id ? 'border-[#00C851]/40' : 'border-[#2a2a2a]'}`}
+                      style={{ width: f.w * 6, height: f.h * 6, background: outputFormat === f.id ? 'rgba(0,200,81,0.1)' : '#141414' }}>
                       <span className="text-[7px] text-[#555]">{f.label}</span>
                     </div>
                     <div>
@@ -540,7 +631,6 @@ export default function VideoEditor() {
                   </button>
                 ))}
               </div>
-
               <div className="mt-2">
                 <p className="text-[9px] font-bold uppercase tracking-wider text-[#444] mb-2">Output folder</p>
                 <button onClick={async () => {
@@ -560,57 +650,58 @@ export default function VideoEditor() {
           {/* ── Transcript Panel ── */}
           {panel === 'transcript' && (
             <div className="space-y-4">
-              <p className="text-[10px] text-[#00C851] bg-[#00C851]/10 px-2 py-1 flex rounded w-fit mb-4 border border-[#00C851]/20">Wave 4 Preview: Text-Based Editing Foundation</p>
-              
               {transcript ? (
-                <div className="bg-[#111] p-4 rounded-xl border border-[#222] leading-relaxed text-sm">
-                  {transcript.map((w, i) => {
-                    const isActive = currentTime >= w.start && currentTime <= w.end;
-                    const isDeleted = deletedWords.has(i);
-                    return (
-                      <span 
-                        key={i} 
-                        className={`mr-1 transition-colors select-none ${
-                          isDeleted ? 'line-through text-red-500/50 hover:text-red-400/80 bg-red-500/5 cursor-pointer' 
-                          : isActive ? 'text-[#00C851] font-bold bg-[#00C851]/10 rounded px-0.5' 
-                          : 'text-[#888] hover:text-white cursor-pointer'
-                        }`}
-                        onClick={() => {
-                          setDeletedWords(prev => {
-                            const next = new Set(prev);
-                            if (next.has(i)) next.delete(i);
-                            else next.add(i);
-                            return next;
-                          });
-                          if (!isDeleted && videoRef.current) {
-                            videoRef.current.currentTime = w.start;
-                            setCurrentTime(w.start);
-                          }
-                        }}
-                      >
-                        {w.word}
-                      </span>
-                    );
-                  })}
-                </div>
+                <>
+                  <p className="text-[10px] text-[#555]">Click words to remove them from the exported video.</p>
+                  <div className="bg-[#111] p-3 rounded-xl border border-[#222] leading-relaxed text-sm">
+                    {transcript.map((w, i) => {
+                      const isActive = currentTime >= w.start && currentTime <= w.end;
+                      const isDeleted = deletedWords.has(i);
+                      return (
+                        <span key={i}
+                          className={`mr-1 transition-colors select-none cursor-pointer ${
+                            isDeleted ? 'line-through text-red-500/50 hover:text-red-400/80 bg-red-500/5'
+                            : isActive ? 'text-[#00C851] font-bold bg-[#00C851]/10 rounded px-0.5'
+                            : 'text-[#888] hover:text-white'
+                          }`}
+                          onClick={() => {
+                            setDeletedWords(prev => {
+                              const next = new Set(prev);
+                              if (next.has(i)) next.delete(i); else next.add(i);
+                              return next;
+                            });
+                            if (!isDeleted && videoRef.current) {
+                              videoRef.current.currentTime = w.start;
+                              setCurrentTime(w.start);
+                            }
+                          }}>
+                          {w.word}
+                        </span>
+                      );
+                    })}
+                  </div>
+                  {deletedWords.size > 0 && (
+                    <button onClick={() => setDeletedWords(new Set())}
+                      className="text-[10px] text-[#555] hover:text-white transition-colors underline">
+                      Clear {deletedWords.size} removed word{deletedWords.size !== 1 ? 's' : ''}
+                    </button>
+                  )}
+                </>
               ) : (
                 <div className="text-center p-8 bg-[#111] rounded-xl border border-[#222]">
-                  <div className="w-10 h-10 rounded-full bg-[#1a1a1a] flex items-center justify-center mx-auto mb-3">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-                      <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
-                    </svg>
-                  </div>
-                  <p className="text-sm font-medium text-[#777]">No transcript found</p>
-                  <p className="text-[10px] text-[#555] mt-1">This clip wasn't processed by the AI extractor.</p>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="#555" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-8 h-8 mx-auto mb-3">
+                    <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
+                  </svg>
+                  <p className="text-sm font-medium text-[#555]">No transcript</p>
+                  <p className="text-[10px] text-[#444] mt-1">Load a clip from the Clip Extractor library to use text-based editing.</p>
                 </div>
               )}
             </div>
           )}
         </div>
 
-        {/* Export section */}
+        {/* Export */}
         <div className="shrink-0 p-4 border-t border-[#1a1a1a]">
-          {/* Progress */}
           {progress && (
             <div className="mb-3">
               <div className="flex items-center justify-between mb-1">
@@ -623,8 +714,6 @@ export default function VideoEditor() {
               </div>
             </div>
           )}
-
-          {/* Result */}
           {result && !progress && (
             <div className={`mb-3 rounded-xl px-3 py-2 text-[10px] ${
               result.success ? 'bg-[#00C851]/10 border border-[#00C851]/20 text-[#00C851]' : 'bg-red-900/20 border border-red-800/30 text-red-400'
@@ -633,14 +722,13 @@ export default function VideoEditor() {
               <p className="mt-0.5 opacity-80 truncate">{result.message}</p>
               {result.success && result.outputPath && (
                 <button
-                  onClick={() => window.electronAPI.openPath(result.outputPath!.split('/').slice(0, -1).join('/'))}
+                  onClick={() => (window.electronAPI as any).showInFinder?.(result.outputPath!)}
                   className="mt-1.5 text-[9px] underline opacity-70 hover:opacity-100 transition-opacity">
-                  Open in Finder
+                  Show in Finder
                 </button>
               )}
             </div>
           )}
-
           <button onClick={handleExport} disabled={!clipPath || exporting}
             className="w-full py-3 rounded-xl text-sm font-bold transition-all disabled:opacity-40"
             style={{ background: !clipPath || exporting ? '#1a1a1a' : '#00C851', color: !clipPath || exporting ? '#444' : 'black' }}>
@@ -651,7 +739,9 @@ export default function VideoEditor() {
               </span>
             ) : 'Export Video'}
           </button>
-          <p className="text-[9px] text-[#333] text-center mt-1.5">Saves to {outputDir ? outputDir.split('/').pop() : 'Downloads'}</p>
+          <p className="text-[9px] text-[#333] text-center mt-1.5">
+            Saves to {outputDir ? outputDir.split('/').pop() : 'Downloads'}
+          </p>
         </div>
       </div>
     </div>
