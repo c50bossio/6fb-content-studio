@@ -664,6 +664,9 @@ export default function ClipExtractor({ onClipCreated }: { onClipCreated?: () =>
     }).catch(() => {});
   }, []);
 
+  // Load history on mount so existing clips show without needing an extraction first
+  useEffect(() => { loadLibrary(); }, [loadLibrary]);
+
   useEffect(() => {
     const cleanup = window.electronAPI.onProgress(d => setProgress(d));
     return cleanup;
