@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net } from 'electron';
+import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu } from 'electron';
 import { join } from 'path';
 import { existsSync, readdirSync, readFileSync, mkdirSync } from 'fs';
 import { pathToFileURL } from 'url';
@@ -117,7 +117,9 @@ app.whenReady().then(() => {
   createWindow();
   startSchedulerDaemon();
   initAutoUpdater();
+  buildAppMenu();
 });
+
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
@@ -1185,7 +1187,62 @@ function startSchedulerDaemon() {
 }
 
 // ─── Auto-Updater ─────────────────────────────────────────────────────
+function buildAppMenu() {
+  const template: Electron.MenuItemConstructorOptions[] = [
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        {
+          label: 'Check for Updates…',
+          click: async () => {
+            try {
+              const result = await autoUpdater.checkForUpdates();
+              if (!result?.updateInfo) {
+                dialog.showMessageBox({ type: 'info', message: 'You\'re up to date!', detail: `Version ${app.getVersion()} is the latest.` });
+              }
+            } catch {
+              dialog.showMessageBox({ type: 'info', message: 'You\'re up to date!', detail: `Version ${app.getVersion()} is the latest.` });
+            }
+          },
+        },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' },
+      ],
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
+        { role: 'cut' }, { role: 'copy' }, { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' }, { role: 'forceReload' }, { type: 'separator' },
+        { role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomOut' }, { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    {
+      label: 'Window',
+      submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'front' }],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 function initAutoUpdater() {
+
   if (process.env.NODE_ENV === 'development') return;
 
   autoUpdater.autoDownload = true;
