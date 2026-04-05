@@ -48,10 +48,70 @@ protocol.registerSchemesAsPrivileged([{
 }]);
 
 app.whenReady().then(() => {
+  // Handle localfile:// protocol with proper byte-range support for video streaming.
+  // net.fetch() ignores Range headers so video elements show 0:00 and never load.
   protocol.handle('localfile', (request) => {
-    // localfile:///absolute/path/to/file.jpg
     const filePath = decodeURIComponent(request.url.replace('localfile://', ''));
-    return net.fetch(pathToFileURL(filePath).toString());
+
+    // Detect MIME type for video files
+    const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
+    const MIME: Record<string, string> = {
+      mp4: 'video/mp4', mov: 'video/quicktime', webm: 'video/webm',
+      mkv: 'video/x-matroska', avi: 'video/x-msvideo',
+      jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp',
+    };
+    const contentType = MIME[ext] ?? 'application/octet-stream';
+    const isVideo = contentType.startsWith('video/');
+
+    if (!isVideo) {
+      // Non-video: simple fetch is fine
+      return net.fetch(pathToFileURL(filePath).toString());
+    }
+
+    // Video: handle Range requests for proper seeking/streaming
+    const { createReadStream, statSync } = require('fs') as typeof import('fs');
+    try {
+      const stat = statSync(filePath);
+      const totalSize = stat.size;
+      const rangeHeader = request.headers.get('range');
+
+      if (rangeHeader) {
+        const [startStr, endStr] = rangeHeader.replace('bytes=', '').split('-');
+        const start = parseInt(startStr, 10);
+        const end = endStr ? parseInt(endStr, 10) : Math.min(start + 1024 * 1024 - 1, totalSize - 1);
+        const chunkSize = end - start + 1;
+
+        const stream = createReadStream(filePath, { start, end });
+        const { Readable } = require('stream') as typeof import('stream');
+        const webStream = Readable.toWeb(stream) as ReadableStream;
+
+        return new Response(webStream, {
+          status: 206,
+          headers: {
+            'Content-Type': contentType,
+            'Content-Range': `bytes ${start}-${end}/${totalSize}`,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': String(chunkSize),
+          },
+        });
+      } else {
+        // No Range header — stream the whole file
+        const stream = createReadStream(filePath);
+        const { Readable } = require('stream') as typeof import('stream');
+        const webStream = Readable.toWeb(stream) as ReadableStream;
+
+        return new Response(webStream, {
+          status: 200,
+          headers: {
+            'Content-Type': contentType,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': String(totalSize),
+          },
+        });
+      }
+    } catch {
+      return new Response('Not found', { status: 404 });
+    }
   });
   createWindow();
   startSchedulerDaemon();
