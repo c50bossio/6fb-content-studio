@@ -63,13 +63,16 @@ jobs:
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           CSC_KEYCHAIN: ${{ runner.temp }}/build.keychain
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           TAG=${GITHUB_REF_NAME}
           VERSION=${TAG#v}
-          npx electron-builder --mac dmg --publish never
-          # electron-builder names it like: release/6FB Content Studio-1.0.6-arm64.dmg
+          # --publish never so we control the release ourselves; electron-builder still writes latest-mac.yml
+          npx electron-builder --mac dmg zip --publish never
           DMG=$(ls release/*.dmg | head -1)
+          YML=$(ls release/latest-mac.yml 2>/dev/null | head -1)
           echo "DMG_PATH=${DMG}" >> $GITHUB_ENV
+          echo "YML_PATH=${YML}" >> $GITHUB_ENV
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
       # ── 6. Notarize the styled DMG ─────────────────────────────────
@@ -109,4 +112,5 @@ jobs:
             Settings → 6FB Account → sign in → Sync Instagram
           files: |
             ${{ env.DMG_PATH }}
+            ${{ env.YML_PATH }}
           token: ${{ secrets.GH_TOKEN }}
