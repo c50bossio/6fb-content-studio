@@ -70,32 +70,6 @@ interface VideoPlanSummary {
   createdAt: string;
 }
 
-// ─── Content Strategy Definitions ────────────────────────────────────
-const CONTENT_STRATEGIES = [
-  {
-    id: 'talking_head',
-    label: 'Talking Head',
-    emoji: '🗣️',
-    description: 'Bold claims, key insights, personal stories',
-    contentType: 'vlog',
-  },
-  {
-    id: 'tutorial',
-    label: 'Tutorial / Demo',
-    emoji: '✂️',
-    description: 'Tool names, step numbers, techniques',
-    contentType: 'HAIRCUT_TUTORIAL',
-  },
-  {
-    id: 'podcast',
-    label: 'Podcast / Interview',
-    emoji: '🎙️',
-    description: 'Topic shifts, debate moments, speaker quotes',
-    contentType: 'vlog',
-  },
-] as const;
-type StrategyId = typeof CONTENT_STRATEGIES[number]['id'];
-
 // ─── Helpers ─────────────────────────────────────────────────────────
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 const fmtFull = (s: number) => {
@@ -670,7 +644,6 @@ export default function ClipExtractor({ onClipCreated }: { onClipCreated?: () =>
 
   const [savedPlans, setSavedPlans] = useState<VideoPlanSummary[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
-  const [contentStrategy, setContentStrategy] = useState<StrategyId>('talking_head');
 
   useEffect(() => {
     (window.electronAPI as any).listVideoPlans?.().then((r: any) => {
@@ -706,13 +679,11 @@ export default function ClipExtractor({ onClipCreated }: { onClipCreated?: () =>
       .map(e => ({ label: e.label, timestamp: e.timestamp, endTimestamp: e.endTimestamp })) ?? [];
 
     try {
-      const strategy = CONTENT_STRATEGIES.find(s => s.id === contentStrategy)!;
       const result = await window.electronAPI.extractClips(videoPath, {
         outputFormat: '9x16',
-        contentType: strategy.contentType,
+        contentType: 'vlog',
         numClips: 5,
         autoTrack: true,
-        contentStrategy: contentStrategy,
         ...(dropZones.length > 0 ? { planContext: { topic: selectedPlan!.topic, dropZones } } : {}),
       });
 
@@ -848,31 +819,7 @@ export default function ClipExtractor({ onClipCreated }: { onClipCreated?: () =>
           </div>
         </div>
 
-          {/* Content Strategy Selector — shown when video is selected */}
-          {videoPath && (
-            <div className="mb-4 px-1">
-              <p className="text-[10px] font-semibold text-[#444] uppercase tracking-widest mb-2">Content Strategy</p>
-              <div className="grid grid-cols-3 gap-2">
-                {CONTENT_STRATEGIES.map(s => (
-                  <button
-                    key={s.id}
-                    onClick={() => setContentStrategy(s.id)}
-                    className={`flex flex-col items-center gap-1 px-2 py-3 rounded-xl border text-center transition-all ${
-                      contentStrategy === s.id
-                        ? 'border-[#00C851]/60 bg-[#00C851]/8 shadow-[0_0_12px_rgba(0,200,81,0.1)]'
-                        : 'border-[#222] bg-[#111] hover:border-[#333]'
-                    }`}
-                  >
-                    <span className="text-base leading-none">{s.emoji}</span>
-                    <span className={`text-[10px] font-bold leading-tight ${
-                      contentStrategy === s.id ? 'text-[#00C851]' : 'text-[#666]'
-                    }`}>{s.label}</span>
-                    <span className="text-[8px] text-[#444] leading-tight">{s.description}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+
           {videoPath && savedPlans.length > 0 && (
             <div className="mb-3 px-1">
               <div className="flex items-center gap-2 bg-[#0f0f0f] border border-[#222] rounded-xl px-3 py-2.5">
