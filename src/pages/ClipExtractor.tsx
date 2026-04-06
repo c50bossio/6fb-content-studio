@@ -192,7 +192,7 @@ function ClipPreviewModal({ clip, onClose, onOpenInEditor }: {
     return () => window.removeEventListener('keydown', h);
   }, [showIgModal]);
 
-  const clipSrc = clip.filePath ? `file://${clip.filePath}` : '';
+  const clipSrc = clip.filePath ? `localfile://${clip.filePath}` : '';
 
   return (
     <div

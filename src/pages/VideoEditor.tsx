@@ -346,7 +346,7 @@ export default function VideoEditor({ initialClipPath, onVideoRendered }: { init
             </div>
           ) : (
             <div className={`relative ${previewStyle} overflow-hidden rounded-xl bg-black`}>
-              <video ref={videoRef} src={`file://${clipPath}`}
+              <video ref={videoRef} src={`localfile://${clipPath}`}
                 className="w-full h-full object-cover"
                 onLoadedMetadata={handleVideoLoaded} onTimeUpdate={handleTimeUpdate} onEnded={()=>setPlaying(false)}/>
               <button onClick={togglePlay}

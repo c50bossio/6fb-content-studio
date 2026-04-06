@@ -800,17 +800,18 @@ ipcMain.handle('trim-clip', async (_event, {
 });
 
 // ─── Video Editor: Full Render Pipeline ───────────────────────────
-ipcMain.handle('render-video', async (_event, props: {
-  clipPath: string;
-  trimStart: number;
-  trimEnd: number;
-  outputFormat: '9x16' | '1x1' | '16x9';
-  transition?: string;
-  caption?: { text: string; fontWeight: string; fontSize: number; color: string; position: 'top' | 'center' | 'bottom'; bgOpacity: number } | null;
-  music?: { path: string; volume: number } | null;
-  outputDir?: string;
-  cuts?: { start: number; end: number }[];
-}) => {
+ipcMain.handle('render-video', async (_event, payload: any) => {
+  const props = (payload?.props ?? payload) as {
+    clipPath: string;
+    trimStart: number;
+    trimEnd: number;
+    outputFormat: '9x16' | '1x1' | '16x9';
+    transition?: string;
+    caption?: { text: string; fontWeight: string; fontSize: number; color: string; position: 'top' | 'center' | 'bottom'; bgOpacity: number } | null;
+    music?: { path: string; volume: number } | null;
+    outputDir?: string;
+    cuts?: { start: number; end: number }[];
+  };
   const { clipPath, trimStart, trimEnd, outputFormat, caption, music, outputDir, cuts } = props;
   const ffmpeg = findFfmpeg();
   const outDir = outputDir || app.getPath('downloads');

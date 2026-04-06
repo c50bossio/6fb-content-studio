@@ -107,7 +107,7 @@ const TOOLS: {
     title: 'Video Editor',
     description: 'Remotion-powered editing. Add captions, transitions, music, effects.',
     color: '#EC4899',
-    ready: false,
+    ready: true,
   },
   {
     page: 'schedule',
@@ -115,7 +115,7 @@ const TOOLS: {
     title: 'Post Scheduler',
     description: 'Connect Instagram, TikTok, YouTube. Schedule & batch upload content.',
     color: '#EF4444',
-    ready: false,
+    ready: true,
   },
 ];
 

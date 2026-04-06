@@ -1,5 +1,6 @@
 import React from 'react';
 import type { Page } from '../App';
+import logoSrc from '../../assets/6fb-logo.png';
 
 interface SidebarProps {
   currentPage: Page;
@@ -92,7 +93,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
         <div className="flex items-center gap-3">
           {/* 6FB logo */}
           <div className="w-9 h-9 rounded-lg bg-black border border-6fb-border flex items-center justify-center shrink-0 overflow-hidden">
-            <img src="/6fb-logo.png" alt="6FB" className="w-8 h-8 object-contain" />
+            <img src={logoSrc} alt="6FB" className="w-8 h-8 object-contain" />
           </div>
           <div>
             <h1 className="text-sm font-bold text-white leading-tight">Content Studio</h1>
