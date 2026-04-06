@@ -67,6 +67,8 @@ jobs:
         run: |
           TAG=${GITHUB_REF_NAME}
           VERSION=${TAG#v}
+          # Stamp package.json with the tag version so latest-mac.yml gets the right semver
+          npm version ${VERSION} --no-git-tag-version --allow-same-version
           # --publish never so we control the release ourselves; electron-builder still writes latest-mac.yml
           npx electron-builder --mac dmg zip --publish never
           DMG=$(ls release/*.dmg | head -1)
