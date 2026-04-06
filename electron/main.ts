@@ -221,6 +221,12 @@ ipcMain.handle('extract-clips', async (_event, { videoPath, options }: {
 }) => {
   const outputDir = join(app.getPath('userData'), 'clips', Date.now().toString());
   const bp = (store.get('brandProfile') as Record<string, unknown>) || DEFAULT_BRAND;
+
+  // Save the full source video path so re-extraction works
+  const mkdirSync = require('fs').mkdirSync;
+  mkdirSync(outputDir, { recursive: true });
+  writeFileSync(join(outputDir, 'run_meta.json'), JSON.stringify({ sourceVideoPath: videoPath }));
+
   const result = await runClipExtractor(
     videoPath,
     outputDir,
@@ -687,9 +693,18 @@ ipcMain.handle('scan-library', async () => {
       const runPath = join(clipsRoot, runId);
       const clips: object[] = [];
       let sourceVideoName = '';
+      let sourceVideoPath = '';
       try {
-        const srt = readdirSync(runPath).find(f => f.endsWith('.srt'));
-        if (srt) sourceVideoName = srt.replace(/\.srt$/, '');
+        const metaPath = join(runPath, 'run_meta.json');
+        if (existsSync(metaPath)) {
+          const meta = JSON.parse(readFileSync(metaPath, 'utf-8'));
+          sourceVideoPath = meta.sourceVideoPath || '';
+          sourceVideoName = sourceVideoPath.split('/').pop()?.replace(/\.[^.]+$/, '') || '';
+        }
+        if (!sourceVideoName) {
+          const srt = readdirSync(runPath).find(f => f.endsWith('.srt'));
+          if (srt) sourceVideoName = srt.replace(/\.srt$/, '');
+        }
       } catch {}
 
       try {
@@ -725,7 +740,7 @@ ipcMain.handle('scan-library', async () => {
           });
         }
       } catch {}
-      return { runId, timestamp: Number(runId), sourceVideo: sourceVideoName, runPath, clips };
+      return { runId, timestamp: Number(runId), sourceVideo: sourceVideoPath || sourceVideoName, runPath, clips };
     }).filter(r => r.clips.length > 0);
 
     return { runs };
