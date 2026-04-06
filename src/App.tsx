@@ -10,6 +10,7 @@ import BlogWriter from './pages/BlogWriter';
 import Settings from './pages/Settings';
 import VideoEditor from './pages/VideoEditor';
 import Scheduler from './pages/Scheduler';
+import Analytics from './pages/Analytics';
 import { useStudioStats } from './hooks/useStudioStats';
 import UpdateBanner from './components/UpdateBanner';
 
@@ -136,6 +137,7 @@ export default function App() {
   const onClipCreated = useCallback(() => increment('clipsCreated'), [increment]);
   const onCarouselCreated = useCallback(() => increment('carouselsMade'), [increment]);
   const onBlogCreated = useCallback(() => increment('blogPostsWritten'), [increment]);
+  const onVideoRendered = useCallback(() => increment('videosRendered'), [increment]);
 
   useEffect(() => {
     if (!window.electronAPI) {
@@ -230,9 +232,9 @@ export default function App() {
         {currentPage === 'carousel'   && <CarouselStudio brandProfile={brandProfile} onNavigateToBrand={() => setCurrentPage('brand')} onCarouselCreated={onCarouselCreated} hasClaudeKey={hasClaudeKey} />}
         {currentPage === 'brand'      && <BrandStudio onSave={setBrandProfile} />}
         {currentPage === 'blog'       && <BlogWriter brandProfile={brandProfile} onBlogCreated={onBlogCreated} hasClaudeKey={hasClaudeKey} />}
-        {currentPage === 'editor'     && <VideoEditor initialClipPath={editorClipPath} />}
+        {currentPage === 'editor'     && <VideoEditor initialClipPath={editorClipPath} onVideoRendered={onVideoRendered} />}
         {currentPage === 'schedule'   && <Scheduler />}
-        {currentPage === 'analytics'  && <ComingSoon title="Content Analytics" />}
+        {currentPage === 'analytics'  && <Analytics />}
         {currentPage === 'settings'   && <Settings />}
       </main>
       <UpdateBanner />

@@ -73,8 +73,8 @@ const NavIcons: Record<string, () => React.ReactElement> = {
 
 const GLOBAL_ITEMS: { page: Page; label: string; ready: boolean }[] = [
   { page: 'brand',     label: 'Brand Studio',   ready: true  },
-  { page: 'analytics', label: 'Analytics',      ready: false },
-  { page: 'schedule',  label: 'Scheduler',      ready: false },
+  { page: 'analytics', label: 'Analytics',      ready: true  },
+  { page: 'schedule',  label: 'Scheduler',      ready: true  },
 ];
 
 const ENGINE_ITEMS: { page: Page; label: string; ready: boolean; subtitle?: string }[] = [
@@ -82,7 +82,7 @@ const ENGINE_ITEMS: { page: Page; label: string; ready: boolean; subtitle?: stri
   { page: 'clips',     label: 'Clips',          ready: true  },
   { page: 'carousel',  label: 'Carousel',       ready: true  },
   { page: 'blog',      label: 'Blog Writer',    ready: true  },
-  { page: 'editor',    label: 'Video Editor',   ready: false },
+  { page: 'editor',    label: 'Video Editor',   ready: true  },
 ];
 
 export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {

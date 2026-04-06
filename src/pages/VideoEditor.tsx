@@ -100,7 +100,7 @@ function Timeline({ segments, duration, currentTime, selectedId, onSeek, onSelec
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────
-export default function VideoEditor({ initialClipPath }: { initialClipPath?: string | null } = {}) {
+export default function VideoEditor({ initialClipPath, onVideoRendered }: { initialClipPath?: string | null; onVideoRendered?: () => void } = {}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const segRef = useRef<Segment[]>([]);
 
@@ -236,6 +236,7 @@ export default function VideoEditor({ initialClipPath }: { initialClipPath?: str
         cuts: segments.map(s => ({start:s.start, end:s.end})),
       }) as {success:boolean;outputPath?:string;error?:string};
       setExportResult(r.success ? {success:true,message:r.outputPath?.split('/').pop()||'Done!',outputPath:r.outputPath} : {success:false,message:r.error||'Failed'});
+      if (r.success) onVideoRendered?.();
     } catch(e) { setExportResult({success:false,message:String(e)}); }
     setExportProgress(null); setExporting(false);
   };
