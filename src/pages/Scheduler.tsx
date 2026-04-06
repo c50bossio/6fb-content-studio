@@ -74,7 +74,7 @@ function PostChip({ post, onClick }: { post: ScheduledPost; onClick: () => void 
       <div className="flex items-center gap-1.5 px-1.5 py-1"
         style={{ background: isPosted ? 'rgba(0,200,81,0.07)' : pl.bg }}>
         {post.thumbnailPath && (
-          <img src={`localfile://${post.thumbnailPath}`} alt=""
+          <img src={`file://${post.thumbnailPath}`} alt=""
             className="w-5 h-7 rounded object-cover shrink-0 border border-white/5" />
         )}
         <div className="flex-1 min-w-0">
@@ -109,7 +109,7 @@ function PostDetailModal({ post, onClose, onDelete, onMarkPosted, onPostNow }: {
         {/* Thumbnail */}
         <div className="relative h-36 bg-[#0a0a0a]">
           {post.thumbnailPath ? (
-            <img src={`localfile://${post.thumbnailPath}`} alt=""
+            <img src={`file://${post.thumbnailPath}`} alt=""
               className="absolute inset-0 w-full h-full object-cover" />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
@@ -276,7 +276,7 @@ function NewPostModal({ onClose, onSave }: {
                     <button key={i} onClick={() => { setMediaPath(clip.filePath!); if (clip.thumbnailPath) setThumbnailPath(clip.thumbnailPath); setShowPicker(false); }}
                       className={`rounded-lg overflow-hidden border transition-all ${mediaPath === clip.filePath ? 'border-[#00C851]' : 'border-[#1e1e1e] hover:border-[#333]'}`}>
                       {clip.thumbnailPath ? (
-                        <img src={`localfile://${clip.thumbnailPath}`} alt="" className="w-full aspect-square object-cover" />
+                        <img src={`file://${clip.thumbnailPath}`} alt="" className="w-full aspect-square object-cover" />
                       ) : (
                         <div className="w-full aspect-square bg-[#141414] flex items-center justify-center">
                           <svg viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth={1.5} className="w-4 h-4">
@@ -292,7 +292,7 @@ function NewPostModal({ onClose, onSave }: {
 
             {mediaPath ? (
               <div className="flex items-center gap-2 bg-black border border-[#2a2a2a] rounded-xl px-3 py-2">
-                {thumbnailPath && <img src={`localfile://${thumbnailPath}`} alt="" className="w-8 h-10 rounded object-cover shrink-0" />}
+                {thumbnailPath && <img src={`file://${thumbnailPath}`} alt="" className="w-8 h-10 rounded object-cover shrink-0" />}
                 <p className="text-xs text-white flex-1 truncate">{mediaPath.split('/').pop()}</p>
                 <button onClick={() => { setMediaPath(''); setThumbnailPath(''); }} className="text-[#444] hover:text-red-400 transition-colors">
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
@@ -648,7 +648,7 @@ export default function Scheduler() {
                         <button key={post.id} onClick={() => setSelectedPost(post)}
                           className="w-full flex items-center gap-3 p-3 rounded-xl border border-[#1a1a1a] bg-[#111] hover:border-[#2a2a2a] transition-colors mb-1.5 text-left">
                           {post.thumbnailPath ? (
-                            <img src={`localfile://${post.thumbnailPath}`} alt="" className="w-10 h-14 rounded-lg object-cover shrink-0 border border-[#222]" />
+                            <img src={`file://${post.thumbnailPath}`} alt="" className="w-10 h-14 rounded-lg object-cover shrink-0 border border-[#222]" />
                           ) : (
                             <div className="w-10 h-14 rounded-lg shrink-0 flex items-center justify-center border border-[#1e1e1e]"
                               style={{ background: pl.bg }}>

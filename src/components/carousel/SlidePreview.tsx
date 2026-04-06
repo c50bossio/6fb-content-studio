@@ -29,7 +29,7 @@ function NoiseBackground({ brand }: { brand: BrandProfile }) {
 function FrameBg({ src, opacity = 0.3 }: { src: string; opacity?: number }) {
   return (
     <div className="absolute inset-0 z-0">
-      <img src={`localfile://${src}`} alt="" className="w-full h-full object-cover" />
+      <img src={`file://${src}`} alt="" className="w-full h-full object-cover" />
       <div className="absolute inset-0" style={{ background: `rgba(0,0,0,${1 - opacity})` }} />
     </div>
   );
@@ -37,7 +37,7 @@ function FrameBg({ src, opacity = 0.3 }: { src: string; opacity?: number }) {
 
 function LogoBadge({ brand, size = 24 }: { brand: BrandProfile; size?: number }) {
   if (brand.logoPath) {
-    return <img src={`localfile://${brand.logoPath}`} alt="" style={{ width: size, height: size }} className="object-contain" />;
+    return <img src={`file://${brand.logoPath}`} alt="" style={{ width: size, height: size }} className="object-contain" />;
   }
   return (
     <div style={{ width: size, height: size, background: brand.primaryColor, borderRadius: size * 0.25 }}

@@ -320,7 +320,7 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
                   {allThumbs.length > 0 ? (
                     <div className={`grid gap-1 mb-2 rounded-lg overflow-hidden ${allThumbs.length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
                       {allThumbs.map((t, i) => (
-                        <img key={i} src={`localfile://${t}`} alt=""
+                        <img key={i} src={`file://${t}`} alt=""
                           className="w-full aspect-video object-cover bg-[#111]"
                           onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                       ))}
@@ -372,7 +372,7 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
                     {/* Mini thumbnail */}
                     <div className="shrink-0 w-10 h-10 rounded-lg overflow-hidden bg-[#111] flex items-center justify-center">
                       {thumb ? (
-                        <img src={`localfile://${thumb}`} alt="" className="w-full h-full object-cover"
+                        <img src={`file://${thumb}`} alt="" className="w-full h-full object-cover"
                           onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                       ) : (
                         <svg viewBox="0 0 24 24" fill="none" stroke="#2a2a2a" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -640,7 +640,7 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
                   <label className="field-label">Video Frame</label>
                   {slides[activeSlide].framePath ? (
                     <div className="flex items-center gap-2">
-                      <img src={`localfile://${slides[activeSlide].framePath}`} alt=""
+                      <img src={`file://${slides[activeSlide].framePath}`} alt=""
                         className="w-16 h-10 rounded-lg object-cover border border-[#2a2a2a]"
                         onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                       <div className="flex-1 min-w-0">

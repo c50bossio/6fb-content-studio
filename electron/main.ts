@@ -33,6 +33,7 @@ function createWindow() {
       preload: join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      webSecurity: false,  // Required: allows file:// URLs in renderer for video/image playback
     },
   });
 
