@@ -54,6 +54,7 @@ declare global {
     selectImageFile: () => Promise<{ cancelled: boolean; filePath?: string }>;
       // Clips
       extractClips: (videoPath: string, options: Record<string, unknown>) => Promise<{ success: boolean; data?: unknown; error?: string }>;
+      cancelExtraction: () => Promise<{ success: boolean }>;
       // Carousel
       generateCarousel: (data: { topic: string; type: string; keyPoints: string[]; brandProfile?: BrandProfile }) => Promise<{ success: boolean; slides?: CarouselSlide[]; error?: string }>;
       extractCarousel: (data: { transcript: string; brandProfile: BrandProfile; contentType: string }) => Promise<{ success: boolean; slides?: CarouselSlide[]; error?: string }>;
@@ -83,6 +84,8 @@ declare global {
       checkSystemHealth: () => Promise<unknown>;
       resetApp: () => Promise<{ success: boolean }>;
       openPath: (path: string) => Promise<{ success: boolean }>;
+      showInFinder: (path: string) => Promise<{ success: boolean }>;
+      fetchTodayBrief: () => Promise<{ success: boolean; data?: unknown; error?: string }>;
       // Library
       scanLibrary: () => Promise<unknown>;
       deleteRun: (runId: string) => Promise<{ success: boolean }>;
@@ -151,6 +154,7 @@ export default function App() {
         selectLogo: async () => ({ cancelled: true }),
         selectImageFile: async () => ({ cancelled: true }),
         extractClips: async () => ({ success: false, error: 'Electron required' }),
+        cancelExtraction: async () => ({ success: true }),
         readClipTranscript: async () => null,
         // Carousel Persistence & Export
         exportCarouselDeck: async () => ({ success: false, error: 'Not implemented in browser' }),
@@ -176,6 +180,8 @@ export default function App() {
         }),
         resetApp: async () => ({ success: true }),
         openPath: async () => ({ success: true }),
+        showInFinder: async () => ({ success: true }),
+        fetchTodayBrief: async () => ({ success: false, error: 'Electron required' }),
         scanLibrary: async () => ({ runs: [] }),
         deleteRun: async () => ({ success: true }),
         deleteClip: async () => ({ success: true }),

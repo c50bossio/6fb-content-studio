@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('complete-setup'),
   fetchTodayBrief: () =>
     ipcRenderer.invoke('fetch-today-brief'),
+  completeTodayPlay: (postId: string, action: 'complete' | 'skip') =>
+    ipcRenderer.invoke('complete-today-play', { postId, action }),
+  fetchVoiceProfile: () =>
+    ipcRenderer.invoke('fetch-voice-profile'),
 
   // File Dialogs
   selectVideo: () =>
@@ -28,6 +32,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Clip Extraction (Python bridge)
   extractClips: (videoPath: string, options: Record<string, unknown>) =>
     ipcRenderer.invoke('extract-clips', { videoPath, options }),
+  cancelExtraction: () =>
+    ipcRenderer.invoke('cancel-extraction'),
   readClipTranscript: (clipPath: string) =>
     ipcRenderer.invoke('read-clip-transcript', clipPath),
 
@@ -109,8 +115,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Progress Updates
   onProgress: (callback: (data: { percent: number; label: string }) => void) => {
-    ipcRenderer.on('progress-update', (_event, data) => callback(data));
-    return () => ipcRenderer.removeAllListeners('progress-update');
+    // Use a named handler so removeListener only removes THIS listener,
+    // not all listeners (removeAllListeners would nuke other components' subscriptions).
+    const handler = (_event: Electron.IpcRendererEvent, data: { percent: number; label: string }) => callback(data);
+    ipcRenderer.on('progress-update', handler);
+    return () => ipcRenderer.removeListener('progress-update', handler);
   },
 
   // Scheduler
@@ -123,8 +132,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   markPostAsPosted: (id: string) =>
     ipcRenderer.invoke('mark-post-as-posted', id),
   onPostDue: (callback: () => void) => {
-    ipcRenderer.on('post-due', () => callback());
-    return () => ipcRenderer.removeAllListeners('post-due');
+    const handler = () => callback();
+    ipcRenderer.on('post-due', handler);
+    return () => ipcRenderer.removeListener('post-due', handler);
   },
 
   // 6FB Account (Content Manager)
@@ -143,12 +153,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   installUpdate: () =>
     ipcRenderer.invoke('install-update'),
   onUpdateAvailable: (callback: (info: { version: string }) => void) => {
-    ipcRenderer.on('update-available', (_e, info) => callback(info));
-    return () => ipcRenderer.removeAllListeners('update-available');
+    const handler = (_e: Electron.IpcRendererEvent, info: { version: string }) => callback(info);
+    ipcRenderer.on('update-available', handler);
+    return () => ipcRenderer.removeListener('update-available', handler);
   },
   onUpdateDownloaded: (callback: (info: { version: string }) => void) => {
-    ipcRenderer.on('update-downloaded', (_e, info) => callback(info));
-    return () => ipcRenderer.removeAllListeners('update-downloaded');
+    const handler = (_e: Electron.IpcRendererEvent, info: { version: string }) => callback(info);
+    ipcRenderer.on('update-downloaded', handler);
+    return () => ipcRenderer.removeListener('update-downloaded', handler);
   },
 
   // Instagram Direct Posting

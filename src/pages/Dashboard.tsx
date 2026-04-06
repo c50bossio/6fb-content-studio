@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Page } from '../App';
 import type { StudioStats } from '../hooks/useStudioStats';
 
@@ -57,6 +57,12 @@ const Icons = {
   Blog: () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
       <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
+    </svg>
+  ),
+  Play: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+      <circle cx="12" cy="12" r="10"/>
+      <polygon points="10 8 16 12 10 16 10 8"/>
     </svg>
   ),
 };
@@ -127,6 +133,49 @@ const STATS = [
 ];
 
 export default function Dashboard({ onNavigate, stats, hasBrandProfile }: DashboardProps) {
+  // Today's Play state
+  const [hasContentToken, setHasContentToken] = useState(false);
+  const [briefLoading, setBriefLoading]       = useState(false);
+  const [todayBrief, setTodayBrief]           = useState<{
+    today: { topic: string; pillar: string | null; hookIdea: string | null; bestPostingTime: string | null; postId?: string } | null;
+    week: { day: string; status: string }[];
+  } | null>(null);
+  const [todayPostId, setTodayPostId]         = useState<string | null>(null);
+  const [playDone, setPlayDone]               = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const settings = await window.electronAPI.getAllSettings();
+        const token = (settings as any)?.apiKeys?.contentPlanner;
+        if (!token || cancelled) return;
+        setHasContentToken(true);
+        setBriefLoading(true);
+        const result = await window.electronAPI.fetchTodayBrief();
+        if (cancelled) return;
+        if (result.success && result.data) {
+          setTodayBrief(result.data as any);
+          const postId = (result.data as any)?.today?.id;
+          if (postId) setTodayPostId(postId);
+        }
+      } catch {
+        // silently ignore
+      } finally {
+        if (!cancelled) setBriefLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const handlePlayAction = async (action: 'complete' | 'skip') => {
+    if (!todayPostId) return;
+    try {
+      await (window.electronAPI as any).completeTodayPlay(todayPostId, action);
+      setPlayDone(true);
+    } catch { /* ignore */ }
+  };
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
       {/* Brand Profile Setup Nudge */}
@@ -158,6 +207,106 @@ export default function Dashboard({ onNavigate, stats, hasBrandProfile }: Dashbo
           Your local AI content studio. Everything runs on your machine.
         </p>
       </div>
+
+      {/* Today's Play Widget */}
+      {!hasContentToken ? (
+        <div
+          onClick={() => onNavigate('settings')}
+          className="mb-6 p-3 rounded-xl cursor-pointer bg-6fb-card border border-6fb-border flex items-center gap-3 hover:border-[#8B5CF6]/30 transition-colors"
+        >
+          <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-[#8B5CF6]/10 text-[#8B5CF6] flex-shrink-0">
+            <Icons.Play />
+          </div>
+          <p className="text-xs text-6fb-text-secondary">
+            Connect your Content Planner in Settings to see today's play →
+          </p>
+        </div>
+      ) : briefLoading ? (
+        <div className="mb-6 bg-6fb-card rounded-xl border border-6fb-border p-5 animate-pulse">
+          <div className="h-3 bg-[#333] rounded w-1/3 mb-3" />
+          <div className="h-5 bg-[#333] rounded w-2/3 mb-2" />
+          <div className="h-3 bg-[#333] rounded w-1/2" />
+        </div>
+      ) : todayBrief ? (
+        <div className="mb-6 bg-6fb-card rounded-xl border border-[#8B5CF6]/20 p-5" style={{ backgroundImage: 'linear-gradient(135deg, rgba(139,92,246,0.05) 0%, transparent 100%)' }}>
+          {/* Header */}
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 text-[#8B5CF6]"><Icons.Play /></div>
+              <span className="text-xs font-bold text-[#8B5CF6] uppercase tracking-wider">Today's Play</span>
+            </div>
+            {todayBrief.today?.bestPostingTime && (
+              <span className="text-[10px] bg-[#8B5CF6]/10 text-[#8B5CF6] rounded px-2 py-0.5">
+                Best time: {todayBrief.today.bestPostingTime}
+              </span>
+            )}
+          </div>
+
+          {todayBrief.today ? (
+            <>
+              {/* Pillar pill */}
+              {todayBrief.today.pillar && (
+                <span
+                  className="inline-block text-[10px] font-bold uppercase tracking-wider rounded px-2 py-0.5 mb-2"
+                  style={{
+                    backgroundColor: todayBrief.today.pillar.includes('skill') ? 'rgba(139,92,246,0.15)' :
+                                     todayBrief.today.pillar.includes('person') ? 'rgba(0,200,81,0.15)' : 'rgba(59,130,246,0.15)',
+                    color: todayBrief.today.pillar.includes('skill') ? '#8B5CF6' :
+                           todayBrief.today.pillar.includes('person') ? '#00C851' : '#3B82F6',
+                  }}
+                >
+                  {todayBrief.today.pillar}
+                </span>
+              )}
+              {/* Topic */}
+              <p className="text-white font-bold text-base mb-1">{todayBrief.today.topic}</p>
+              {/* Hook */}
+              {todayBrief.today.hookIdea && (
+                <p className="text-xs text-6fb-text-secondary mb-3 line-clamp-1">{todayBrief.today.hookIdea}</p>
+              )}
+              {/* Week progress dots */}
+              {todayBrief.week.length > 0 && (
+                <div className="flex gap-1.5 mb-4">
+                  {todayBrief.week.map((p, i) => (
+                    <div
+                      key={i}
+                      className="w-2.5 h-2.5 rounded-full"
+                      style={{
+                        backgroundColor: p.status === 'completed' ? '#00C851' :
+                                         p.status === 'skipped' ? '#555' : '#333',
+                      }}
+                      title={`${p.day}: ${p.status}`}
+                    />
+                  ))}
+                </div>
+              )}
+              {/* Actions */}
+              {playDone ? (
+                <p className="text-xs text-6fb-green">Done! Play marked in your Content Planner.</p>
+              ) : todayPostId ? (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handlePlayAction('complete')}
+                    className="flex-1 text-xs font-bold py-2 rounded-lg bg-6fb-green/10 text-6fb-green hover:bg-6fb-green/20 transition-colors"
+                  >
+                    Mark Complete
+                  </button>
+                  <button
+                    onClick={() => handlePlayAction('skip')}
+                    className="text-xs py-2 px-4 rounded-lg bg-[#333]/50 text-6fb-text-secondary hover:bg-[#444]/50 transition-colors"
+                  >
+                    Skip
+                  </button>
+                </div>
+              ) : (
+                <p className="text-[10px] text-6fb-text-muted">Open Content Planner to mark this complete.</p>
+              )}
+            </>
+          ) : (
+            <p className="text-sm text-6fb-text-secondary">Rest day — no play scheduled today.</p>
+          )}
+        </div>
+      ) : null}
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-8">

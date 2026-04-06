@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu } from 
 import { join } from 'path';
 import { existsSync, readdirSync, readFileSync, mkdirSync } from 'fs';
 import { pathToFileURL } from 'url';
-import { runClipExtractor, checkPythonDeps } from './python-bridge';
+import { runClipExtractor, checkPythonDeps, cancelActiveExtraction } from './python-bridge';
 import { autoUpdater } from 'electron-updater';
 
 // ── MUST be called before app.whenReady() ──────────────────────────────────
@@ -18,6 +18,29 @@ app.commandLine.appendSwitch('disable-gpu-memory-buffer-video-frames');
 import Store from 'electron-store';
 const ElectronStore = (Store as unknown as { default: typeof Store }).default || Store;
 
+/**
+ * StoreSchema — canonical shape of persisted app state.
+ * Used for typed direct-key reads; dynamic dot-path writes (e.g. apiKeys.claude)
+ * bypass generics so we keep the store untyped at runtime.
+ */
+export interface StoreSchema {
+  apiKeys?: {
+    claude?: string;
+    openai?: string;
+    contentPlanner?: string;
+  };
+  setupComplete?: boolean;
+  brandProfile?: Record<string, unknown>;
+  contentManagerToken?: string;
+  contentManagerEmail?: string;
+  igAccessToken?: string;
+  igUserId?: string;
+  igUsername?: string;
+  igTokenExpiresAt?: string | null;
+}
+
+// Untyped at runtime due to electron-store's dot-notation dynamic keys (apiKeys.${provider})
+// StoreSchema above is the authoritative reference for what keys exist.
 const store = new ElectronStore();
 let mainWindow: BrowserWindow | null = null;
 
@@ -135,6 +158,11 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
+// Clean up any running Python extraction before quitting
+app.on('before-quit', () => {
+  cancelActiveExtraction();
+});
+
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
@@ -179,6 +207,36 @@ ipcMain.handle('fetch-today-brief', async () => {
     if (!res.ok) return { success: false, error: `API returned ${res.status}` };
     const data = await res.json();
     return { success: true, data };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+});
+
+// Complete today's play — marks a planned post as complete or skipped
+ipcMain.handle('complete-today-play', async (_, { postId, action }: { postId: string; action: 'complete' | 'skip' }) => {
+  const token = store.get('apiKeys.contentPlanner') as string | undefined;
+  if (!token) return { success: false, error: 'No Content Planner token.' };
+  try {
+    const res = await fetch('https://content.6fbmentorship.com/apps/content/api/me/complete-play', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ postId, action }),
+    });
+    return res.ok ? { success: true } : { success: false, error: `API ${res.status}` };
+  } catch (e) {
+    return { success: false, error: String(e) };
+  }
+});
+
+// Fetch user's voice profile from Content Planner web app
+ipcMain.handle('fetch-voice-profile', async () => {
+  const token = store.get('apiKeys.contentPlanner') as string | undefined;
+  if (!token) return { success: false, error: 'No Content Planner token.' };
+  try {
+    const res = await fetch('https://content.6fbmentorship.com/apps/content/api/me/voice-profile', {
+      headers: { 'Authorization': `Bearer ${token}`, Cookie: `auth_token=${token}` },
+    });
+    return res.ok ? { success: true, data: await res.json() } : { success: false };
   } catch (e) {
     return { success: false, error: String(e) };
   }
@@ -242,6 +300,11 @@ ipcMain.handle('extract-clips', async (_event, { videoPath, options }: {
     mainWindow,
   );
   return result;
+});
+
+ipcMain.handle('cancel-extraction', async () => {
+  cancelActiveExtraction();
+  return { success: true };
 });
 
 ipcMain.handle('read-clip-transcript', async (_event, clipPath: string) => {
@@ -782,8 +845,8 @@ ipcMain.handle('trim-clip', async (_event, {
     ], { timeout: 60000 }, (err) => {
       if (err) return resolve({ success: false, error: err.message });
       try {
-        // Atomically replace original with trimmed version
-        rmSync(filePath, { force: true });
+        // renameSync is atomic on POSIX — it replaces filePath in one operation.
+        // Do NOT delete first: if rename fails after delete, the clip is permanently lost.
         require('fs').renameSync(tmpOut, filePath);
         // Update spec
         if (existsSync(specPath)) {
@@ -800,18 +863,20 @@ ipcMain.handle('trim-clip', async (_event, {
 });
 
 // ─── Video Editor: Full Render Pipeline ───────────────────────────
-ipcMain.handle('render-video', async (_event, payload: any) => {
-  const props = (payload?.props ?? payload) as {
-    clipPath: string;
-    trimStart: number;
-    trimEnd: number;
-    outputFormat: '9x16' | '1x1' | '16x9';
-    transition?: string;
-    caption?: { text: string; fontWeight: string; fontSize: number; color: string; position: 'top' | 'center' | 'bottom'; bgOpacity: number } | null;
-    music?: { path: string; volume: number } | null;
-    outputDir?: string;
-    cuts?: { start: number; end: number }[];
-  };
+type RenderVideoProps = {
+  clipPath: string;
+  trimStart: number;
+  trimEnd: number;
+  outputFormat: '9x16' | '1x1' | '16x9';
+  transition?: string;
+  caption?: { text: string; fontWeight: string; fontSize: number; color: string; position: 'top' | 'center' | 'bottom'; bgOpacity: number } | null;
+  music?: { path: string; volume: number } | null;
+  outputDir?: string;
+  cuts?: { start: number; end: number }[];
+};
+
+ipcMain.handle('render-video', async (_event, payload: RenderVideoProps | { props: RenderVideoProps }) => {
+  const props: RenderVideoProps = 'props' in payload ? payload.props : payload;
   const { clipPath, trimStart, trimEnd, outputFormat, caption, music, outputDir, cuts } = props;
   const ffmpeg = findFfmpeg();
   const outDir = outputDir || app.getPath('downloads');
@@ -1000,6 +1065,28 @@ ipcMain.handle('generate-blog-post', async (_event, {
   const brandName = brandProfile.brandName as string || 'Our Brand';
   const truncated = transcript.slice(0, 12000);
 
+  // Optionally inject voice profile from Content Planner
+  let voiceProfileNote = '';
+  try {
+    const vpToken = store.get('apiKeys.contentPlanner') as string | undefined;
+    if (vpToken) {
+      const vpRes = await fetch('https://content.6fbmentorship.com/apps/content/api/me/voice-profile', {
+        headers: { 'Authorization': `Bearer ${vpToken}`, Cookie: `auth_token=${vpToken}` },
+      });
+      if (vpRes.ok) {
+        const vpData = await vpRes.json();
+        const vp = vpData.voiceProfile;
+        if (vp) {
+          const phrases = vp.preferredPhrases?.length ? `Use phrases like: ${vp.preferredPhrases.join(', ')}.` : '';
+          const avoid = vp.avoidedPhrases?.length ? `Avoid: ${vp.avoidedPhrases.join(', ')}.` : '';
+          voiceProfileNote = `\nVoice profile from Content Planner: Tone is ${vp.tone || 'professional'}. ${phrases} ${avoid}`.trim();
+        }
+      }
+    }
+  } catch {
+    // Voice profile fetch failed — continue without it
+  }
+
   try {
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
     const client = new Anthropic({ apiKey });
@@ -1008,6 +1095,7 @@ ipcMain.handle('generate-blog-post', async (_event, {
 
 Content type: ${contentType || 'general'}
 Writing voice: ${tone}
+${voiceProfileNote}
 
 Here is a video transcript (with timestamps):
 ---
@@ -1182,14 +1270,15 @@ ipcMain.handle('mark-post-as-posted', async (_event, id: string) => {
 });
 
 ipcMain.handle('post-to-social', async (_event, { platform }: { platform: string; content: Record<string, unknown> }) => {
-  // Phase 1: open platform in browser (API integration in Phase 2)
+  // Browser-open fallback — opens the platform's upload page.
+  // For direct API posting use post-reel-to-instagram / post-carousel-to-instagram.
   const urls: Record<string, string> = {
     instagram: 'https://www.instagram.com/',
     tiktok: 'https://www.tiktok.com/upload',
     youtube: 'https://studio.youtube.com/',
   };
-  if (urls[platform]) shell.openExternal(urls[platform]);
-  return { success: true };
+  const opened = !!(urls[platform] && shell.openExternal(urls[platform]));
+  return { success: true, opened, note: 'Opened platform in browser. No API post was made.' };
 });
 
 // Background daemon — checks every 60s, marks posts 'due' when their time arrives

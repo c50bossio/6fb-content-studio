@@ -8,6 +8,23 @@ import { join } from 'path';
 import { existsSync } from 'fs';
 import { BrowserWindow } from 'electron';
 
+// 35-minute hard timeout for long 4K renders; cancellable via cancelActiveExtraction()
+const EXTRACTION_TIMEOUT_MS = 35 * 60 * 1000;
+
+// Singleton reference so main.ts can cancel mid-run
+let activeProcess: ChildProcess | null = null;
+
+/**
+ * Kill the active extraction process if one is running.
+ * Safe to call when idle — does nothing.
+ */
+export function cancelActiveExtraction(): void {
+  if (activeProcess) {
+    try { activeProcess.kill('SIGTERM'); } catch {}
+    activeProcess = null;
+  }
+}
+
 // Path to IX clip extractor
 const IX_CLIP_EXTRACTOR = join(
   process.env.HOME || '~',
@@ -104,14 +121,16 @@ export function runClipExtractor(
     // Read API key directly from config file (store only lives in main.ts)
     let storedApiKey = '';
     try {
+      const { readFileSync: readFS } = require('fs') as typeof import('fs');
       const configPath = join(process.env.HOME || '~', 'Library/Application Support/6fb-content-studio/config.json');
-      const { readFileSync } = require('fs');
       if (existsSync(configPath)) {
-        const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+        const config = JSON.parse(readFS(configPath, 'utf-8'));
         storedApiKey = config?.apiKeys?.claude || '';
       }
-    } catch (_) {}
-    
+    } catch (err) {
+      console.warn('[python-bridge] Could not read API key from config:', (err as Error).message);
+    }
+
     const proc: ChildProcess = spawn(venvPythonPath, args, {
       cwd: join(IX_CLIP_EXTRACTOR, '..'),
       env: {
@@ -135,13 +154,29 @@ export function runClipExtractor(
       },
     });
 
+    // Track process so it can be cancelled or killed on app quit
+    activeProcess = proc;
+
+    // Hard timeout: kill the process if it runs too long
+    const timeoutHandle = setTimeout(() => {
+      console.error('[python-bridge] Extraction timed out after 35 minutes — killing process');
+      proc.kill('SIGTERM');
+    }, EXTRACTION_TIMEOUT_MS);
+
     let stdout = '';
     let stderr = '';
     let lastProgressPct = 0;
+    // Buffer incomplete lines so regex patterns don't fail on chunk boundaries
+    let stdoutLineBuf = '';
 
     proc.stdout?.on('data', (data: Buffer) => {
-      const text = data.toString();
-      stdout += text;
+      stdoutLineBuf += data.toString();
+      // Split on newlines, keep the last (potentially incomplete) segment buffered
+      const lines = stdoutLineBuf.split('\n');
+      stdoutLineBuf = lines.pop() ?? '';
+      const text = lines.join('\n');
+      if (!text) return;
+      stdout += text + '\n';
 
       // --- NEW PROGRESS PARSERS FOR MULTI STAGE PIPELINE ---
 
@@ -241,7 +276,13 @@ export function runClipExtractor(
       }
     });
 
+    const cleanup = () => {
+      clearTimeout(timeoutHandle);
+      if (activeProcess === proc) activeProcess = null;
+    };
+
     proc.on('close', (code) => {
+      cleanup();
       if (mainWindow) {
         mainWindow.webContents.send('progress-update', {
           percent: 100,
@@ -251,27 +292,32 @@ export function runClipExtractor(
 
       // Gather the outputs from the expected validated and spec JSON files
       try {
-        const { readFileSync, existsSync } = require('fs');
+        const { readFileSync: readFS, existsSync: existsFS } = require('fs') as typeof import('fs');
         const validatedPath = join(outputDir, 'validated_clips.json');
-        
-        if ((code === 0 || code === null) && existsSync(validatedPath)) {
-          const content = readFileSync(validatedPath, 'utf-8');
+
+        if ((code === 0 || code === null) && existsFS(validatedPath)) {
+          const content = readFS(validatedPath, 'utf-8');
           const data = JSON.parse(content);
-          
+
           // Map to clip layout format
           const formattedClips = (data || []).map((clip: any, i: number) => {
-            // Find the generated mp4 
+            // Find the generated mp4
             const formattedId = String(clip.id || i + 1).padStart(2, '0');
             const clipFolder = `clip-${formattedId}-${clip.title}`;
             const expectedRenderPath = join(outputDir, clipFolder, 'rendered_composition.mp4');
             const fallbackPath = join(outputDir, clipFolder, 'reframed-9x16.mp4');
-            const finalPath = existsSync(expectedRenderPath) ? expectedRenderPath : fallbackPath;
+            // Prefer composed render; fall back only if it actually exists
+            const finalPath = existsFS(expectedRenderPath)
+              ? expectedRenderPath
+              : existsFS(fallbackPath)
+                ? fallbackPath
+                : null;
 
             return {
               start: clip.start || 0,
               end: clip.end || 0,
               score: clip.score ? clip.score / 100 : 0.90, // score is typically 80-100
-              label: clip.title || `AI Segment ${i+1}`,
+              label: clip.title || `AI Segment ${i + 1}`,
               filePath: finalPath,
               rationale: clip.reason,
             };
@@ -283,23 +329,26 @@ export function runClipExtractor(
             outputPath: outputDir
           });
         } else {
-          console.error("PIPELINE FAILED TO GENERATE CLIPS.");
-          console.error("STDOUT:", stdout);
-          console.error("STDERR:", stderr);
+          console.error('[python-bridge] Pipeline failed to generate clips.');
+          console.error('STDOUT (tail):', stdout.slice(-500));
+          console.error('STDERR (tail):', stderr.slice(-500));
           resolve({
             success: false,
-            error: (code === 0 || code === null) ? 'No clips generated by AI Engine' : `Pipeline failed (exit ${code}): ${stderr.slice(-300)}`
+            error: (code === 0 || code === null)
+              ? 'No clips generated by AI Engine'
+              : `Pipeline failed (exit ${code}): ${stderr.slice(-300)}`
           });
         }
       } catch (e: any) {
         resolve({
-           success: false,
-           error: `Failed to compile returned clips: ${e.message}`
+          success: false,
+          error: `Failed to compile returned clips: ${e.message}`
         });
       }
     });
 
     proc.on('error', (err) => {
+      cleanup();
       resolve({
         success: false,
         error: `Failed to start Python: ${err.message}. Install Python 3.10+ and the IX dependencies.`,

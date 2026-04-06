@@ -551,13 +551,34 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
   const [progress, setProgress]           = useState({ percent: 0, label: '' });
   const [clips, setClips]                 = useState<Clip[]>(() => { try { return JSON.parse(localStorage.getItem('clipex:clips') || '[]'); } catch { return []; } });
   const [error, setError]                 = useState('');
+  const [noClipsFound, setNoClipsFound]   = useState(false);
   const [library, setLibrary]             = useState<LibraryRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(() => localStorage.getItem('clipex:runId'));
   const [showLibrary, setShowLibrary]     = useState(true);
   const [previewClip, setPreviewClip]     = useState<Clip | null>(null);
+  const [showCompletePrompt, setShowCompletePrompt] = useState(false);
+  const [completePromptDone, setCompletePromptDone] = useState(false);
+  const [todayPostId, setTodayPostId]               = useState<string | null>(null);
 
   useEffect(() => { if (videoPath) localStorage.setItem('clipex:videoPath', videoPath); }, [videoPath]);
   useEffect(() => { localStorage.setItem('clipex:clips', JSON.stringify(clips)); }, [clips]);
+
+  useEffect(() => {
+    if (clips.length === 0 || processing) return;
+    (async () => {
+      try {
+        const settings = await window.electronAPI.getAllSettings();
+        const token = (settings as any)?.apiKeys?.contentPlanner;
+        if (!token) return;
+        const result = await window.electronAPI.fetchTodayBrief();
+        if (result.success && (result.data as any)?.today) {
+          setShowCompletePrompt(true);
+          const postId = (result.data as any)?.today?.id;
+          if (postId) setTodayPostId(postId);
+        }
+      } catch { /* ignore */ }
+    })();
+  }, [clips.length > 0]);
 
   const loadLibrary = useCallback(async () => {
     try {
@@ -626,6 +647,7 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
   const handleExtract = async () => {
     if (!videoPath) return;
     setProcessing(true);
+    setNoClipsFound(false);
     setError('');
     setProgress({ percent: 0, label: 'Starting…' });
 
@@ -656,6 +678,7 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
           thumbnailPath: c.thumbnailPath ||
             (c.filePath ? (c.filePath as string).replace(/\/[^/]+\.mp4$/, '/thumbnail.jpg') : undefined),
         }));
+        setNoClipsFound(enriched.length === 0);
         setClips(enriched);
         enriched.forEach(() => onClipCreated?.());
         const runId = (result as any).runId || String(Date.now());
@@ -836,6 +859,17 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
                   <div className="w-3 h-3"><Icon.Sparkles /></div>
                   <p className="text-xs text-[#00C851] font-mono tracking-widest uppercase truncate max-w-[200px]">{progress.label || 'Processing…'}</p>
                 </div>
+                <button
+                  onClick={async () => {
+                    await window.electronAPI.cancelExtraction();
+                    setProcessing(false);
+                    setProgress({ percent: 0, label: '' });
+                    setError('Extraction cancelled.');
+                  }}
+                  className="mt-5 px-4 py-1.5 rounded-lg border border-[#333] text-[11px] text-[#555] hover:text-[#ff4444] hover:border-[#ff4444]/40 transition-colors"
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           )}
@@ -866,6 +900,45 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
                 </button>
               </div>
 
+              {showCompletePrompt && !completePromptDone && clips.length > 0 && !processing && (
+                <div className="mb-4 p-3 rounded-xl border border-[#F59E0B]/30 bg-[#F59E0B]/05 flex items-center gap-3">
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-[#F59E0B] mb-0.5">Clips ready!</p>
+                    <p className="text-xs text-6fb-text-secondary">Mark today's Content Planner play as complete?</p>
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    {todayPostId ? (
+                      <button
+                        onClick={async () => {
+                          try {
+                            await (window.electronAPI as any).completeTodayPlay(todayPostId, 'complete');
+                            setCompletePromptDone(true);
+                          } catch { setCompletePromptDone(true); }
+                        }}
+                        className="text-xs font-bold py-1.5 px-3 rounded-lg bg-[#F59E0B]/20 text-[#F59E0B] hover:bg-[#F59E0B]/30 transition-colors"
+                      >
+                        Mark Complete
+                      </button>
+                    ) : (
+                      <a
+                        href="https://content.6fbmentorship.com/apps/content/dashboard"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs font-bold py-1.5 px-3 rounded-lg bg-[#F59E0B]/20 text-[#F59E0B] hover:bg-[#F59E0B]/30 transition-colors"
+                      >
+                        Open Planner
+                      </a>
+                    )}
+                    <button
+                      onClick={() => setShowCompletePrompt(false)}
+                      className="text-xs text-6fb-text-muted hover:text-white transition-colors px-2"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))' }}>
                 {clips.map((clip, i) => (
                   <ClipCard
@@ -880,8 +953,26 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
             </>
           )}
 
+          {/* No clips found after extraction */}
+          {clips.length === 0 && noClipsFound && videoPath && !processing && (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <div className="w-full max-w-sm bg-[#1a1010] border border-[#ff4444]/20 rounded-2xl px-6 py-8 flex flex-col items-center gap-3">
+                <div className="w-12 h-12 rounded-full bg-[#ff4444]/10 border border-[#ff4444]/20 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-[#ff4444]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5}>
+                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                  </svg>
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white">No clips generated</p>
+                  <p className="text-xs text-[#ff4444]/80 mt-0.5 font-medium truncate max-w-[240px]">{videoName}</p>
+                </div>
+                <p className="text-xs text-[#555] mt-1">The AI found no high-scoring segments. Try a different video or adjust the number of clips.</p>
+              </div>
+            </div>
+          )}
+
           {/* Video loaded — prominent ready state */}
-          {clips.length === 0 && videoPath && !processing && (
+          {clips.length === 0 && !noClipsFound && videoPath && !processing && (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <div className="w-full max-w-sm bg-[#0d1f13] border border-[#00C851]/30 rounded-2xl px-6 py-8 flex flex-col items-center gap-3 shadow-[0_0_40px_rgba(0,200,81,0.06)]">
                 <div className="w-12 h-12 rounded-full bg-[#00C851]/10 border border-[#00C851]/20 flex items-center justify-center">
