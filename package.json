@@ -59,6 +59,7 @@
       ],
       "category": "public.app-category.productivity",
       "icon": "assets/icon.png",
+      "artifactName": "6FB-Content-Studio-${arch}.${ext}",
       "notarize": {
         "teamId": "22X9VG6NUE"
       }
