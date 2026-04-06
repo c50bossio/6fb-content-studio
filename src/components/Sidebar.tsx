@@ -90,9 +90,9 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
     <aside className="w-[220px] h-full bg-6fb-card border-r border-6fb-border flex flex-col pt-4 shrink-0">
       <button onClick={() => onNavigate('dashboard')} className="px-5 mb-6 text-left hover:opacity-80 transition-opacity">
         <div className="flex items-center gap-3">
-          {/* Inline 6FB logo — no external file dependency */}
-          <div className="w-9 h-9 rounded-lg bg-black border border-6fb-border flex items-center justify-center shrink-0">
-            <span className="text-[13px] font-black text-6fb-green leading-none tracking-tighter">6FB</span>
+          {/* 6FB logo */}
+          <div className="w-9 h-9 rounded-lg bg-black border border-6fb-border flex items-center justify-center shrink-0 overflow-hidden">
+            <img src="/6fb-logo.png" alt="6FB" className="w-8 h-8 object-contain" />
           </div>
           <div>
             <h1 className="text-sm font-bold text-white leading-tight">Content Studio</h1>
