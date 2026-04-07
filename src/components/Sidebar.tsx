@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Page } from '../App';
 import logoSrc from '../../assets/6fb-logo.png';
 
@@ -87,6 +87,11 @@ const ENGINE_ITEMS: { page: Page; label: string; ready: boolean; subtitle?: stri
 ];
 
 export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
+  const [appVersion, setAppVersion] = useState('...');
+  useEffect(() => {
+    (window as any).electronAPI?.getAppVersion?.().then((v: string) => setAppVersion(v)).catch(() => {});
+  }, []);
+
   return (
     <aside className="w-[220px] h-full bg-6fb-card border-r border-6fb-border flex flex-col pt-4 shrink-0">
       <button onClick={() => onNavigate('dashboard')} className="px-5 mb-6 text-left hover:opacity-80 transition-opacity">
@@ -182,7 +187,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
           <NavIcons.settings />
           <span>Settings</span>
         </button>
-        <p className="text-[9px] text-6fb-text-muted mt-2.5">v1.4.0</p>
+        <p className="text-[9px] text-6fb-text-muted mt-2.5">v{appVersion}</p>
       </div>
     </aside>
   );
