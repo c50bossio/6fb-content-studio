@@ -210,10 +210,15 @@ function ClipPreviewModal({ clip, onClose, onOpenInEditor }: {
               <video
                 ref={videoRef}
                 src={clipSrc}
+                preload="auto"
+                playsInline
                 className="absolute inset-0 w-full h-full object-contain"
                 onTimeUpdate={handleTimeUpdate}
                 onLoadedMetadata={handleLoadedMetadata}
                 onEnded={() => setPlaying(false)}
+                onError={(e) => {
+                  console.error('[ClipDetail] Video playback error:', (e.target as HTMLVideoElement).error);
+                }}
                 onClick={togglePlay}
               />
             ) : (
@@ -646,6 +651,23 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
 
   const handleExtract = async () => {
     if (!videoPath) return;
+
+    // Pre-flight dependency check
+    try {
+      const health = await window.electronAPI.checkSystemHealth() as { deps: Record<string, boolean> };
+      const missing: string[] = [];
+      if (!health.deps.python) missing.push('Python 3.10+');
+      if (!health.deps.ffmpeg) missing.push('FFmpeg');
+      if (!health.deps.mediapipe) missing.push('MediaPipe');
+      if (!health.deps.clipExtractor) missing.push('Clip Extractor pipeline');
+      if (missing.length > 0) {
+        setError(`Missing dependencies: ${missing.join(', ')}. Check Settings for details.`);
+        return;
+      }
+    } catch {
+      // If health check itself fails, proceed anyway (non-blocking)
+    }
+
     setProcessing(true);
     setNoClipsFound(false);
     setError('');
@@ -672,12 +694,18 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
           title: videoPath.split('/').pop()?.split('.')[0] || 'Clip',
           filePath: (result as any).outputPath,
         }];
-        const enriched = raw.map(c => ({
-          ...c,
-          title: c.title || c.label || 'Untitled',
-          thumbnailPath: c.thumbnailPath ||
-            (c.filePath ? (c.filePath as string).replace(/\/[^/]+\.mp4$/, '/thumbnail.jpg') : undefined),
-        }));
+        const enriched = raw.map(c => {
+          const clipPath = c.clipPath || (c.filePath
+            ? (c.filePath as string).replace(/\/[^/]+\.(mp4|mov|webm|mkv)$/i, '')
+            : undefined);
+          return {
+            ...c,
+            title: c.title || c.label || 'Untitled',
+            clipPath,
+            thumbnailPath: c.thumbnailPath ||
+              (c.filePath ? (c.filePath as string).replace(/\/[^/]+\.(mp4|mov|webm|mkv)$/i, '/thumbnail.jpg') : undefined),
+          };
+        });
         setNoClipsFound(enriched.length === 0);
         setClips(enriched);
         enriched.forEach(() => onClipCreated?.());

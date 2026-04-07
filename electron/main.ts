@@ -10,6 +10,7 @@ import { autoUpdater } from 'electron-updater';
 // Without these, Chromium's VideoToolbox decoder on Apple Silicon renders
 // solid green frames for H.264 video instead of actual video content.
 app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('disable-gpu');
 app.commandLine.appendSwitch('disable-accelerated-video-decode');
 app.commandLine.appendSwitch('disable-accelerated-video-encode');
 app.commandLine.appendSwitch('disable-gpu-memory-buffer-video-frames');
