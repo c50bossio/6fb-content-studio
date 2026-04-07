@@ -8,6 +8,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-api-key', provider),
   deleteApiKey: (provider: string) =>
     ipcRenderer.invoke('delete-api-key', provider),
+  getAppVersion: () =>
+    ipcRenderer.invoke('get-app-version'),
   getAllSettings: () =>
     ipcRenderer.invoke('get-all-settings'),
   completeSetup: () =>

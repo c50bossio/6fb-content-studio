@@ -148,7 +148,7 @@ export default function Dashboard({ onNavigate, stats, hasBrandProfile }: Dashbo
     (async () => {
       try {
         const settings = await window.electronAPI.getAllSettings();
-        const token = (settings as any)?.apiKeys?.contentPlanner;
+        const token = settings?.contentPlannerToken;
         if (!token || cancelled) return;
         setHasContentToken(true);
         setBriefLoading(true);

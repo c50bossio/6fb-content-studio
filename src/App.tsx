@@ -45,7 +45,7 @@ declare global {
       saveApiKey: (provider: string, key: string) => Promise<{ success: boolean }>;
       getApiKey: (provider: string) => Promise<{ hasKey: boolean; hint: string | null }>;
       deleteApiKey: (provider: string) => Promise<{ success: boolean }>;
-      getAllSettings: () => Promise<{ apiKeys: { claude: boolean; openai: boolean }; setupComplete: boolean }>;
+      getAllSettings: () => Promise<{ apiKeys: { claude: boolean; openai: boolean }; contentPlannerToken: boolean; setupComplete: boolean }>;
       completeSetup: () => Promise<{ success: boolean }>;
       // Files
       selectVideo: () => Promise<{ cancelled: boolean; filePath?: string }>;
@@ -79,6 +79,7 @@ declare global {
       saveBrandProfile: (profile: BrandProfile) => Promise<{ success: boolean }>;
       getBrandProfile: () => Promise<BrandProfile>;
       // System
+      getAppVersion: () => Promise<string>;
       renderVideo: (compositionId: string, props: Record<string, unknown> & { cuts?: {start: number, end: number}[] }) => Promise<{ success: boolean; error?: string }>;
       postToSocial: (platform: string, content: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
       checkSystemHealth: () => Promise<unknown>;

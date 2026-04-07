@@ -180,6 +180,8 @@ ipcMain.handle('get-api-key', async (_event, provider: string) => {
   return { hasKey: !!key, hint: key ? key.slice(0, 7) + '...' + key.slice(-4) : null };
 });
 
+ipcMain.handle('get-app-version', async () => app.getVersion());
+
 ipcMain.handle('get-all-settings', async () => {
   return {
     apiKeys: {
@@ -1408,8 +1410,12 @@ ipcMain.handle('login-6fb', async (_event, { email, password }: { email: string;
     });
     const data = await res.json() as Record<string, unknown>;
     if (!res.ok) return { success: false, error: (data.error as string) || 'Login failed' };
-    const token = data.token as string | undefined;
-    if (token) store.set('contentManagerToken', token);
+    const setCookie = res.headers.get('set-cookie') ?? '';
+    const token = setCookie.match(/auth_token=([^;]+)/)?.[1];
+    if (token) {
+      store.set('contentManagerToken', token);
+      store.set('apiKeys.contentPlanner', token);
+    }
     store.set('contentManagerEmail', email);
     return { success: true, user: data.user };
   } catch (err) {
@@ -1448,6 +1454,7 @@ ipcMain.handle('get-6fb-account', async () => ({
 ipcMain.handle('disconnect-6fb', async () => {
   store.delete('contentManagerToken');
   store.delete('contentManagerEmail');
+  store.delete('apiKeys.contentPlanner');
   store.delete('igAccessToken');
   store.delete('igUserId');
   store.delete('igUsername');
