@@ -32,10 +32,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('generate-video-plan', data),
 
   // Carousel Generation
-  generateCarousel: (data: { topic: string; type: string; keyPoints: string[]; brandProfile?: object }) =>
+  generateCarousel: (data: { topic: string; type: string; keyPoints: string[]; brandProfile?: object; playbookBrief?: { topicTitle: string; pillar: string; hookIdea: string; visualSuggestion: string; shotList: string[] }; playbookPostId?: string; playbookTopicId?: string }) =>
     ipcRenderer.invoke('generate-carousel', data),
-  extractCarousel: (data: { transcript: string; brandProfile: object; contentType: string }) =>
-    ipcRenderer.invoke('extract-carousel', data),
+  extractCarousel: (data: {
+    transcript: string;
+    brandProfile: object;
+    contentType: string;
+    playbookBrief?: { topicTitle: string; pillar: string; hookIdea: string; visualSuggestion: string; shotList: string[] };
+    playbookPostId?: string;
+    playbookTopicId?: string;
+  }) => ipcRenderer.invoke('extract-carousel', data),
   readTranscript: (runPath: string) =>
     ipcRenderer.invoke('read-transcript', runPath),
   autoMatchCarouselFrames: (data: { runPath: string; timestamps: string[] }) =>
@@ -44,7 +50,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Carousel Persistence & Export
   exportCarouselDeck: (title: string, images: string[]) =>
     ipcRenderer.invoke('export-carousel-deck', { title, images }),
-  saveCarousel: (data: { title: string; slides: object[]; brandSnapshot: object }) =>
+  saveCarousel: (data: { title: string; slides: object[]; brandSnapshot: object; playbookPostId?: string; playbookTopicId?: string }) =>
     ipcRenderer.invoke('save-carousel', data),
   listCarousels: () =>
     ipcRenderer.invoke('list-carousels'),
@@ -118,10 +124,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('get-publishing-config'),
   getScheduledQueue: () =>
     ipcRenderer.invoke('get-scheduled-queue'),
-  pushToScheduler: (payload: { filePath: string; caption: string; mediaType: 'image' | 'video' | 'carousel'; scheduledFor: string; hashtags?: string[]; isTrial?: boolean }) =>
+  pushToScheduler: (payload: { filePath: string; caption: string; mediaType: 'image' | 'video' | 'carousel'; scheduledFor: string; hashtags?: string[]; isTrial?: boolean; playbookPostId?: string }) =>
     ipcRenderer.invoke('push-to-scheduler', payload),
 
   // Playbook Topics
   fetchPlaybookTopics: () =>
     ipcRenderer.invoke('fetch-playbook-topics'),
+  fetchTodayBrief: () =>
+    ipcRenderer.invoke('fetch-today-brief'),
+
+  // Video Editor
+  loadWordsJson: (path: string) =>
+    ipcRenderer.invoke('load-words-json', path),
+  exportEditedSpec: (path: string, spec: object) =>
+    ipcRenderer.invoke('export-edited-spec', path, spec),
 });

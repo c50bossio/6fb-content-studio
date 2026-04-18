@@ -25,6 +25,13 @@ export interface BrandProfile {
   logoPath: string | null;
 }
 
+export interface EditorClip {
+  title: string;
+  clipDir: string;
+  wordsJsonPath: string;
+  editedSpecPath: string;
+}
+
 export interface CarouselSlide {
   slideNumber: number;
   heading: string;
@@ -34,6 +41,15 @@ export interface CarouselSlide {
   timestamp?: string;
   framePath?: string | null;
   slideType: 'cover' | 'content' | 'cta';
+}
+
+export interface SavedCarouselMeta {
+  id: string;
+  title: string;
+  slideCount: number;
+  createdAt: string;
+  playbookPostId?: string;
+  playbookTopicId?: string;
 }
 
 declare global {
@@ -53,17 +69,31 @@ declare global {
       // Clips
       extractClips: (videoPath: string, options: Record<string, unknown>) => Promise<{ success: boolean; data?: unknown; error?: string }>;
       // Carousel
-      generateCarousel: (data: { topic: string; type: string; keyPoints: string[]; brandProfile?: BrandProfile }) => Promise<{ success: boolean; slides?: CarouselSlide[]; error?: string }>;
+      generateCarousel: (data: {
+        topic: string; type: string; keyPoints: string[]; brandProfile?: BrandProfile;
+        playbookBrief?: { topicTitle: string; pillar: string; hookIdea: string; visualSuggestion: string; shotList: string[] };
+        playbookPostId?: string; playbookTopicId?: string;
+      }) => Promise<{ success: boolean; slides?: CarouselSlide[]; playbookPostId?: string; playbookTopicId?: string; error?: string }>;
       extractCarousel: (data: { transcript: string; brandProfile: BrandProfile; contentType: string }) => Promise<{ success: boolean; slides?: CarouselSlide[]; error?: string }>;
       readTranscript: (runPath: string) => Promise<{ success: boolean; transcript?: string; format?: string; error?: string }>;
       autoMatchCarouselFrames: (data: { runPath: string; timestamps: string[] }) => Promise<{ success: boolean; frames?: (string | null)[]; error?: string }>;
       // Carousel Persistence & Export
       exportCarouselDeck: (title: string, images: string[]) => Promise<{ success: boolean; folderPath?: string; savedPaths?: string[]; error?: string }>;
-      saveCarousel: (data: { title: string; slides: object[]; brandSnapshot: object }) => Promise<{ success: boolean; id?: string; error?: string }>;
+      saveCarousel: (data: { title: string; slides: object[]; brandSnapshot: object; playbookPostId?: string; playbookTopicId?: string }) => Promise<{ success: boolean; id?: string; error?: string }>;
       listCarousels: () => Promise<{ carousels: { id: string; title: string; slideCount: number; createdAt: string }[] }>;
       loadCarousel: (id: string) => Promise<{ success: boolean; data?: { slides: CarouselSlide[]; title: string; brandSnapshot: BrandProfile } }>;
       deleteCarousel: (id: string) => Promise<{ success: boolean }>;
       renameCarousel: (id: string, title: string) => Promise<{ success: boolean }>;
+      // Playbook
+      fetchTodayBrief: () => Promise<{
+        postId: string; topicId: string; topicTitle: string; pillar: string;
+        contentType: string; hookIdea: string; visualSuggestion: string;
+        shotList: string[]; hashtagSet: string[]; bestPostingTime: string;
+      } | { postId: null } | null>;
+      fetchPlaybookTopics: () => Promise<{ weekStart: string; weekEnd: string; posts: {
+        postId: string; topicId: string; scheduledDay: string; topicTitle: string;
+        pillar: string; contentType: string; status: string;
+      }[] } | []>;
       // Planner
       generateVideoPlan: (data: { topic: string; type: string; duration: string; perspective: string; useRag?: boolean; targetLocation?: string }) => Promise<{ success: boolean; data?: unknown; error?: string }>;
       // Blog
@@ -90,6 +120,9 @@ declare global {
       generateThumbnail: (videoPath: string, thumbPath: string) => Promise<{ success: boolean; thumbPath?: string }>;
       // Progress
       onProgress: (callback: (data: { percent: number; label: string }) => void) => () => void;
+      // Video Editor
+      loadWordsJson: (path: string) => Promise<{ success: boolean; data?: { words: Array<{ word: string; start_ms: number; end_ms: number }> }; error?: string }>;
+      exportEditedSpec: (path: string, spec: object) => Promise<{ success: boolean; error?: string }>;
     };
   }
 }
@@ -101,11 +134,17 @@ export default function App() {
   const [setupComplete, setSetupComplete] = useState<boolean | null>(null);
   const [hasClaudeKey, setHasClaudeKey] = useState<boolean>(false);
   const [brandProfile, setBrandProfile] = useState<BrandProfile | null>(null);
+  const [editorClip, setEditorClip] = useState<EditorClip | null>(null);
   const { stats, increment } = useStudioStats();
 
   const onClipCreated = useCallback(() => increment('clipsCreated'), [increment]);
   const onCarouselCreated = useCallback(() => increment('carouselsMade'), [increment]);
   const onBlogCreated = useCallback(() => increment('blogPostsWritten'), [increment]);
+
+  const handleOpenInEditor = useCallback((clip: EditorClip) => {
+    setEditorClip(clip);
+    setCurrentPage('editor');
+  }, []);
 
   useEffect(() => {
     if (!window.electronAPI) {
@@ -160,6 +199,9 @@ export default function App() {
         deleteBlogPost: async () => ({ success: true }),
         exportBlogMarkdown: async () => ({ success: false, error: 'Electron required' }),
         fetchPlaybookTopics: async () => [],
+        fetchTodayBrief: async () => null,
+        loadWordsJson: async () => ({ success: false, error: 'Electron required' }),
+        exportEditedSpec: async () => ({ success: false, error: 'Electron required' }),
       } as unknown as typeof window.electronAPI;
     }
 
@@ -188,11 +230,11 @@ export default function App() {
       <main className="flex-1 overflow-y-auto">
         {currentPage === 'dashboard'  && <Dashboard onNavigate={setCurrentPage} stats={stats} />}
         {currentPage === 'planner'    && <ContentPlanner onPlanCreated={onClipCreated} hasClaudeKey={hasClaudeKey} />}
-        {currentPage === 'clips'      && <ClipExtractor onClipCreated={onClipCreated} />}
+        {currentPage === 'clips'      && <ClipExtractor onClipCreated={onClipCreated} onOpenInEditor={handleOpenInEditor} />}
         {currentPage === 'carousel'   && <CarouselStudio brandProfile={brandProfile} onNavigateToBrand={() => setCurrentPage('brand')} onCarouselCreated={onCarouselCreated} hasClaudeKey={hasClaudeKey} />}
         {currentPage === 'brand'      && <BrandStudio onSave={setBrandProfile} />}
         {currentPage === 'blog'       && <BlogWriter brandProfile={brandProfile} onBlogCreated={onBlogCreated} hasClaudeKey={hasClaudeKey} />}
-        {currentPage === 'editor'     && <VideoEditor brandProfile={brandProfile} />}
+        {currentPage === 'editor'     && <VideoEditor brandProfile={brandProfile} editorClip={editorClip} onNavigateToClips={() => setCurrentPage('clips')} />}
         {currentPage === 'schedule'   && <PostScheduler />}
         {currentPage === 'analytics'  && <ComingSoon title="Content Analytics" />}
         {currentPage === 'settings'   && <Settings />}

@@ -4,6 +4,57 @@ interface SetupProps {
   onComplete: () => void;
 }
 
+// ─── SVG Icons (no emojis) ────────────────────────────────────────
+const SetupIcons = {
+  Scissors: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+      <circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/>
+      <line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/>
+      <line x1="8.12" y1="8.12" x2="12" y2="12"/>
+    </svg>
+  ),
+  Carousel: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+      <rect x="5" y="3" width="14" height="18" rx="2"/>
+      <line x1="1" y1="6" x2="1" y2="18"/><line x1="23" y1="6" x2="23" y2="18"/>
+    </svg>
+  ),
+  Video: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+      <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/>
+    </svg>
+  ),
+  Share: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+      <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+      <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+    </svg>
+  ),
+  Key: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+      <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+    </svg>
+  ),
+  Lock: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+    </svg>
+  ),
+  Link: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+    </svg>
+  ),
+};
+
+const FEATURES = [
+  { Icon: SetupIcons.Scissors, text: 'AI-powered clip extraction from long videos', color: '#8B5CF6' },
+  { Icon: SetupIcons.Carousel, text: 'Instagram carousel generator with brand theming', color: '#00C851' },
+  { Icon: SetupIcons.Video, text: 'Remotion video editor with captions & effects', color: '#EC4899' },
+  { Icon: SetupIcons.Share, text: 'Multi-platform posting & scheduling', color: '#3B82F6' },
+];
+
 export default function Setup({ onComplete }: SetupProps) {
   const [step, setStep] = useState(0);
   const [provider, setProvider] = useState<'claude' | 'openai'>('claude');
@@ -39,17 +90,17 @@ export default function Setup({ onComplete }: SetupProps) {
   };
 
   return (
-    <div className="h-screen bg-6fb-bg flex items-center justify-center">
-      <div className="w-full max-w-md px-8">
+    <div className="h-screen bg-6fb-bg flex items-center justify-center px-4">
+      <div className="w-full max-w-md">
         {/* Step 0: Welcome */}
         {step === 0 && (
           <div className="text-center">
             <img
               src="/content-playbook.png"
               alt="6FB Content Studio"
-              className="w-20 h-20 mx-auto rounded-2xl object-contain mb-6"
+              className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-2xl object-contain mb-6"
             />
-            <h1 className="text-3xl font-bold text-white mb-3">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-3">
               Welcome to<br />
               <span className="text-6fb-green">6FB Content Studio</span>
             </h1>
@@ -58,15 +109,12 @@ export default function Setup({ onComplete }: SetupProps) {
               Extract clips, create carousels, edit videos — all locally powered.
             </p>
 
-            <div className="space-y-3 text-left mb-8">
-              {[
-                { icon: '✂️', text: 'AI-powered clip extraction from long videos' },
-                { icon: '🎠', text: 'Instagram carousel generator' },
-                { icon: '🎬', text: 'Remotion video editor with captions' },
-                { icon: '📱', text: 'Multi-platform posting' },
-              ].map((f, i) => (
+            <div className="space-y-2.5 text-left mb-8">
+              {FEATURES.map((f, i) => (
                 <div key={i} className="flex items-center gap-3 bg-6fb-card rounded-lg px-4 py-3 border border-6fb-border">
-                  <span className="text-lg">{f.icon}</span>
+                  <div className="w-5 h-5 shrink-0" style={{ color: f.color }}>
+                    <f.Icon />
+                  </div>
                   <span className="text-sm text-6fb-text-secondary">{f.text}</span>
                 </div>
               ))}
@@ -84,15 +132,20 @@ export default function Setup({ onComplete }: SetupProps) {
         {/* Step 1: API Key */}
         {step === 1 && (
           <div>
-            <button onClick={() => setStep(0)} className="text-6fb-text-muted text-sm mb-6 hover:text-white transition-colors">
-              ← Back
+            <button onClick={() => setStep(0)} className="text-6fb-text-muted text-sm mb-6 hover:text-white transition-colors flex items-center gap-1.5">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+              Back
             </button>
 
-            <div className="w-14 h-14 rounded-xl bg-6fb-card border border-6fb-border flex items-center justify-center mb-4">
-              <span className="text-2xl">🔑</span>
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-6fb-card border border-6fb-border flex items-center justify-center mb-4 text-6fb-green">
+              <div className="w-6 h-6">
+                <SetupIcons.Key />
+              </div>
             </div>
 
-            <h2 className="text-2xl font-bold text-white mb-2">Connect Your AI</h2>
+            <h2 className="text-xl sm:text-2xl font-bold text-white mb-2">Connect Your AI</h2>
             <p className="text-sm text-6fb-text-secondary mb-6">
               Your API key is stored locally on your computer. It never leaves your machine.
             </p>
@@ -112,7 +165,8 @@ export default function Setup({ onComplete }: SetupProps) {
                       : 'border-6fb-border bg-6fb-card text-6fb-text-secondary hover:border-6fb-text-muted'
                   }`}
                 >
-                  {p === 'claude' ? '🟣 Claude' : '🟢 OpenAI'}
+                  <div className={`w-2 h-2 rounded-full ${p === 'claude' ? 'bg-purple-500' : 'bg-emerald-500'}`} />
+                  {p === 'claude' ? 'Claude' : 'OpenAI'}
                 </button>
               ))}
             </div>
@@ -128,8 +182,9 @@ export default function Setup({ onComplete }: SetupProps) {
               placeholder={provider === 'claude' ? 'sk-ant-api03-...' : 'sk-...'}
               className="w-full bg-6fb-card border border-6fb-border rounded-lg px-4 py-3 text-white text-sm placeholder-6fb-text-muted focus:outline-none focus:border-6fb-green transition-colors mb-2"
             />
-            <p className="text-[11px] text-6fb-text-muted mb-5">
-              🔗 Get your key: {provider === 'claude'
+            <p className="text-[11px] text-6fb-text-muted mb-5 flex items-center gap-1.5">
+              <span className="w-3 h-3 shrink-0 text-6fb-green"><SetupIcons.Link /></span>
+              Get your key: {provider === 'claude'
                 ? <a href="https://console.anthropic.com" target="_blank" className="text-6fb-green hover:underline">console.anthropic.com</a>
                 : <a href="https://platform.openai.com/api-keys" target="_blank" className="text-6fb-green hover:underline">platform.openai.com</a>
               }
@@ -149,8 +204,9 @@ export default function Setup({ onComplete }: SetupProps) {
               {saving ? 'Saving...' : 'Save & Launch Studio'}
             </button>
 
-            <p className="text-[10px] text-6fb-text-muted text-center mt-4">
-              🔒 Stored locally via electron-store. Your key never touches the internet.
+            <p className="text-[10px] text-6fb-text-muted text-center mt-4 flex items-center justify-center gap-1.5">
+              <span className="w-3 h-3 shrink-0"><SetupIcons.Lock /></span>
+              Stored locally via electron-store. Your key never touches the internet.
             </p>
           </div>
         )}

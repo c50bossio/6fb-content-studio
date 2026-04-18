@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Notification } from 'electron';
 import { join } from 'path';
-import { existsSync, readdirSync, readFileSync, mkdirSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { pathToFileURL } from 'url';
 import { runClipExtractor, checkPythonDeps } from './python-bridge';
 
@@ -324,11 +324,20 @@ Make sure to include at least 1 "hook" at the beginning, 1 "payoff" near the end
 });
 
 // Carousel Generation (uses student's Claude API key)
-ipcMain.handle('generate-carousel', async (_event, { topic, type, keyPoints, brandProfile }: {
+ipcMain.handle('generate-carousel', async (_event, { topic, type, keyPoints, brandProfile, playbookBrief, playbookPostId, playbookTopicId }: {
   topic: string;
   type: string;
   keyPoints: string[];
   brandProfile?: Record<string, unknown>;
+  playbookBrief?: {
+    topicTitle: string;
+    pillar: string;
+    hookIdea: string;
+    visualSuggestion: string;
+    shotList: string[];
+  };
+  playbookPostId?: string;
+  playbookTopicId?: string;
 }) => {
   const apiKey = store.get('apiKeys.claude') as string;
   if (!apiKey) return { success: false, error: 'No Claude API key configured' };
@@ -349,7 +358,11 @@ ipcMain.handle('generate-carousel', async (_event, { topic, type, keyPoints, bra
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
     const client = new Anthropic({ apiKey });
 
-    const prompt = `You are a professional carousel designer for ${brandName}.
+    const playbookContext = playbookBrief
+      ? `The user is creating this content to execute their weekly content strategy. Today's planned topic: ${playbookBrief.topicTitle} (${playbookBrief.pillar}). Hook angle: ${playbookBrief.hookIdea}. Visual direction: ${playbookBrief.visualSuggestion}. Shot list beats: ${playbookBrief.shotList.join('; ')}. Anchor every slide to this brief — do not drift into an unrelated angle.\n\n`
+      : '';
+
+    const prompt = `${playbookContext}You are a professional carousel designer for ${brandName}.
 
 Brand tone: ${tone}
 Visual style: ${layoutStyle} (affects how copy should be written — ${layoutStyle === 'minimal' ? 'very short, punchy' : layoutStyle === 'data-driven' ? 'lead with a number or stat' : 'bold headlines, clear value'})
@@ -401,7 +414,7 @@ It must be a JSON array containing exactly 5 slide objects:
       slideType: s.slideType?.toLowerCase().includes('cover') ? 'cover' : s.slideType?.toLowerCase().includes('cta') ? 'cta' : 'content'
     }));
 
-    return { success: true, slides };
+    return { success: true, slides, playbookPostId, playbookTopicId };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     return { success: false, error: msg };
@@ -496,11 +509,47 @@ ipcMain.handle('read-transcript', async (_event, runPath: string) => {
   return { success: false, error: 'No transcript found in run directory' };
 });
 
+// ─── Video Editor IPC ─────────────────────────────────────────────
+ipcMain.handle('load-words-json', (_event, wordsJsonPath: string) => {
+  try {
+    if (!existsSync(wordsJsonPath)) return { success: false, error: 'Words JSON file not found' };
+    const data = JSON.parse(readFileSync(wordsJsonPath, 'utf-8'));
+    return { success: true, data };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+});
+
+ipcMain.handle('export-edited-spec', (_event, outputPath: string, spec: object) => {
+  try {
+    writeFileSync(outputPath, JSON.stringify(spec, null, 2), 'utf-8');
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+});
+
 ipcMain.handle('extract-carousel', async (_event, {
   transcript,
   brandProfile,
   contentType,
-}: { transcript: string; brandProfile: Record<string, unknown>; contentType: string }) => {
+  playbookBrief,
+  playbookPostId,
+  playbookTopicId,
+}: {
+  transcript: string;
+  brandProfile: Record<string, unknown>;
+  contentType: string;
+  playbookBrief?: {
+    topicTitle: string;
+    pillar: string;
+    hookIdea: string;
+    visualSuggestion: string;
+    shotList: string[];
+  };
+  playbookPostId?: string;
+  playbookTopicId?: string;
+}) => {
   const apiKey = store.get('apiKeys.claude') as string;
   if (!apiKey) return { success: false, error: 'No Claude API key configured' };
 
@@ -516,12 +565,16 @@ ipcMain.handle('extract-carousel', async (_event, {
 
   const truncated = transcript.slice(0, 8000);
 
+  const playbookContext = playbookBrief
+    ? `\n\nThe user is creating this content to execute their weekly content strategy. Today's planned topic: ${playbookBrief.topicTitle} (${playbookBrief.pillar}). Hook angle: ${playbookBrief.hookIdea}. Visual direction: ${playbookBrief.visualSuggestion}. Shot list beats: ${(playbookBrief.shotList || []).join('; ')}. Anchor every slide to this brief — do not drift into an unrelated angle.\n`
+    : '';
+
   try {
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
     const client = new Anthropic({ apiKey });
 
     const prompt = `You are a social media content strategist for ${brandName}.
-
+${playbookContext}
 Content type: ${contentType || 'general'}
 Brand tone: ${tone}
 Visual style: ${layoutStyle} (affects how copy should be written — ${layoutStyle === 'minimal' ? 'very short, punchy' : layoutStyle === 'data-driven' ? 'lead with a number or stat' : 'bold headlines, clear value'})
@@ -580,7 +633,7 @@ It must be a JSON array containing exactly 5 slide objects:
       slideType: s.slideNumber === 1 ? 'cover' : s.slideNumber === 5 ? 'cta' : 'content'
     }));
 
-    return { success: true, slides };
+    return { success: true, slides, playbookPostId, playbookTopicId };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     return { success: false, error: msg };
@@ -658,7 +711,7 @@ ipcMain.handle('auto-match-carousel-frames', async (_event, {
 
 // ─── Library & Thumbnails ─────────────────────────────────────────
 import { execFile } from 'child_process';
-import { rmSync, writeFileSync } from 'fs';
+import { rmSync } from 'fs';
 
 function findFfmpeg(): string {
   const candidates = ['/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/usr/bin/ffmpeg'];
@@ -775,14 +828,17 @@ ipcMain.handle('rename-clip', async (_event, { specPath, newTitle }: { specPath:
 // ─── Carousel Persistence ─────────────────────────────────────────
 const carouselsDir = () => join(app.getPath('userData'), 'carousels');
 
-ipcMain.handle('save-carousel', async (_event, { title, slides, brandSnapshot }: {
-  title: string; slides: object[]; brandSnapshot: object;
+ipcMain.handle('save-carousel', async (_event, { title, slides, brandSnapshot, playbookPostId, playbookTopicId }: {
+  title: string; slides: object[]; brandSnapshot: object; playbookPostId?: string; playbookTopicId?: string;
 }) => {
   const dir = carouselsDir();
   if (!existsSync(dir)) { const { mkdirSync } = await import('fs'); mkdirSync(dir, { recursive: true }); }
   const id = Date.now().toString();
   const filePath = join(dir, `${id}.json`);
-  writeFileSync(filePath, JSON.stringify({ id, title, slides, brandSnapshot, createdAt: new Date().toISOString() }, null, 2));
+  const record: Record<string, unknown> = { id, title, slides, brandSnapshot, createdAt: new Date().toISOString() };
+  if (playbookPostId) record.playbookPostId = playbookPostId;
+  if (playbookTopicId) record.playbookTopicId = playbookTopicId;
+  writeFileSync(filePath, JSON.stringify(record, null, 2));
   return { success: true, id };
 });
 
@@ -1036,6 +1092,7 @@ ipcMain.handle('push-to-scheduler', async (_event, payload: {
   scheduledFor: string; // ISO string
   hashtags?: string[];
   isTrial?: boolean;
+  playbookPostId?: string;
 }) => {
   try {
     const apiKey = store.get('publishingBridge.apiKey', '') as string;
@@ -1086,6 +1143,7 @@ ipcMain.handle('push-to-scheduler', async (_event, payload: {
           scheduledFor: payload.scheduledFor,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           isTrial: payload.isTrial ?? false,
+          ...(payload.playbookPostId ? { playbookPostId: payload.playbookPostId } : {}),
         }),
       }
     );
@@ -1107,21 +1165,45 @@ ipcMain.handle('push-to-scheduler', async (_event, payload: {
 ipcMain.handle('fetch-playbook-topics', async () => {
   try {
     const apiKey = store.get('publishingBridge.apiKey', '') as string;
-    if (!apiKey) return [];
+    const userEmail = store.get('publishingBridge.userEmail', '') as string;
+    if (!apiKey || !userEmail) return [];
 
     const res = await fetch(
-      'https://content.6fbmentorship.com/api/me/planned-topics',
+      `https://content.6fbmentorship.com/api/studio/planned-topics?userEmail=${encodeURIComponent(userEmail)}`,
       {
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
+          'x-api-key': apiKey,
           'X-Client': '6fb-content-studio',
         },
       }
     );
     if (!res.ok) return [];
     const data = await res.json();
-    return Array.isArray(data) ? data : (data.topics || []);
+    return data;
   } catch {
     return [];
+  }
+});
+
+ipcMain.handle('fetch-today-brief', async () => {
+  try {
+    const apiKey = store.get('publishingBridge.apiKey', '') as string;
+    const userEmail = store.get('publishingBridge.userEmail', '') as string;
+    if (!apiKey || !userEmail) return null;
+
+    const res = await fetch(
+      `https://content.6fbmentorship.com/api/studio/today-brief?userEmail=${encodeURIComponent(userEmail)}`,
+      {
+        headers: {
+          'x-api-key': apiKey,
+          'X-Client': '6fb-content-studio',
+        },
+      }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data;
+  } catch {
+    return null;
   }
 });
