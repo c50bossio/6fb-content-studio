@@ -1169,7 +1169,7 @@ ipcMain.handle('fetch-playbook-topics', async () => {
     if (!apiKey || !userEmail) return [];
 
     const res = await fetch(
-      `https://content.6fbmentorship.com/api/studio/planned-topics?userEmail=${encodeURIComponent(userEmail)}`,
+      `https://content.6fbmentorship.com/apps/content/api/studio/planned-topics?userEmail=${encodeURIComponent(userEmail)}`,
       {
         headers: {
           'x-api-key': apiKey,
@@ -1192,7 +1192,7 @@ ipcMain.handle('fetch-today-brief', async () => {
     if (!apiKey || !userEmail) return null;
 
     const res = await fetch(
-      `https://content.6fbmentorship.com/api/studio/today-brief?userEmail=${encodeURIComponent(userEmail)}`,
+      `https://content.6fbmentorship.com/apps/content/api/studio/today-brief?userEmail=${encodeURIComponent(userEmail)}`,
       {
         headers: {
           'x-api-key': apiKey,
