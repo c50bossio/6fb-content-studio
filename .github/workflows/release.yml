@@ -75,8 +75,10 @@ jobs:
           # --publish never so we control the release ourselves; electron-builder still writes latest-mac.yml
           npm run package:mac -- --publish never
           DMG=$(ls release/*.dmg | head -1)
+          ZIP=$(ls release/*.zip | head -1)
           YML=$(ls release/latest-mac.yml 2>/dev/null | head -1)
           echo "DMG_PATH=${DMG}" >> $GITHUB_ENV
+          echo "ZIP_PATH=${ZIP}" >> $GITHUB_ENV
           echo "YML_PATH=${YML}" >> $GITHUB_ENV
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
@@ -117,5 +119,6 @@ jobs:
             Settings → 6FB Account → sign in → Sync Instagram
           files: |
             ${{ env.DMG_PATH }}
+            ${{ env.ZIP_PATH }}
             ${{ env.YML_PATH }}
           token: ${{ secrets.GH_TOKEN }}
