@@ -4,7 +4,10 @@ out/
 release/
 .env
 .env.local
-python/
+python/.build-venv/
+python/build/
+python/dist/
+python/runtime/
 *.log
 .DS_Store
 certs/

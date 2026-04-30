@@ -7,7 +7,7 @@ on:
 
 jobs:
   release-mac:
-    runs-on: macos-latest
+    runs-on: macos-15
 
     steps:
       # ── 1. Checkout ────────────────────────────────────────────────
@@ -23,6 +23,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Build bundled Python runtime
+        run: npm run runtime:mac
 
       # ── 3. Import Developer ID cert from secret ────────────────────
       - name: Import signing certificate
@@ -70,7 +73,7 @@ jobs:
           # Stamp package.json with the tag version so latest-mac.yml gets the right semver
           npm version ${VERSION} --no-git-tag-version --allow-same-version
           # --publish never so we control the release ourselves; electron-builder still writes latest-mac.yml
-          npx electron-builder --mac dmg zip --publish never
+          npm run package:mac -- --publish never
           DMG=$(ls release/*.dmg | head -1)
           YML=$(ls release/latest-mac.yml 2>/dev/null | head -1)
           echo "DMG_PATH=${DMG}" >> $GITHUB_ENV

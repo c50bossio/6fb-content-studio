@@ -175,8 +175,8 @@ export default function App() {
         onProgress: () => () => {},
         deleteApiKey: async () => ({ success: true }),
         checkSystemHealth: async () => ({
-          deps: { python: false, ffmpeg: false, mediapipe: false, clipExtractor: false },
-          paths: { userData: '~/Library/Application Support/6fb-content-studio', ixClipExtractor: '' },
+          deps: { python: false, ffmpeg: false, ffprobe: false, mediapipe: false, clipExtractor: false },
+          paths: { userData: '~/Library/Application Support/6fb-content-studio', clipExtractor: '' },
           apiKeys: { claude: true, openai: false },
         }),
         resetApp: async () => ({ success: true }),

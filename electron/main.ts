@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu } from 
 import { join } from 'path';
 import { existsSync, readdirSync, readFileSync, mkdirSync } from 'fs';
 import { pathToFileURL } from 'url';
-import { runClipExtractor, checkPythonDeps, cancelActiveExtraction } from './python-bridge';
+import { runClipExtractor, checkPythonDeps, cancelActiveExtraction, resolveSystemPython, type ClipExtractorRuntime } from './python-bridge';
 import { autoUpdater } from 'electron-updater';
 
 // ── MUST be called before app.whenReady() ──────────────────────────────────
@@ -44,6 +44,80 @@ export interface StoreSchema {
 // StoreSchema above is the authoritative reference for what keys exist.
 const store = new ElectronStore();
 let mainWindow: BrowserWindow | null = null;
+
+type PipelineSettings = {
+  mode?: 'bundled' | 'custom';
+  pythonPath?: string;
+  ffmpegPath?: string;
+  ffprobePath?: string;
+  toolsDir?: string;
+  pipelineScriptPath?: string;
+  binaryPath?: string;
+};
+
+function resourcePath(...parts: string[]) {
+  return app.isPackaged
+    ? join(process.resourcesPath, ...parts)
+    : join(process.cwd(), ...parts);
+}
+
+function bundledToolsDir() {
+  return resourcePath('python', 'tools');
+}
+
+function runtimeId() {
+  return `${process.platform}-${process.arch}`;
+}
+
+function bundledRuntimeDir() {
+  return resourcePath('python', 'runtime', runtimeId());
+}
+
+function bundledPipelineBinaryPath() {
+  const executable = process.platform === 'win32'
+    ? join(bundledRuntimeDir(), 'pipeline', '6fb-pipeline', '6fb-pipeline.exe')
+    : join(bundledRuntimeDir(), 'pipeline', '6fb-pipeline', '6fb-pipeline');
+  return existsSync(executable) ? executable : undefined;
+}
+
+function bundledFfmpegPath() {
+  const executable = process.platform === 'win32'
+    ? join(bundledRuntimeDir(), 'bin', 'ffmpeg.exe')
+    : join(bundledRuntimeDir(), 'bin', 'ffmpeg');
+  return existsSync(executable) ? executable : undefined;
+}
+
+function bundledFfprobePath() {
+  const executable = process.platform === 'win32'
+    ? join(bundledRuntimeDir(), 'bin', 'ffprobe.exe')
+    : join(bundledRuntimeDir(), 'bin', 'ffprobe');
+  return existsSync(executable) ? executable : undefined;
+}
+
+function pipelineSettings(): PipelineSettings {
+  return (store.get('pipeline') as PipelineSettings | undefined) || {};
+}
+
+function runtimeConfig(): ClipExtractorRuntime {
+  const settings = pipelineSettings();
+  const mode = settings.mode === 'custom' ? 'custom' : 'bundled';
+  const defaultToolsDir = bundledToolsDir();
+  const toolsDir = mode === 'custom' && settings.toolsDir ? settings.toolsDir : defaultToolsDir;
+  const pipelineScriptPath = mode === 'custom' && settings.pipelineScriptPath
+    ? settings.pipelineScriptPath
+    : join(toolsDir, 'pipeline', 'full_pipeline.py');
+
+  return {
+    mode,
+    pythonPath: settings.pythonPath || resolveSystemPython(),
+    ffmpegPath: settings.ffmpegPath || bundledFfmpegPath() || findFfmpeg(),
+    ffprobePath: settings.ffprobePath || bundledFfprobePath() || findFfprobe(),
+    toolsDir,
+    pipelineScriptPath,
+    binaryPath: settings.binaryPath || bundledPipelineBinaryPath(),
+    anthropicApiKey: (store.get('apiKeys.claude', '') as string) || '',
+  };
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -299,6 +373,7 @@ ipcMain.handle('extract-clips', async (_event, { videoPath, options }: {
       endSec: options.endSec,
       brandName: (bp.brandName as string) || '6fbarber',
       planContext: options.planContext,
+      runtime: runtimeConfig(),
     },
     mainWindow,
   );
@@ -350,19 +425,27 @@ ipcMain.handle('read-clip-transcript', async (_event, clipPath: string) => {
 // ─── System Health Check ──────────────────────────────────────────
 
 ipcMain.handle('check-system-health', async () => {
-  const deps = await checkPythonDeps();
+  const runtime = runtimeConfig();
+  const deps = await checkPythonDeps(runtime);
   return {
     deps,
     paths: {
       userData: app.getPath('userData'),
-      ixClipExtractor: join(
-        process.env.HOME || '~',
-        'clawd/projects/ix-social-media-manager/tools/clip_extractor'
-      ),
+      clipExtractor: join(runtime.toolsDir, 'clip_extractor'),
+      pipelineScript: runtime.pipelineScriptPath,
+      binaryPath: runtime.binaryPath,
+      toolsDir: runtime.toolsDir,
+      ffmpegPath: runtime.ffmpegPath,
+      ffprobePath: runtime.ffprobePath,
+      pythonPath: runtime.pythonPath,
     },
     apiKeys: {
       claude: !!store.get('apiKeys.claude'),
       openai: !!store.get('apiKeys.openai'),
+    },
+    pipeline: {
+      mode: runtime.mode,
+      bundledToolsDir: bundledToolsDir(),
     },
   };
 });
@@ -728,9 +811,23 @@ import { execFile } from 'child_process';
 import { rmSync, writeFileSync } from 'fs';
 
 function findFfmpeg(): string {
+  const configured = pipelineSettings().ffmpegPath;
+  if (configured && existsSync(configured)) return configured;
+  const bundled = bundledFfmpegPath();
+  if (bundled) return bundled;
   const candidates = ['/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/usr/bin/ffmpeg'];
   for (const p of candidates) { if (existsSync(p)) return p; }
   return 'ffmpeg';
+}
+
+function findFfprobe(): string {
+  const configured = pipelineSettings().ffprobePath;
+  if (configured && existsSync(configured)) return configured;
+  const bundled = bundledFfprobePath();
+  if (bundled) return bundled;
+  const candidates = ['/opt/homebrew/bin/ffprobe', '/usr/local/bin/ffprobe', '/usr/bin/ffprobe'];
+  for (const p of candidates) { if (existsSync(p)) return p; }
+  return 'ffprobe';
 }
 
 // Per-clip async thumbnail — never blocks scan
@@ -1728,4 +1825,3 @@ ipcMain.handle('list-video-plans', async () => {
     return { plans: [], error: String(err) };
   }
 });
-
