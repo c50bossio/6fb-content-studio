@@ -51,6 +51,18 @@ def _load_env_key(name: str) -> str:
     return ""
 
 
+def _normalize_content_manager_url(content_manager_url: str) -> str:
+    parsed = urllib.parse.urlparse(str(content_manager_url or ""))
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError(f"Invalid content_manager_url: {content_manager_url}")
+    return str(content_manager_url).rstrip("/")
+
+
+def _safe_clip_title(value: object, fallback: str = "clip") -> str:
+    safe = "".join(ch if ch.isalnum() or ch in "._-" else "-" for ch in str(value or ""))
+    return safe.strip(".-")[:120] or fallback
+
+
 def upload_to_cdn(file_path: str, content_type: str = None) -> dict:
     """Upload a file to Zernio CDN via presigned URL.
 
@@ -148,6 +160,10 @@ def push_to_studio(
     studio_key = _load_env_key("STUDIO_API_KEY")
     if not studio_key:
         return {"success": False, "error": "STUDIO_API_KEY not set in environment or .env"}
+    try:
+        content_manager_url = _normalize_content_manager_url(content_manager_url)
+    except ValueError as exc:
+        return {"success": False, "error": str(exc)}
 
     # Build caption from first 2 sentences of transcript
     transcript = clip_data.get("transcript", "")
@@ -325,6 +341,11 @@ def get_queue_status(
     if not studio_key:
         print("[studio_export] STUDIO_API_KEY not set — cannot check queue status")
         return []
+    try:
+        content_manager_url = _normalize_content_manager_url(content_manager_url)
+    except ValueError as exc:
+        print(f"[studio_export] {exc}")
+        return []
 
     params = f"?limit={limit}"
     if user_email:
@@ -385,10 +406,14 @@ def _find_clip_dir(output_path: Path, clip: dict) -> Path | None:
     title = clip.get("title", "")
 
     # Try exact pattern: clip-01-Title
-    if clip_id:
-        pattern_id = int(clip_id) if isinstance(clip_id, (int, float)) else 0
+    if clip_id is not None and str(clip_id).strip():
+        try:
+            pattern_id = int(str(clip_id))
+        except (TypeError, ValueError):
+            pattern_id = 0
         if pattern_id > 0:
-            expected = output_path / f"clip-{pattern_id:02d}-{title}"
+            safe_title = _safe_clip_title(title, f"clip-{pattern_id:02d}")
+            expected = output_path / f"clip-{pattern_id:02d}-{safe_title}"
             if expected.exists():
                 return expected
 

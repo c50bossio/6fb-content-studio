@@ -23,6 +23,13 @@ def read_frames(
     Yields:
         (frame_index, frame_bgr) tuples for sampled frames.
     """
+    if sample_rate <= 0:
+        raise ValueError("sample_rate must be greater than 0")
+    if start_frame < 0:
+        raise ValueError("start_frame must be greater than or equal to 0")
+    if end_frame is not None and end_frame < start_frame:
+        raise ValueError("end_frame must be greater than or equal to start_frame")
+
     cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
         raise RuntimeError(f"Cannot open video: {video_path}")
@@ -81,6 +88,10 @@ def interpolate_positions(
     """
     if not sampled:
         return {}
+    if total_frames <= 0:
+        return {}
+    if method not in {"linear", "cubic", "nearest"}:
+        raise ValueError("method must be one of: linear, cubic, nearest")
 
     indices = sorted(sampled.keys())
     xs = np.array([sampled[i][0] for i in indices])
@@ -89,8 +100,17 @@ def interpolate_positions(
     all_frames = np.arange(total_frames)
 
     if method == "nearest" or len(indices) < 2:
-        interp_x = np.interp(all_frames, indices, xs)
-        interp_y = np.interp(all_frames, indices, ys)
+        index_array = np.array(indices)
+        positions = np.searchsorted(index_array, all_frames, side="left")
+        positions = np.clip(positions, 0, len(index_array) - 1)
+        previous = np.maximum(positions - 1, 0)
+        use_previous = (
+            np.abs(all_frames - index_array[previous])
+            <= np.abs(index_array[positions] - all_frames)
+        )
+        nearest = np.where(use_previous, previous, positions)
+        interp_x = xs[nearest]
+        interp_y = ys[nearest]
     elif method == "cubic" and len(indices) >= 4:
         from scipy.interpolate import interp1d
 

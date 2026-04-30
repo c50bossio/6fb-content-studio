@@ -42,6 +42,7 @@ __all__ = [
     "Transcript",
     "parse_srt",
     "parse_whisperx_json",
+    "parse_remotion_words_ts",
     "load_transcript",
     "format_for_analysis",
     "AnchorMatch",

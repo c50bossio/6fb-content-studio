@@ -138,37 +138,43 @@ def detect_segments(
     # Step 3: Group consecutive same-type frames into segments
     raw_segments: list[LayoutSegment] = []
     current_layout = None
-    seg_start_idx = 0
+    seg_start_idx: int | None = None
+    last_valid_idx: int | None = None
+
+    def close_segment(end_idx: int) -> None:
+        if current_layout is None or seg_start_idx is None:
+            return
+        raw_segments.append(LayoutSegment(
+            layout=current_layout,
+            start_frame=keyframes[seg_start_idx].frame,
+            end_frame=keyframes[end_idx].frame,
+            start_sec=keyframes[seg_start_idx].time_sec,
+            end_sec=keyframes[end_idx].time_sec,
+        ))
 
     for i, layout in enumerate(smoothed):
         if layout is None:
+            if current_layout is not None and last_valid_idx is not None:
+                close_segment(last_valid_idx)
+                current_layout = None
+                seg_start_idx = None
+                last_valid_idx = None
             continue
 
         if current_layout is None:
             current_layout = layout
             seg_start_idx = i
 
-        if layout != current_layout:
+        elif layout != current_layout:
             # Close current segment
-            raw_segments.append(LayoutSegment(
-                layout=current_layout,
-                start_frame=keyframes[seg_start_idx].frame,
-                end_frame=keyframes[i - 1].frame,
-                start_sec=keyframes[seg_start_idx].time_sec,
-                end_sec=keyframes[i - 1].time_sec,
-            ))
+            close_segment(last_valid_idx if last_valid_idx is not None else i - 1)
             current_layout = layout
             seg_start_idx = i
+        last_valid_idx = i
 
     # Close final segment
-    if current_layout is not None and keyframes:
-        raw_segments.append(LayoutSegment(
-            layout=current_layout,
-            start_frame=keyframes[seg_start_idx].frame,
-            end_frame=keyframes[-1].frame,
-            start_sec=keyframes[seg_start_idx].time_sec,
-            end_sec=keyframes[-1].time_sec,
-        ))
+    if current_layout is not None and last_valid_idx is not None:
+        close_segment(last_valid_idx)
 
     if not raw_segments:
         return []

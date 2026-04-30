@@ -27,6 +27,8 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
+import threading
 import time
 import urllib.request
 from datetime import datetime, timezone
@@ -202,19 +204,25 @@ def extract_frames(video_path: str, timestamps: list[float]) -> list[str]:
     """Extract frames at given timestamps, return list of base64-encoded JPEGs."""
     frames = []
     for ts in timestamps:
-        out_path = f"/tmp/evolver_frame_{ts:.1f}.jpg"
+        fd, out_path = tempfile.mkstemp(prefix="evolver_frame_", suffix=".jpg")
+        os.close(fd)
         cmd = [
             "ffmpeg", "-y", "-ss", str(ts), "-i", video_path,
             "-vframes", "1", "-q:v", "3", "-vf", "scale=540:-1",
             out_path,
         ]
-        subprocess.run(cmd, capture_output=True, timeout=15)
-        if Path(out_path).exists():
-            with open(out_path, "rb") as f:
-                frames.append(base64.standard_b64encode(f.read()).decode("utf-8"))
-            os.unlink(out_path)
-        else:
-            frames.append(None)
+        try:
+            subprocess.run(cmd, capture_output=True, timeout=15)
+            if Path(out_path).exists() and Path(out_path).stat().st_size > 0:
+                with open(out_path, "rb") as f:
+                    frames.append(base64.standard_b64encode(f.read()).decode("utf-8"))
+            else:
+                frames.append(None)
+        finally:
+            try:
+                os.unlink(out_path)
+            except FileNotFoundError:
+                pass
     return frames
 
 
@@ -514,8 +522,11 @@ class ClipQAEvolver:
         all_patches: list[str] = []
 
         import concurrent.futures
+        budget_lock = threading.Lock()
+        reserved_spend = 0.0
 
         def process_video_task(content_type: str, video_path: str) -> dict:
+            nonlocal reserved_spend
             if not Path(video_path).exists():
                 return {"status": "skipped", "reason": f"Video not found at {video_path}"}
             
@@ -534,6 +545,18 @@ class ClipQAEvolver:
                 transcript = clip_info.get("transcript", "")
                 if not Path(clip_path).exists():
                     continue
+
+                with budget_lock:
+                    projected = self._session_spend + reserved_spend + COST_PER_VISION_CALL
+                    if projected > self.daily_budget:
+                        return {
+                            "status": "budget_exceeded",
+                            "scores": local_scores,
+                            "defects": local_defects,
+                            "spend": local_spend,
+                            "reason": f"budget would exceed ${self.daily_budget:.2f}",
+                        }
+                    reserved_spend += COST_PER_VISION_CALL
 
                 audit = audit_clip_with_vision(
                     clip_path, transcript, content_type, self.api_key,
@@ -576,12 +599,16 @@ class ClipQAEvolver:
                         all_scores[ct] = {"avg": 0, "clips": []}
                         continue
                         
-                    if res["status"] == "success":
+                    if res["status"] in ("success", "budget_exceeded"):
                         scores = res["scores"]
                         avg = sum(scores) / len(scores) if scores else 0
                         all_scores[ct] = {"avg": round(avg, 1), "clips": scores}
                         all_defects.extend(res["defects"])
                         self._session_spend += res["spend"]
+
+                        if res["status"] == "budget_exceeded":
+                            print(f"  🛑 Budget stop: {res.get('reason', 'budget exceeded')}")
+                            continue
                         
                         print(f"  ✅ Extracted & Audited {len(scores)} clips")
                         print(f"  📉 Average Score: {avg:.1f}/{self.rubric_info['max_score']}")

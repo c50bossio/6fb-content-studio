@@ -107,10 +107,24 @@ class CropCalculator:
             Modified crop_path with widened positions during hint ranges.
         """
         for hint in hints:
+            if not isinstance(hint, dict):
+                continue
+            try:
+                start_sec = float(hint["start_sec"])
+                end_sec = float(hint["end_sec"])
+            except (KeyError, TypeError, ValueError):
+                continue
             for point in crop_path:
-                if hint["start_sec"] <= point.get("time", 0) <= hint["end_sec"]:
+                if not isinstance(point, dict):
+                    continue
+                try:
+                    point_time = float(point.get("time", 0))
+                    point_x = float(point["x"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if start_sec <= point_time <= end_sec:
                     # 40% bias toward frame center to show more context
-                    point["x"] = point["x"] * 0.6 + 0.5 * 0.4
+                    point["x"] = point_x * 0.6 + 0.5 * 0.4
         return crop_path
 
     @property

@@ -13,6 +13,7 @@ Usage:
 
 import copy
 import json
+import math
 import yaml
 from datetime import datetime, timezone
 from pathlib import Path
@@ -228,7 +229,13 @@ class ConfigPatcher:
 
         for defect in defects:
             defect_id = defect.get("defect_id", "")
-            severity = defect.get("severity", 0.5)
+            try:
+                severity = float(defect.get("severity", 0.5))
+            except (TypeError, ValueError):
+                severity = 0.5
+            if not math.isfinite(severity):
+                severity = 0.5
+            severity = max(0.0, min(1.0, severity))
 
             # Skip non-patchable defects (need code review, not config changes)
             if defect_id in NON_PATCHABLE_DEFECTS:
@@ -263,7 +270,7 @@ class ConfigPatcher:
                     new_value = current_value / mapping["step_factor"]
             else:
                 # Additive adjustment (scale by severity)
-                step = mapping["step"] * min(severity, 1.0)
+                step = mapping["step"] * severity
                 if mapping["direction"] == "increase":
                     new_value = current_value + step
                 else:

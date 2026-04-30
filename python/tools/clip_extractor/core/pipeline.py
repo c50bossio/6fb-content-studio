@@ -186,6 +186,18 @@ def extract_clip(
         start_sec: Start time in seconds.
         end_sec: End time in seconds.
     """
+    if start_sec is None or end_sec is None:
+        raise ValueError("start_sec and end_sec are required")
+    try:
+        start_sec = float(start_sec)
+        end_sec = float(end_sec)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("start_sec and end_sec must be numeric") from exc
+    if start_sec < 0:
+        raise ValueError("start_sec must be greater than or equal to 0")
+    if end_sec <= start_sec:
+        raise ValueError("end_sec must be greater than start_sec")
+
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
     # Use stream copy for .mp4 (fast), re-encode for .mov/other (compatibility)

@@ -96,8 +96,14 @@ class FaceDetector(DetectorBase):
             return []
 
         h, w = frame.shape[:2]
+        detections = sorted(
+            result.detections,
+            key=lambda d: d.bounding_box.width * d.bounding_box.height,
+            reverse=True,
+        )[:max_faces]
+
         boxes = []
-        for detection in result.detections[:max_faces]:
+        for detection in detections:
             bb = detection.bounding_box
             x_center = (bb.origin_x + bb.width / 2) / w
             y_center = (bb.origin_y + bb.height / 2) / h
@@ -115,7 +121,6 @@ class FaceDetector(DetectorBase):
                 )
             )
 
-        boxes.sort(key=lambda b: b.width * b.height, reverse=True)
         return boxes
 
     def close(self) -> None:

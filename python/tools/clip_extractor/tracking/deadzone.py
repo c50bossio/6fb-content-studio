@@ -19,7 +19,7 @@ class DeadzoneFilter:
         vertical_threshold_pct: float | None = None,
     ):
         self.h_threshold = threshold_pct
-        self.v_threshold = vertical_threshold_pct or threshold_pct
+        self.v_threshold = threshold_pct if vertical_threshold_pct is None else vertical_threshold_pct
         self._locked_x: float | None = None
         self._locked_y: float | None = None
 
@@ -41,7 +41,7 @@ class DeadzoneFilter:
         dx = abs(x - self._locked_x)
         dy = abs(y - self._locked_y)
 
-        if dx > self.h_threshold or dy > self.v_threshold:
+        if dx >= self.h_threshold or dy >= self.v_threshold:
             self._locked_x = x
             self._locked_y = y
 

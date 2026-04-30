@@ -94,6 +94,10 @@ function bundledFfprobePath() {
   return existsSync(executable) ? executable : undefined;
 }
 
+function existingPath(value?: string) {
+  return value && existsSync(value) ? value : undefined;
+}
+
 function pipelineSettings(): PipelineSettings {
   return (store.get('pipeline') as PipelineSettings | undefined) || {};
 }
@@ -102,19 +106,21 @@ function runtimeConfig(): ClipExtractorRuntime {
   const settings = pipelineSettings();
   const mode = settings.mode === 'custom' ? 'custom' : 'bundled';
   const defaultToolsDir = bundledToolsDir();
-  const toolsDir = mode === 'custom' && settings.toolsDir ? settings.toolsDir : defaultToolsDir;
-  const pipelineScriptPath = mode === 'custom' && settings.pipelineScriptPath
-    ? settings.pipelineScriptPath
+  const configuredToolsDir = existingPath(settings.toolsDir);
+  const configuredPipelineScriptPath = existingPath(settings.pipelineScriptPath);
+  const toolsDir = mode === 'custom' && configuredToolsDir ? configuredToolsDir : defaultToolsDir;
+  const pipelineScriptPath = mode === 'custom' && configuredPipelineScriptPath
+    ? configuredPipelineScriptPath
     : join(toolsDir, 'pipeline', 'full_pipeline.py');
 
   return {
     mode,
-    pythonPath: settings.pythonPath || resolveSystemPython(),
-    ffmpegPath: settings.ffmpegPath || bundledFfmpegPath() || findFfmpeg(),
-    ffprobePath: settings.ffprobePath || bundledFfprobePath() || findFfprobe(),
+    pythonPath: existingPath(settings.pythonPath) || resolveSystemPython(),
+    ffmpegPath: existingPath(settings.ffmpegPath) || bundledFfmpegPath() || findFfmpeg(),
+    ffprobePath: existingPath(settings.ffprobePath) || bundledFfprobePath() || findFfprobe(),
     toolsDir,
     pipelineScriptPath,
-    binaryPath: settings.binaryPath || bundledPipelineBinaryPath(),
+    binaryPath: existingPath(settings.binaryPath) || bundledPipelineBinaryPath(),
     anthropicApiKey: (store.get('apiKeys.claude', '') as string) || '',
   };
 }

@@ -206,7 +206,7 @@ export function runClipExtractor(
         PATH: `${pathPrefix}${process.env.PATH || ''}`,
         PYTHONUNBUFFERED: '1',
         PYTHONPATH: runtime.toolsDir,
-        ANTHROPIC_API_KEY: runtime.anthropicApiKey || '',
+        ...(runtime.anthropicApiKey ? { ANTHROPIC_API_KEY: runtime.anthropicApiKey } : {}),
         // Pass Drop Zone context so the pipeline can boost scoring for planned hooks
         ...(options.planContext ? {
           PLAN_TOPIC: options.planContext.topic,

@@ -56,7 +56,7 @@ def send_webhook(payload: dict) -> bool:
     )
 
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=15) as resp:
             if resp.status in (200, 204):
                 print(f"[discord] Notification sent successfully")
                 return True

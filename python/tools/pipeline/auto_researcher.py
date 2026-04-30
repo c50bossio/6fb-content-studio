@@ -146,12 +146,14 @@ def get_ecosystem_research(transcript: str, api_key: str) -> List[Dict[str, str]
     prompt = f"TRANSCRIPT:\n---\n{transcript}\n---\n"
     
     triage = _call_claude_json(SYS_PROMPT_ANALYZE_VARS, prompt, api_key)
-    if not triage:
+    if not isinstance(triage, dict) or not triage:
         return []
         
-    category = triage.get("category", "MOTIVATIONAL")
-    query = triage.get("search_query", "")
-    metrics = triage.get("required_metrics", [])
+    category = str(triage.get("category", "MOTIVATIONAL"))
+    query = str(triage.get("search_query", "") or "")
+    raw_metrics = triage.get("required_metrics", [])
+    metrics = raw_metrics if isinstance(raw_metrics, list) else []
+    metrics = [str(metric) for metric in metrics if str(metric).strip()]
     
     print(f"  🧠 [auto_researcher] Category: {category}")
     if category == "MOTIVATIONAL":
@@ -165,6 +167,8 @@ def get_ecosystem_research(transcript: str, api_key: str) -> List[Dict[str, str]
     elif category in ["PRODUCT_REVIEW", "HAIRCUT_TUTORIAL"]:
         db_data = _fetch_web_search(query, metrics, api_key)
     else:
+        db_data = {}
+    if not isinstance(db_data, dict):
         db_data = {}
         
     research_results = []

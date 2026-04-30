@@ -27,6 +27,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -44,6 +45,11 @@ PROJECT_ROOT = _project_root()
 TOOLS_ROOT = PROJECT_ROOT / "tools"
 SUBPROCESS_CWD = TOOLS_ROOT if TOOLS_ROOT.exists() else PROJECT_ROOT
 sys.path.insert(0, str(TOOLS_ROOT))
+
+
+def _safe_clip_title(value: object, fallback: str = "clip") -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value or "")).strip(".-")
+    return cleaned[:120] or fallback
 
 
 def _dispatch_frozen_module() -> None:
@@ -419,7 +425,8 @@ def batch_reframe(
     # Find output files — check both the requested format and split (auto-routed)
     outputs = []
     for clip in clips:
-        clip_dir = Path(output_dir) / f"clip-{clip['id']:02d}-{clip['title']}"
+        safe_title = _safe_clip_title(clip.get("title"), f"clip-{clip['id']:02d}")
+        clip_dir = Path(output_dir) / f"clip-{clip['id']:02d}-{safe_title}"
         # Try requested format first, then auto-routed formats as fallbacks
         candidate_names = [
             f"reframed-{aspect_ratio}.mp4",
@@ -471,7 +478,8 @@ def _fallback_center_crop(
 
     outputs = []
     for clip in clips:
-        clip_dir = Path(output_dir) / f"clip-{clip['id']:02d}-{clip['title']}"
+        safe_title = _safe_clip_title(clip.get("title"), f"clip-{clip['id']:02d}")
+        clip_dir = Path(output_dir) / f"clip-{clip['id']:02d}-{safe_title}"
         clip_dir.mkdir(parents=True, exist_ok=True)
         out_path = clip_dir / f"reframed-{aspect_ratio}.mp4"
 
@@ -1322,6 +1330,11 @@ Transcript (with timestamps):
     rejected_endings = _filter_incomplete_ending_clips(fixed_clips, srt_segments)
     if rejected_endings:
         print(f"[pipeline] Ending filter: removed {rejected_endings} clip(s) with incomplete endings")
+
+    if rejected or rejected_endings:
+        surviving_ids = {c["id"] for c in fixed_clips}
+        qualified_clips = [qc for qc in qualified_clips if qc.get("id") in surviving_ids]
+        validated = [v for v in validated if v.id in surviving_ids]
 
     # --- Sentence boundary snapping (supplemental pass) ---
     snap_fixes = _snap_clips_to_sentences(fixed_clips, ts_transcript.blocks)

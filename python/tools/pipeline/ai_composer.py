@@ -35,6 +35,12 @@ CLAUDE_MODEL = "claude-sonnet-4-20250514"
 DATA_DIR = PROJECT_ROOT / "remotion" / "data"
 
 
+def safe_file_stem(value: str, fallback: str = "clip") -> str:
+    """Return a filesystem-safe stem for generated Remotion assets."""
+    cleaned = re.sub(r"[^a-zA-Z0-9_.-]+", "-", str(value or "")).strip(".-")
+    return cleaned[:120] or fallback
+
+
 def _parse_srt(srt_path: str) -> list:
     """Parse SRT file into list of {start, end, text} dicts (times in seconds)."""
     segments = []
@@ -78,7 +84,7 @@ def generate_words_file(title: str, transcript: str, start_sec: float,
     
     words = []
     
-    if srt_path and os.path.exists(srt_path) and clip_start > 0:
+    if srt_path and os.path.exists(srt_path) and clip_end > clip_start:
         # Use real SRT timestamps for accurate word timing
         segments = _parse_srt(srt_path)
         
@@ -133,7 +139,7 @@ def generate_words_file(title: str, transcript: str, start_sec: float,
             })
             t += word_dur
     
-    file_stem = f"{title}-words"
+    file_stem = f"{safe_file_stem(title)}-words"
     out_path = DATA_DIR / f"{file_stem}.ts"
     
     lines = ["export const WORDS = ["]
@@ -426,14 +432,14 @@ def typecheck() -> bool:
 def render_clip(title: str, output_path: str = None, props_path: str = None) -> str:
     """Render PipelineClipTemplate with per-clip JSON props."""
     if not output_path:
-        safe = re.sub(r'[^a-zA-Z0-9_-]', '-', title)
+        safe = safe_file_stem(title)
         output_path = str(PROJECT_ROOT / "output" / "rendered" / f"{safe}.mp4")
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
     # Find props file if not provided
     if not props_path:
-        safe_title = re.sub(r'[^a-zA-Z0-9_-]', '-', title)
+        safe_title = safe_file_stem(title)
         props_path = str(PROJECT_ROOT / "remotion" / "props" / f"{safe_title}.json")
 
     print(f"[ai_composer] Rendering {title} via PipelineClipTemplate...")
@@ -536,14 +542,14 @@ def compose_clip(
             break
 
     # Generate real word timing from SRT
-    generate_words_file(
+    words_file_stem = generate_words_file(
         title=title, transcript=transcript, start_sec=clip_start,
         srt_path=srt_path, clip_start=clip_start, clip_end=clip_end
     )
 
     # Read the generated words data
     words_data = []
-    words_ts_path = DATA_DIR / f"{title}-words.ts"
+    words_ts_path = DATA_DIR / f"{words_file_stem}.ts"
     if words_ts_path.exists():
         import re as _re
         content = words_ts_path.read_text()
@@ -568,7 +574,7 @@ def compose_clip(
     if original_video and os.path.exists(original_video):
         public_clips_dir = PROJECT_ROOT / "public" / "clips" / "pipeline"
         public_clips_dir.mkdir(parents=True, exist_ok=True)
-        safe_name = re.sub(r'[^a-zA-Z0-9_.-]', '-', title) + ".mp4"
+        safe_name = safe_file_stem(title) + ".mp4"
         public_video_path = public_clips_dir / safe_name
         if not public_video_path.exists():
             shutil.copy2(original_video, str(public_video_path))
@@ -629,7 +635,7 @@ def compose_clip(
     # Write props JSON file (used by render_clip with --props)
     props_dir = PROJECT_ROOT / "remotion" / "props"
     props_dir.mkdir(parents=True, exist_ok=True)
-    safe_title = re.sub(r'[^a-zA-Z0-9_-]', '-', title)
+    safe_title = safe_file_stem(title)
     props_path = props_dir / f"{safe_title}.json"
     props_path.write_text(json.dumps(clip_props, indent=2), encoding="utf-8")
     print(f"[ai_composer] Props written: {props_path.name}")
@@ -640,6 +646,20 @@ def compose_clip(
         "propsPath": str(props_path),
         "compositionPath": str(props_path),  # kept for compatibility
     }
+
+    if render:
+        render_path = render_clip(title, props_path=str(props_path))
+        result["renderPath"] = render_path
+
+    if notify:
+        try:
+            from pipeline.discord_notify import notify_clip_ready
+
+            notify_clip_ready(spec, render_path=result.get("renderPath"))
+            result["notified"] = True
+        except Exception as e:
+            result["notified"] = False
+            result["notifyError"] = str(e)
 
     # Update spec status
     spec["status"] = "composed"

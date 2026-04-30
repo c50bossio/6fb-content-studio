@@ -235,7 +235,22 @@ def resolve_all_clips(
         if duration > max_duration:
             warnings.append(f"duration {duration}s above maximum {max_duration}s")
         if start_sec >= end_sec:
-            warnings.append("start >= end (invalid range)")
+            try:
+                est_start_raw = float(clip.get("time_start_estimate", start_sec))
+                est_end_raw = float(clip.get("time_end_estimate", end_sec))
+            except (TypeError, ValueError):
+                est_start_raw = start_sec
+                est_end_raw = end_sec
+            est_start = max(0.0, est_start_raw - padding)
+            est_end = min(transcript.duration_sec, est_end_raw + padding)
+            if est_end > est_start:
+                start_sec = est_start
+                end_sec = est_end
+                duration = round(end_sec - start_sec, 1)
+                warnings.append("resolved anchors inverted; fell back to estimated range")
+            else:
+                warnings.append("start >= end (invalid range)")
+                continue
 
         # Combined confidence
         resolution_confidence = round(

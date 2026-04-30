@@ -1,5 +1,6 @@
 """Load and validate YAML configuration with sensible defaults."""
 
+import copy
 import os
 from pathlib import Path
 from typing import Any
@@ -100,7 +101,7 @@ DEFAULTS = {
 
 def _deep_merge(base: dict, override: dict) -> dict:
     """Recursively merge override into base, preferring override values."""
-    result = base.copy()
+    result = copy.deepcopy(base)
     for key, value in override.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
             result[key] = _deep_merge(result[key], value)
@@ -117,7 +118,7 @@ def load_config(config_path: str | None = None) -> dict[str, Any]:
     2. config.yaml from package directory (if no path given)
     3. User-specified config file (if path given)
     """
-    config = DEFAULTS.copy()
+    config = copy.deepcopy(DEFAULTS)
 
     if config_path is None:
         # Look for config.yaml next to this package
@@ -127,6 +128,8 @@ def load_config(config_path: str | None = None) -> dict[str, Any]:
     if os.path.exists(config_path):
         with open(config_path, "r") as f:
             user_config = yaml.safe_load(f) or {}
+        if not isinstance(user_config, dict):
+            raise ValueError(f"Config root must be a mapping: {config_path}")
         config = _deep_merge(config, user_config)
 
     return config

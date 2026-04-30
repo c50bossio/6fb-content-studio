@@ -4,6 +4,7 @@ Combines multiple detection signals into a single (x, y) crop target.
 Gracefully handles missing signals by re-normalizing weights.
 """
 
+import math
 from typing import Optional
 
 from .detector_base import BoundingBox
@@ -48,8 +49,14 @@ def fuse_signals(
     if not signals:
         return last_known[0], last_known[1], 0.0
 
+    signals = [s for s in signals if math.isfinite(s[3]) and s[3] > 0]
+    if not signals:
+        return last_known[0], last_known[1], 0.0
+
     # Re-normalize weights so they sum to 1.0
     total_weight = sum(s[3] for s in signals)
+    if not math.isfinite(total_weight) or total_weight <= 0:
+        return last_known[0], last_known[1], 0.0
 
     fused_x = sum(s[0] * s[3] for s in signals) / total_weight
     fused_y = sum(s[1] * s[3] for s in signals) / total_weight

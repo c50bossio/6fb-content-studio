@@ -11,6 +11,7 @@ Usage:
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -21,6 +22,21 @@ if _tools_dir not in sys.path:
 
 from clip_extractor.core.pipeline import analyze, reframe, render_from_crop_path, extract_clip
 from clip_extractor.core.config_loader import load_config
+
+
+def _safe_clip_title(value: object, fallback: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value or "")).strip(".-")
+    return cleaned[:120] or fallback
+
+
+def _coerce_clip_id(value: object, fallback: int) -> int:
+    try:
+        clip_id = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid clip id: {value!r}") from exc
+    if clip_id <= 0:
+        raise ValueError(f"Invalid clip id: {value!r}")
+    return clip_id
 
 
 def cmd_reframe(args: argparse.Namespace) -> None:
@@ -125,8 +141,9 @@ def cmd_batch(args: argparse.Namespace) -> None:
 
     results = []
     for i, clip in enumerate(clips):
-        clip_id = clip.get("id", i + 1)
-        title = clip.get("title", f"clip-{clip_id:02d}")
+        clip_id = _coerce_clip_id(clip.get("id", i + 1), i + 1)
+        title = str(clip.get("title", f"clip-{clip_id:02d}"))
+        safe_title = _safe_clip_title(title, f"clip-{clip_id:02d}")
         start = clip["start"]
         end = clip["end"]
 
@@ -134,7 +151,7 @@ def cmd_batch(args: argparse.Namespace) -> None:
         print(f"Clip {clip_id}: {title} ({start:.1f}s - {end:.1f}s)")
         print(f"{'='*60}")
 
-        clip_dir = str(out_dir / f"clip-{clip_id:02d}-{title}")
+        clip_dir = str(out_dir / f"clip-{clip_id:02d}-{safe_title}")
 
         result = reframe(
             video_path=args.video,

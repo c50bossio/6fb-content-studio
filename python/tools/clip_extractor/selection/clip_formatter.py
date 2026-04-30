@@ -115,11 +115,13 @@ def generate_clip_definitions(
     """
     definitions = []
     for clip in scored_clips:
+        start = max(0.0, clip.start_sec - padding)
+        end = max(start, clip.end_sec + padding)
         definitions.append({
             "id": clip.id,
             "title": clip.title,
-            "start": round(clip.start_sec - padding, 1),
-            "end": round(clip.end_sec + padding, 1),
+            "start": round(start, 1),
+            "end": round(end, 1),
         })
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
