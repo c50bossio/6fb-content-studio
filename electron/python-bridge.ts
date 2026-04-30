@@ -4,7 +4,7 @@
  */
 
 import { spawn, ChildProcess } from 'child_process';
-import { join } from 'path';
+import { delimiter, dirname, join } from 'path';
 import { existsSync } from 'fs';
 import { BrowserWindow } from 'electron';
 
@@ -25,11 +25,16 @@ export function cancelActiveExtraction(): void {
   }
 }
 
-// Path to IX clip extractor
-const IX_CLIP_EXTRACTOR = join(
-  process.env.HOME || '~',
-  'clawd/projects/ix-social-media-manager/tools/clip_extractor'
-);
+export interface ClipExtractorRuntime {
+  mode: 'bundled' | 'custom';
+  pythonPath: string;
+  ffmpegPath: string;
+  ffprobePath?: string;
+  toolsDir: string;
+  pipelineScriptPath: string;
+  binaryPath?: string;
+  anthropicApiKey?: string;
+}
 
 interface ClipExtractorOptions {
   outputFormat?: '9x16' | '1x1' | 'split' | 'auto';
@@ -43,6 +48,7 @@ interface ClipExtractorOptions {
     topic: string;
     dropZones: { label: string; timestamp: string; endTimestamp: string }[];
   };
+  runtime: ClipExtractorRuntime;
 }
 
 interface ExtractResult {
@@ -59,14 +65,44 @@ interface ExtractResult {
   error?: string;
 }
 
+export function resolveSystemPython(): string {
+  return 'python3';
+}
+
+function companionToolPath(toolPath: string | undefined, executable: string): string {
+  const fileName = process.platform === 'win32' ? `${executable}.exe` : executable;
+  if (toolPath && toolPath !== executable) {
+    const candidate = join(dirname(toolPath), fileName);
+    if (existsSync(candidate)) return candidate;
+  }
+  return fileName;
+}
+
+function toolPathDirs(...toolPaths: Array<string | undefined>): string {
+  const dirs = new Set<string>();
+  for (const toolPath of toolPaths) {
+    if (!toolPath || toolPath === 'ffmpeg' || toolPath === 'ffprobe') continue;
+    dirs.add(dirname(toolPath));
+  }
+  return Array.from(dirs).join(delimiter);
+}
+
 /**
  * Check if Python and required dependencies are available.
  */
-export async function checkPythonDeps(): Promise<{
+export async function checkPythonDeps(runtime: ClipExtractorRuntime): Promise<{
   python: boolean;
   ffmpeg: boolean;
+  ffprobe: boolean;
   mediapipe: boolean;
   clipExtractor: boolean;
+  pythonPath: string;
+  ffmpegPath: string;
+  ffprobePath: string;
+  pipelineScriptPath: string;
+  binaryPath?: string;
+  toolsDir: string;
+  mode: 'bundled' | 'custom';
 }> {
   const check = (cmd: string, args: string[]): Promise<boolean> =>
     new Promise(resolve => {
@@ -75,15 +111,44 @@ export async function checkPythonDeps(): Promise<{
       proc.on('error', () => resolve(false));
     });
 
-  const [python, ffmpeg, mediapipe] = await Promise.all([
-    check('python3', ['--version']),
-    check('ffmpeg', ['-version']),
-    check('python3', ['-c', 'import mediapipe; print(mediapipe.__version__)']),
-  ]);
+  const pythonPath = runtime.pythonPath || resolveSystemPython();
+  const ffmpegPath = runtime.ffmpegPath || 'ffmpeg';
+  const ffprobePath = runtime.ffprobePath || companionToolPath(ffmpegPath, 'ffprobe');
+  const hasBinary = !!runtime.binaryPath && existsSync(runtime.binaryPath);
 
-  const clipExtractor = existsSync(join(IX_CLIP_EXTRACTOR, 'core/pipeline.py'));
+  const [python, ffmpeg, ffprobe, mediapipe] = hasBinary && runtime.binaryPath
+    ? [
+      await check(runtime.binaryPath, ['--help']),
+      await check(ffmpegPath, ['-version']),
+      await check(ffprobePath, ['-version']),
+      await check(runtime.binaryPath, ['--help']),
+    ]
+    : await Promise.all([
+      check(pythonPath, ['--version']),
+      check(ffmpegPath, ['-version']),
+      check(ffprobePath, ['-version']),
+      check(pythonPath, ['-c', 'import mediapipe; print(mediapipe.__version__)']),
+    ]);
 
-  return { python, ffmpeg, mediapipe, clipExtractor };
+  const clipExtractor = (hasBinary && python) || (
+    existsSync(runtime.pipelineScriptPath)
+    && existsSync(join(runtime.toolsDir, 'clip_extractor/core/pipeline.py'))
+  );
+
+  return {
+    python,
+    ffmpeg,
+    ffprobe,
+    mediapipe,
+    clipExtractor,
+    pythonPath,
+    ffmpegPath,
+    ffprobePath,
+    pipelineScriptPath: runtime.pipelineScriptPath,
+    binaryPath: runtime.binaryPath,
+    toolsDir: runtime.toolsDir,
+    mode: runtime.mode,
+  };
 }
 
 /**
@@ -99,53 +164,49 @@ export function runClipExtractor(
     const format = options.outputFormat || '9x16';
     const contentType = options.contentType || 'auto';
     const numClips = options.numClips || 3;
+    const runtime = options.runtime;
 
-    // Determine script path
-    const pipelineScript = join(IX_CLIP_EXTRACTOR, '../pipeline/full_pipeline.py');
+    if (runtime?.binaryPath && !existsSync(runtime.binaryPath)) {
+      resolve({
+        success: false,
+        error: 'Configured clip pipeline binary was not found.',
+      });
+      return;
+    }
+
+    if (!runtime?.binaryPath && (!runtime?.pipelineScriptPath || !existsSync(runtime.pipelineScriptPath))) {
+      resolve({
+        success: false,
+        error: 'Bundled clip pipeline not found. Reinstall 6FB Content Studio or configure a custom pipeline in Settings.',
+      });
+      return;
+    }
 
     // Build args
     const args = [
-      pipelineScript,
       '--video', videoPath,
       '--output', outputDir,
       '--format', format,
       '--content-type', contentType,
       '--clips', numClips.toString(),
       '--brand', options.brandName || '6fbarber',
-      '--compose', // render typography
       '--no-post'
     ];
 
-    const venvPythonPath = join(IX_CLIP_EXTRACTOR, '../../venv/bin/python');
-    
-    // Read API key directly from config file (store only lives in main.ts)
-    let storedApiKey = '';
-    try {
-      const { readFileSync: readFS } = require('fs') as typeof import('fs');
-      const configPath = join(process.env.HOME || '~', 'Library/Application Support/6fb-content-studio/config.json');
-      if (existsSync(configPath)) {
-        const config = JSON.parse(readFS(configPath, 'utf-8'));
-        storedApiKey = config?.apiKeys?.claude || '';
-      }
-    } catch (err) {
-      console.warn('[python-bridge] Could not read API key from config:', (err as Error).message);
-    }
+    const command = runtime.binaryPath || runtime.pythonPath || resolveSystemPython();
+    const commandArgs = runtime.binaryPath ? args : [runtime.pipelineScriptPath, ...args];
+    const ffprobePath = runtime.ffprobePath || companionToolPath(runtime.ffmpegPath, 'ffprobe');
+    const pathDirs = toolPathDirs(runtime.ffmpegPath, ffprobePath);
+    const pathPrefix = pathDirs ? `${pathDirs}${delimiter}` : '';
 
-    const proc: ChildProcess = spawn(venvPythonPath, args, {
-      cwd: join(IX_CLIP_EXTRACTOR, '..'),
+    const proc: ChildProcess = spawn(command, commandArgs, {
+      cwd: runtime.toolsDir,
       env: {
         ...process.env,
-        // Electron strips the shell PATH — inject homebrew and standard binary dirs
-        // so ffmpeg, ffprobe, and other tools are always found
-        PATH: [
-          '/opt/homebrew/bin',
-          '/usr/local/bin',
-          '/usr/bin',
-          '/bin',
-          process.env.PATH || '',
-        ].join(':'),
+        PATH: `${pathPrefix}${process.env.PATH || ''}`,
         PYTHONUNBUFFERED: '1',
-        ANTHROPIC_API_KEY: storedApiKey,
+        PYTHONPATH: runtime.toolsDir,
+        ...(runtime.anthropicApiKey ? { ANTHROPIC_API_KEY: runtime.anthropicApiKey } : {}),
         // Pass Drop Zone context so the pipeline can boost scoring for planned hooks
         ...(options.planContext ? {
           PLAN_TOPIC: options.planContext.topic,

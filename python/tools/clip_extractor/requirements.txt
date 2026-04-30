@@ -1,0 +1,9 @@
+mediapipe>=0.10.14
+opencv-contrib-python>=4.9.0
+numpy>=1.24.0
+scipy>=1.10.0
+Pillow>=10.3.0
+pyyaml>=6.0
+filterpy>=1.4.4
+rapidfuzz>=3.0.0
+mlx-whisper>=0.4.0; platform_system == "Darwin" and platform_machine == "arm64"

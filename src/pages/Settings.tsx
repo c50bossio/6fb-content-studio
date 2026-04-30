@@ -11,12 +11,19 @@ interface SystemHealth {
   deps: {
     python: boolean;
     ffmpeg: boolean;
+    ffprobe: boolean;
     mediapipe: boolean;
     clipExtractor: boolean;
   };
   paths: {
     userData: string;
-    ixClipExtractor: string;
+    clipExtractor: string;
+    pipelineScript?: string;
+    binaryPath?: string;
+    toolsDir?: string;
+    ffmpegPath?: string;
+    ffprobePath?: string;
+    pythonPath?: string;
   };
   apiKeys: {
     claude: boolean;
@@ -52,8 +59,8 @@ export default function Settings() {
       (api.get6FBAccount() as Promise<SixFBAccount>).then(setAccount).catch(() => {});
     } else {
       setHealth({
-        deps: { python: false, ffmpeg: false, mediapipe: false, clipExtractor: false },
-        paths: { userData: '~/Library/Application Support/6fb-content-studio', ixClipExtractor: '~/clawd/projects/ix-social-media-manager/tools/clip_extractor' },
+        deps: { python: false, ffmpeg: false, ffprobe: false, mediapipe: false, clipExtractor: false },
+        paths: { userData: '~/Library/Application Support/6fb-content-studio', clipExtractor: 'Bundled with packaged app' },
         apiKeys: { claude: true, openai: false },
       });
       setLoading(false);
@@ -210,6 +217,14 @@ export default function Settings() {
               </div>
 
               <div className="flex items-center gap-3">
+                <StatusDot ok={health?.deps.ffprobe ?? false} />
+                <div>
+                  <p className="text-sm text-white">FFprobe</p>
+                  <p className="text-xs text-6fb-text-muted">Required for video metadata</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
                 <StatusDot ok={health?.deps.mediapipe ?? false} />
                 <div>
                   <p className="text-sm text-white">MediaPipe</p>
@@ -220,9 +235,19 @@ export default function Settings() {
               <div className="flex items-center gap-3">
                 <StatusDot ok={health?.deps.clipExtractor ?? false} />
                 <div>
-                  <p className="text-sm text-white">IX Clip Extractor</p>
+                  <p className="text-sm text-white">Clip Extractor</p>
                   <p className="text-xs text-6fb-text-muted truncate max-w-md">
-                    {health?.paths.ixClipExtractor}
+                    {health?.paths.clipExtractor}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <StatusDot ok={!!(health?.paths.binaryPath || health?.paths.pipelineScript)} />
+                <div>
+                  <p className="text-sm text-white">Bundled Pipeline</p>
+                  <p className="text-xs text-6fb-text-muted truncate max-w-md">
+                    {health?.paths.binaryPath || health?.paths.pipelineScript || 'Not found'}
                   </p>
                 </div>
               </div>
@@ -238,6 +263,11 @@ export default function Settings() {
         {health && !health.deps.ffmpeg && (
           <p className="text-xs text-amber-400 mt-1 px-2">
             Install FFmpeg: <code className="bg-[#1e1e1e] px-1.5 py-0.5 rounded text-6fb-green">brew install ffmpeg</code>
+          </p>
+        )}
+        {health && !health.deps.ffprobe && (
+          <p className="text-xs text-amber-400 mt-1 px-2">
+            Install FFprobe: <code className="bg-[#1e1e1e] px-1.5 py-0.5 rounded text-6fb-green">brew install ffmpeg</code>
           </p>
         )}
         {health && !health.deps.mediapipe && (
