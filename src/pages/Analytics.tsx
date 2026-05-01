@@ -48,6 +48,29 @@ interface ManualPerformanceEntry {
   comments: number;
 }
 
+const clampScore = (value: number) => Math.round(Math.min(100, Math.max(0, value)));
+const toNonNegativeNumber = (value: unknown) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+};
+const scoreManualEntry = (entry: ManualPerformanceEntry) =>
+  clampScore((entry.views + entry.saves * 10 + entry.shares * 15 + entry.comments * 8) / 100);
+const normalizeManualEntry = (value: unknown): ManualPerformanceEntry | null => {
+  if (!value || typeof value !== 'object') return null;
+  const entry = value as Record<string, unknown>;
+  const title = typeof entry.title === 'string' ? entry.title.trim() : '';
+  if (!title) return null;
+  return {
+    id: typeof entry.id === 'string' ? entry.id : String(entry.id ?? `${title}-${Date.now()}`),
+    title,
+    predicted: clampScore(toNonNegativeNumber(entry.predicted)),
+    views: toNonNegativeNumber(entry.views),
+    saves: toNonNegativeNumber(entry.saves),
+    shares: toNonNegativeNumber(entry.shares),
+    comments: toNonNegativeNumber(entry.comments),
+  };
+};
+
 // ─── Helpers ────────────────────────────────────────────────────────────
 const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 const relDate = (iso: string) => {
@@ -177,7 +200,10 @@ export default function Analytics() {
 
   useEffect(() => { load(); }, []);
   useEffect(() => {
-    try { setManualEntries(JSON.parse(localStorage.getItem('analytics:manualPerformance') || '[]')); }
+    try {
+      const parsed = JSON.parse(localStorage.getItem('analytics:manualPerformance') || '[]');
+      setManualEntries(Array.isArray(parsed) ? parsed.map(normalizeManualEntry).filter((entry): entry is ManualPerformanceEntry => Boolean(entry)) : []);
+    }
     catch { setManualEntries([]); }
   }, []);
 
@@ -186,11 +212,11 @@ export default function Analytics() {
     const entry: ManualPerformanceEntry = {
       id: Date.now().toString(),
       title: manualDraft.title.trim(),
-      predicted: Number(manualDraft.predicted) || 0,
-      views: Number(manualDraft.views) || 0,
-      saves: Number(manualDraft.saves) || 0,
-      shares: Number(manualDraft.shares) || 0,
-      comments: Number(manualDraft.comments) || 0,
+      predicted: clampScore(toNonNegativeNumber(manualDraft.predicted)),
+      views: toNonNegativeNumber(manualDraft.views),
+      saves: toNonNegativeNumber(manualDraft.saves),
+      shares: toNonNegativeNumber(manualDraft.shares),
+      comments: toNonNegativeNumber(manualDraft.comments),
     };
     const next = [entry, ...manualEntries].slice(0, 20);
     setManualEntries(next);
@@ -255,15 +281,15 @@ export default function Analytics() {
             </div>
             {manualEntries.length > 0 && (
               <span className="text-[10px] text-[#00C851]">
-                {manualEntries.filter(e => (e.views + e.saves * 10 + e.shares * 15 + e.comments * 8) / 100 > e.predicted).length} overperforming
+                {manualEntries.filter(e => scoreManualEntry(e) > e.predicted).length} overperforming
               </span>
             )}
           </div>
           <div className="grid grid-cols-6 gap-2 mb-3">
-            <input value={manualDraft.title} onChange={e => setManualDraft({ ...manualDraft, title: e.target.value })} placeholder="Title"
+            <input aria-label="Content title" value={manualDraft.title} onChange={e => setManualDraft({ ...manualDraft, title: e.target.value })} placeholder="Title"
               className="col-span-2 bg-[#0f0f0f] border border-[#222] rounded-lg px-3 py-2 text-xs text-white placeholder:text-[#444] focus:outline-none focus:border-[#00C851]/50" />
             {(['predicted', 'views', 'saves', 'shares', 'comments'] as const).map(key => (
-              <input key={key} value={manualDraft[key]} onChange={e => setManualDraft({ ...manualDraft, [key]: e.target.value })} placeholder={key}
+              <input key={key} aria-label={key} value={manualDraft[key]} onChange={e => setManualDraft({ ...manualDraft, [key]: e.target.value })} placeholder={key}
                 className="bg-[#0f0f0f] border border-[#222] rounded-lg px-2 py-2 text-xs text-white placeholder:text-[#444] focus:outline-none focus:border-[#00C851]/50" />
             ))}
           </div>
@@ -274,7 +300,7 @@ export default function Analytics() {
           {manualEntries.length > 0 && (
             <div className="space-y-1.5">
               {manualEntries.slice(0, 5).map(entry => {
-                const actual = Math.round(Math.min(100, (entry.views + entry.saves * 10 + entry.shares * 15 + entry.comments * 8) / 100));
+                const actual = scoreManualEntry(entry);
                 const delta = actual - entry.predicted;
                 return (
                   <div key={entry.id} className="flex items-center justify-between gap-3 rounded-lg bg-black/20 border border-white/5 px-3 py-2">

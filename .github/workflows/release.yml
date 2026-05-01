@@ -78,11 +78,7 @@ jobs:
           # Add to search list
           security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
 
-      # ── 4. Build ───────────────────────────────────────────────────
-      - name: Build (electron-vite)
-        run: npm run build
-
-      # ── 5. Package → signed + styled DMG via electron-builder ──────
+      # ── 4. Package → signed + styled DMG via electron-builder ──────
       - name: Package macOS (signed DMG)
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -105,13 +101,20 @@ jobs:
           echo "YML_PATH=${YML}" >> $GITHUB_ENV
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
+      - name: Validate release artifacts
+        run: |
+          test -n "$DMG_PATH" && test -f "$DMG_PATH" || { echo "::error::Missing DMG artifact"; exit 1; }
+          test -n "$ZIP_PATH" && test -f "$ZIP_PATH" || { echo "::error::Missing ZIP artifact"; exit 1; }
+          test -n "$YML_PATH" && test -f "$YML_PATH" || { echo "::error::Missing latest-mac.yml artifact"; exit 1; }
+          ls release/*.blockmap >/dev/null 2>&1 || { echo "::error::Missing blockmap artifacts"; exit 1; }
+
       - name: Verify signed app
         run: |
           codesign --verify --deep --strict --verbose=2 "release/mac-arm64/6FB Content Studio.app"
           xcrun stapler validate "release/mac-arm64/6FB Content Studio.app"
           spctl --assess --type execute --verbose=4 "release/mac-arm64/6FB Content Studio.app"
 
-      # ── 6. Notarize the styled DMG ─────────────────────────────────
+      # ── 5. Notarize the styled DMG ─────────────────────────────────
       - name: Notarize DMG
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -124,13 +127,13 @@ jobs:
             --team-id "$APPLE_TEAM_ID" \
             --wait
 
-      # ── 7. Staple ticket onto DMG ──────────────────────────────────
+      # ── 6. Staple ticket onto DMG ──────────────────────────────────
       - name: Staple notarization ticket
         run: |
           xcrun stapler staple "$DMG_PATH"
           xcrun stapler validate "$DMG_PATH"
 
-      # ── 8. Publish to GitHub Releases ──────────────────────────────
+      # ── 7. Publish to GitHub Releases ──────────────────────────────
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:

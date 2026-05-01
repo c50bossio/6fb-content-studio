@@ -105,6 +105,8 @@ const fallbackPackage = (topic: string, promise: string, viewerOutcome: string):
   },
 ]);
 
+const jsonForPrompt = (value: unknown) => JSON.stringify(value, null, 2).replace(/</g, '\\u003c');
+
 function buildStrategyBrief(input: {
   topic: string;
   intent: ContentIntent;
@@ -118,19 +120,26 @@ function buildStrategyBrief(input: {
   packageVariants?: PackageVariant[];
   scoreBreakdown?: StrategyScoreBreakdown;
 }): ContentStrategyBrief {
+  const normalizedAudience = input.audience.trim() || 'Barbers and barbershop owners';
+  const normalizedViewerOutcome = input.viewerOutcome.trim() || `Understand ${input.topic} well enough to take action`;
+  const normalizedPromise = input.promise.trim() || input.topic;
+  const normalizedCuriosityGap = input.curiosityGap.trim() || 'What most people miss before they record';
+  const normalizedProofAsset = input.proofAsset.trim() || 'Specific example, number, client story, or before/after';
+  const normalizedPayoff = input.payoff.trim() || 'One memorable takeaway viewers can repeat';
+  const normalizedPositioning = input.positioning.trim() || 'Practical, direct, barber-specific advice';
   return {
     id: `strategy-${Date.now()}`,
     intent: input.intent,
-    audience: input.audience.trim() || 'Barbers and barbershop owners',
-    viewerOutcome: input.viewerOutcome.trim() || `Understand ${input.topic} well enough to take action`,
-    promise: input.promise.trim() || input.topic,
-    curiosityGap: input.curiosityGap.trim() || 'What most people miss before they record',
-    proofAsset: input.proofAsset.trim() || 'Specific example, number, client story, or before/after',
-    payoff: input.payoff.trim() || 'One memorable takeaway viewers can repeat',
-    positioning: input.positioning.trim() || 'Practical, direct, barber-specific advice',
+    audience: normalizedAudience,
+    viewerOutcome: normalizedViewerOutcome,
+    promise: normalizedPromise,
+    curiosityGap: normalizedCuriosityGap,
+    proofAsset: normalizedProofAsset,
+    payoff: normalizedPayoff,
+    positioning: normalizedPositioning,
     packageVariants: input.packageVariants?.length
       ? input.packageVariants
-      : fallbackPackage(input.topic, input.promise, input.viewerOutcome),
+      : fallbackPackage(input.topic, normalizedPromise, normalizedViewerOutcome),
     scoreBreakdown: input.scoreBreakdown || emptyScore(),
     createdAt: new Date().toISOString(),
     source: 'planner',
@@ -143,6 +152,36 @@ function buildPrompt(topic: string, perspective: string, videoType: string, targ
   const lengthMeta = TARGET_LENGTHS.find(l => l.value === targetLength) ?? TARGET_LENGTHS[1];
   const perspLabel = PERSPECTIVES.find(p => p.value === perspective)?.label ?? perspective;
   const typeLabel  = VIDEO_TYPES.find(t => t.value === videoType)?.label ?? videoType;
+  const strategyScaffold = {
+    intent: strategyBrief.intent,
+    audience: strategyBrief.audience,
+    viewerOutcome: strategyBrief.viewerOutcome,
+    promise: strategyBrief.promise,
+    curiosityGap: 'A sharper curiosity gap if you can improve it',
+    proofAsset: strategyBrief.proofAsset,
+    payoff: strategyBrief.payoff,
+    positioning: strategyBrief.positioning,
+    packageVariants: [
+      {
+        title: 'Title variant',
+        thumbnailText: '3-5 words',
+        firstLineCaption: 'First line for caption',
+        shortCaption: 'Short caption',
+        hashtags: ['#barber', '#barberlife'],
+        platformAngle: 'Platform-specific angle',
+      },
+    ],
+    scoreBreakdown: {
+      audienceClarity: 0,
+      outcomeValue: 0,
+      novelty: 0,
+      emotionalTrigger: 0,
+      packagingStrength: 0,
+      retentionPath: 0,
+      total: 0,
+      rationale: 'Why this idea should or should not be shot',
+    },
+  };
 
   return `You are a YouTube/Instagram content strategist specializing in the barber & barbershop niche.
 
@@ -192,36 +231,7 @@ Return ONLY valid JSON, no markdown fences:
   "recordingTips": [
     "Specific tip about setup, lighting, or energy for this topic and format"
   ],
-  "strategyBrief": {
-    "intent": "${strategyBrief.intent}",
-    "audience": "${strategyBrief.audience}",
-    "viewerOutcome": "${strategyBrief.viewerOutcome}",
-    "promise": "${strategyBrief.promise}",
-    "curiosityGap": "A sharper curiosity gap if you can improve it",
-    "proofAsset": "${strategyBrief.proofAsset}",
-    "payoff": "${strategyBrief.payoff}",
-    "positioning": "${strategyBrief.positioning}",
-    "packageVariants": [
-      {
-        "title": "Title variant",
-        "thumbnailText": "3-5 words",
-        "firstLineCaption": "First line for caption",
-        "shortCaption": "Short caption",
-        "hashtags": ["#barber", "#barberlife"],
-        "platformAngle": "Platform-specific angle"
-      }
-    ],
-    "scoreBreakdown": {
-      "audienceClarity": 0,
-      "outcomeValue": 0,
-      "novelty": 0,
-      "emotionalTrigger": 0,
-      "packagingStrength": 0,
-      "retentionPath": 0,
-      "total": 0,
-      "rationale": "Why this idea should or should not be shot"
-    }
-  }
+  "strategyBrief": ${jsonForPrompt(strategyScaffold)}
 }
 
 Rules:
@@ -406,7 +416,11 @@ export default function VideoPlanner() {
       const nextPlan = { ...raw, id: Date.now().toString(), topic, perspective, videoType, targetLength, createdAt: new Date().toISOString(), strategyBrief: generatedBrief };
       setPlan(nextPlan);
       localStorage.setItem('contentStrategy:lastBrief', JSON.stringify(generatedBrief));
-    } catch { setPlan(buildFallbackPlan(topic, perspective, videoType, targetLength)); }
+    } catch {
+      const fallback = buildFallbackPlan(topic, perspective, videoType, targetLength);
+      setPlan(fallback);
+      if (fallback.strategyBrief) localStorage.setItem('contentStrategy:lastBrief', JSON.stringify(fallback.strategyBrief));
+    }
     setGenerating(false);
   }
 

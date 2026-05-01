@@ -483,9 +483,11 @@ ipcMain.handle('show-in-finder', async (_event, path: string) => {
 
 function strategyPromptBlock(strategyBrief?: ContentStrategyBrief): string {
   if (!strategyBrief) return '';
-  const variants = (strategyBrief.packageVariants || []).slice(0, 3).map((p, i) =>
-    `${i + 1}. ${p.title} | Thumb: ${p.thumbnailText} | Angle: ${p.platformAngle}`
-  ).join('\n');
+  const packageVariants = Array.isArray(strategyBrief.packageVariants) ? strategyBrief.packageVariants : [];
+  const variants = packageVariants.slice(0, 3).map((p, i) => {
+    const variant = (p && typeof p === 'object') ? p as unknown as Record<string, unknown> : {};
+    return `${i + 1}. ${String(variant.title || 'Untitled package')} | Thumb: ${String(variant.thumbnailText || 'Outcome-led cover')} | Angle: ${String(variant.platformAngle || 'Lead with the promise')}`;
+  }).join('\n');
   return `
 
 Content strategy brief:

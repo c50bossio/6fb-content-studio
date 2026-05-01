@@ -1121,16 +1121,22 @@ def run_pipeline(
         if strategy_raw:
             try:
                 strategy_brief = json.loads(strategy_raw)
+                if not isinstance(strategy_brief, dict):
+                    raise ValueError("strategy brief must be a JSON object")
                 print(f"[pipeline] 📦 Strategy brief linked: {strategy_brief.get('promise', 'Untitled promise')}")
-            except Exception as e:
+            except (json.JSONDecodeError, ValueError) as e:
                 print(f"[pipeline] ⚠️  Strategy brief ignored: {e}")
+                strategy_brief = None
 
         strategy_section = ""
         if strategy_brief:
             packages = strategy_brief.get("packageVariants") or []
+            if not isinstance(packages, list):
+                packages = []
             package_lines = "\n".join(
                 f"  - {p.get('title', '')} | Thumb: {p.get('thumbnailText', '')} | Angle: {p.get('platformAngle', '')}"
                 for p in packages[:3]
+                if isinstance(p, dict)
             )
             strategy_section = f"""
 
@@ -1336,17 +1342,17 @@ Transcript (with timestamps):
     )
 
     fixed_clips = validated_to_clip_definitions(validated)
-    strategy_lookup = {c.get("id"): c for c in qualified_clips}
+    strategy_lookup = {str(c.get("id")): c for c in qualified_clips}
     for fc in fixed_clips:
-        source = strategy_lookup.get(fc.get("id"), {})
+        source = strategy_lookup.get(str(fc.get("id")), {})
         for key in ("strategy_label", "strategy_rationale", "strategy_scores", "package_variant"):
             if source.get(key) is not None:
                 fc[key] = source.get(key)
 
     # Second dedup pass: boundary validation can extend clips, creating new near-overlaps
-    score_lookup = {c.get("id", i): c.get("total_score", 0) for i, c in enumerate(qualified_clips)}
+    score_lookup = {str(c.get("id", i)): c.get("total_score", 0) for i, c in enumerate(qualified_clips)}
     dedup_input = [
-        {**fc, "total_score": score_lookup.get(fc["id"], 0)}
+        {**fc, "total_score": score_lookup.get(str(fc["id"]), 0)}
         for fc in fixed_clips
     ]
     pre_dedup2 = len(dedup_input)
@@ -1354,10 +1360,10 @@ Transcript (with timestamps):
     if len(dedup_output) < pre_dedup2:
         print(f"[pipeline] Post-validation dedup: removed {pre_dedup2 - len(dedup_output)} clip(s) that became too close after boundary adjustment")
         # Keep only the surviving clips in both lists
-        surviving_ids = {c["id"] for c in dedup_output}
-        fixed_clips = [fc for fc in fixed_clips if fc["id"] in surviving_ids]
-        validated = [v for v in validated if v.id in surviving_ids]
-        qualified_clips = [qc for qc in qualified_clips if qc.get("id") in surviving_ids]
+        surviving_ids = {str(c["id"]) for c in dedup_output}
+        fixed_clips = [fc for fc in fixed_clips if str(fc["id"]) in surviving_ids]
+        validated = [v for v in validated if str(v.id) in surviving_ids]
+        qualified_clips = [qc for qc in qualified_clips if str(qc.get("id")) in surviving_ids]
 
     # --- Hook and ending quality gates ---
     srt_segments = parse_srt(srt_path)
