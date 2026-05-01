@@ -101,6 +101,12 @@
       ],
       "icon": "assets/icon.png"
     },
+    "nsis": {
+      "artifactName": "6FB-Content-Studio-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "6FB-Content-Studio-${version}.${ext}"
+    },
     "publish": {
       "provider": "github",
       "owner": "c50bossio",
