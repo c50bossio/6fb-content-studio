@@ -81,8 +81,6 @@ jobs:
       # ── 4. Package → signed + styled DMG via electron-builder ──────
       - name: Package macOS (signed DMG)
         env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           CSC_KEYCHAIN: ${{ runner.temp }}/build.keychain
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
