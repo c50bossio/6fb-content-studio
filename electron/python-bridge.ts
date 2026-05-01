@@ -146,12 +146,16 @@ export async function checkPythonDeps(runtime: ClipExtractorRuntime): Promise<{
   const ffprobePath = runtime.ffprobePath || companionToolPath(ffmpegPath, 'ffprobe');
   const hasBinary = !!runtime.binaryPath && existsSync(runtime.binaryPath);
 
+  const bundledRuntimeReady = hasBinary && runtime.binaryPath
+    ? await check(runtime.binaryPath, ['--runtime-check'])
+    : false;
+
   const [python, ffmpeg, ffprobe, mediapipe] = hasBinary && runtime.binaryPath
     ? [
-      await check(runtime.binaryPath, ['--help']),
+      bundledRuntimeReady,
       await check(ffmpegPath, ['-version']),
       await check(ffprobePath, ['-version']),
-      await check(runtime.binaryPath, ['--help']),
+      bundledRuntimeReady,
     ]
     : await Promise.all([
       check(pythonPath, ['--version']),
@@ -160,10 +164,12 @@ export async function checkPythonDeps(runtime: ClipExtractorRuntime): Promise<{
       check(pythonPath, ['-c', 'import mediapipe; print(mediapipe.__version__)']),
     ]);
 
-  const clipExtractor = (hasBinary && python) || (
-    existsSync(runtime.pipelineScriptPath)
-    && existsSync(join(runtime.toolsDir, 'clip_extractor/core/pipeline.py'))
-  );
+  const clipExtractor = hasBinary
+    ? bundledRuntimeReady
+    : (
+      existsSync(runtime.pipelineScriptPath)
+      && existsSync(join(runtime.toolsDir, 'clip_extractor/core/pipeline.py'))
+    );
 
   return {
     python,

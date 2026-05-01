@@ -27,6 +27,7 @@ Usage:
 import argparse
 import json
 import os
+import platform
 import re
 import subprocess
 import sys
@@ -66,6 +67,45 @@ def _dispatch_frozen_module() -> None:
 
 _dispatch_frozen_module()
 
+
+def _dispatch_runtime_check() -> None:
+    """Validate bundled runtime dependencies without downloading models."""
+    if "--runtime-check" not in sys.argv:
+        return
+
+    checks = {
+        "yaml": "yaml",
+        "cv2": "cv2",
+        "mediapipe": "mediapipe",
+    }
+
+    if sys.platform == "win32":
+        checks["faster_whisper"] = "faster_whisper"
+    elif sys.platform == "darwin" and platform.machine() == "arm64":
+        checks["mlx_whisper"] = "mlx_whisper"
+
+    results = {}
+    failures = {}
+    for name, module_name in checks.items():
+        try:
+            __import__(module_name)
+            results[name] = True
+        except Exception as exc:
+            results[name] = False
+            failures[name] = str(exc)
+
+    print(json.dumps({
+        "ok": len(failures) == 0,
+        "platform": sys.platform,
+        "machine": platform.machine(),
+        "checks": results,
+        "failures": failures,
+    }, sort_keys=True))
+    raise SystemExit(0 if not failures else 1)
+
+
+_dispatch_runtime_check()
+
 from clip_extractor.selection.boundary_validator import (
     validate_and_fix_boundaries,
     validated_to_clip_definitions,
@@ -81,8 +121,9 @@ def transcribe(video_path: str, output_dir: str, method: str = "auto") -> str:
     """Transcribe video to SRT format.
 
     Methods:
-        auto — try mlx-whisper (Metal GPU, fastest), fall back to whisper CLI
+        auto — try mlx-whisper (Metal GPU, fastest), then faster-whisper, then whisper CLI
         mlx — MLX Whisper on Apple Silicon Metal GPU (~15x realtime on M3 Max)
+        faster-whisper — cross-platform local transcription, used for Windows builds
         whisper — OpenAI Whisper CLI (slow on CPU)
         api — IX Toolkit cloud API (requires internet)
     """
@@ -134,6 +175,57 @@ def transcribe(video_path: str, output_dir: str, method: str = "auto") -> str:
             if method == "mlx":
                 raise RuntimeError("mlx-whisper not installed. Run: pip install mlx-whisper")
             print("[pipeline] mlx-whisper not available, falling back to whisper CLI...")
+
+    # Cross-platform fallback for packaged Windows builds.
+    if method in ("auto", "faster-whisper", "faster_whisper"):
+        try:
+            from faster_whisper import WhisperModel
+
+            print("[pipeline] Using faster-whisper (local CPU/GPU)...")
+            model = WhisperModel("small", device="auto", compute_type="int8")
+            segments_iter, _info = model.transcribe(
+                video_path,
+                language="en",
+                word_timestamps=True,
+            )
+            segments = list(segments_iter)
+
+            video_name = Path(video_path).stem
+            srt_path = output_dir / f"{video_name}.srt"
+            words = []
+
+            with open(srt_path, "w", encoding="utf-8") as f:
+                for i, seg in enumerate(segments, 1):
+                    start_ts = _format_srt_time(float(seg.start))
+                    end_ts = _format_srt_time(float(seg.end))
+                    text = (seg.text or "").strip()
+                    f.write(f"{i}\n{start_ts} --> {end_ts}\n{text}\n\n")
+
+                    for word in getattr(seg, "words", []) or []:
+                        word_text = (getattr(word, "word", "") or "").strip()
+                        if word_text:
+                            words.append({
+                                "word": word_text,
+                                "start": round(float(getattr(word, "start", seg.start)), 3),
+                                "end": round(float(getattr(word, "end", seg.end)), 3),
+                            })
+
+            if words:
+                words_path = output_dir / f"{video_name}_words.json"
+                with open(words_path, "w", encoding="utf-8") as f:
+                    json.dump(words, f, indent=2)
+                print(f"[pipeline] Saved {len(words)} word timestamps → {words_path.name}")
+
+            elapsed = time.time() - start_time
+            duration = float(segments[-1].end) if segments else 0
+            speed = duration / elapsed if elapsed > 0 and duration > 0 else 0
+            print(f"[pipeline] Transcription complete in {elapsed:.1f}s ({speed:.1f}x realtime): {srt_path}")
+            return str(srt_path)
+
+        except ImportError:
+            if method in ("faster-whisper", "faster_whisper"):
+                raise RuntimeError("faster-whisper not installed. Rebuild the packaged runtime.")
+            print("[pipeline] faster-whisper not available, falling back to whisper CLI...")
 
     # Fallback: whisper CLI
     if method in ("auto", "whisper"):
@@ -994,6 +1086,7 @@ def run_pipeline(
     brand: str = "6fbarber",
     num_clips: int = 5,
     transcript_path: str = None,
+    transcription_method: str = "auto",
     output_dir: str = None,
     no_post: bool = True,
     run_experiment: bool = False,
@@ -1054,7 +1147,7 @@ def run_pipeline(
         srt_path = transcript_path
         print(f"[pipeline] Using provided transcript: {srt_path}")
     else:
-        srt_path = transcribe(video_path, output_dir)
+        srt_path = transcribe(video_path, output_dir, transcription_method)
 
     # --- Step 2: Parse transcript ---
     print(f"\n📋 Step 2/{total_steps}: Parsing transcript")
@@ -1756,6 +1849,9 @@ Examples:
     parser.add_argument("--brand", default="6fbarber", help="Brand slug")
     parser.add_argument("--clips", type=int, default=5, help="Number of clips to select")
     parser.add_argument("--transcript", help="Path to existing .srt transcript")
+    parser.add_argument("--transcription-method", default="auto",
+                        choices=["auto", "mlx", "faster-whisper", "faster_whisper", "whisper", "api"],
+                        help="Transcription backend for videos without an existing transcript")
     parser.add_argument("--output", help="Output directory")
     parser.add_argument("--format", default="9x16", help="Aspect ratio (9x16, 1x1, 4x5)")
     parser.add_argument("--no-post", action="store_true", default=True, help="Don't post (default)")
@@ -1778,6 +1874,7 @@ Examples:
         brand=args.brand,
         num_clips=args.clips,
         transcript_path=args.transcript,
+        transcription_method=args.transcription_method,
         output_dir=args.output,
         no_post=not args.post,
         run_experiment=args.experiment,
