@@ -5,7 +5,7 @@
 
 import { spawn, ChildProcess } from 'child_process';
 import { delimiter, dirname, join } from 'path';
-import { existsSync } from 'fs';
+import { existsSync, readdirSync } from 'fs';
 import { BrowserWindow } from 'electron';
 import type { ContentStrategyBrief } from '../src/types/content-strategy';
 
@@ -69,6 +69,34 @@ interface ExtractResult {
 
 export function resolveSystemPython(): string {
   return 'python3';
+}
+
+function safeClipTitle(value: unknown, fallback: string): string {
+  return String(value || '')
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^[.-]+|[.-]+$/g, '')
+    .slice(0, 120) || fallback;
+}
+
+function findClipOutput(outputDir: string, id: string, title: unknown): { clipPath: string; filePath: string | null } {
+  const safeTitle = safeClipTitle(title, `clip-${id}`);
+  const expectedFolder = `clip-${id}-${safeTitle}`;
+  const expectedPath = join(outputDir, expectedFolder);
+  const matchingFolder = existsSync(expectedPath)
+    ? expectedFolder
+    : readdirSync(outputDir, { withFileTypes: true })
+      .find((entry) => entry.isDirectory() && entry.name.startsWith(`clip-${id}-`))?.name;
+  const clipPath = join(outputDir, matchingFolder || expectedFolder);
+
+  const filePath = [
+    'rendered_composition.mp4',
+    'reframed-9x16.mp4',
+    'reframed-split.mp4',
+    'reframed-auto.mp4',
+    'raw.mp4',
+  ].map((name) => join(clipPath, name)).find((candidate) => existsSync(candidate)) || null;
+
+  return { clipPath, filePath };
 }
 
 function companionToolPath(toolPath: string | undefined, executable: string): string {
@@ -369,15 +397,7 @@ export function runClipExtractor(
           const formattedClips = (data || []).map((clip: any, i: number) => {
             // Find the generated mp4
             const formattedId = String(clip.id || i + 1).padStart(2, '0');
-            const clipFolder = `clip-${formattedId}-${clip.title}`;
-            const expectedRenderPath = join(outputDir, clipFolder, 'rendered_composition.mp4');
-            const fallbackPath = join(outputDir, clipFolder, 'reframed-9x16.mp4');
-            // Prefer composed render; fall back only if it actually exists
-            const finalPath = existsFS(expectedRenderPath)
-              ? expectedRenderPath
-              : existsFS(fallbackPath)
-                ? fallbackPath
-                : null;
+            const { clipPath, filePath } = findClipOutput(outputDir, formattedId, clip.title);
 
             return {
               start: clip.start || 0,
@@ -388,8 +408,8 @@ export function runClipExtractor(
                 return raw / 100;
               })(),
               label: clip.title || `AI Segment ${i + 1}`,
-              filePath: finalPath,
-              clipPath: join(outputDir, clipFolder),
+              filePath,
+              clipPath,
               rationale: clip.reason,
               strategyLabel: clip.strategy_label,
               strategyRationale: clip.strategy_rationale,
