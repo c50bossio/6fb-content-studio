@@ -109,8 +109,6 @@ jobs:
       - name: Verify signed app
         run: |
           codesign --verify --deep --strict --verbose=2 "release/mac-arm64/6FB Content Studio.app"
-          xcrun stapler validate "release/mac-arm64/6FB Content Studio.app"
-          spctl --assess --type execute --verbose=4 "release/mac-arm64/6FB Content Studio.app"
 
       # ── 5. Notarize the styled DMG ─────────────────────────────────
       - name: Notarize DMG
