@@ -89,7 +89,9 @@ try {
     builtAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
   } | ConvertTo-Json
 
-  Set-Content -Path (Join-Path $RuntimeDir "runtime.json") -Value $RuntimeJson -Encoding UTF8
+  $RuntimeJsonPath = Join-Path $RuntimeDir "runtime.json"
+  $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
+  [System.IO.File]::WriteAllText($RuntimeJsonPath, $RuntimeJson, $Utf8NoBom)
   Write-Host "Pipeline runtime built at $RuntimeDir"
 } finally {
   Pop-Location

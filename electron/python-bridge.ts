@@ -164,10 +164,12 @@ export async function checkPythonDeps(runtime: ClipExtractorRuntime): Promise<{
       check(pythonPath, ['-c', 'import mediapipe; print(mediapipe.__version__)']),
     ]);
 
-  const clipExtractor = (hasBinary && python) || (
-    existsSync(runtime.pipelineScriptPath)
-    && existsSync(join(runtime.toolsDir, 'clip_extractor/core/pipeline.py'))
-  );
+  const clipExtractor = hasBinary
+    ? bundledRuntimeReady
+    : (
+      existsSync(runtime.pipelineScriptPath)
+      && existsSync(join(runtime.toolsDir, 'clip_extractor/core/pipeline.py'))
+    );
 
   return {
     python,
