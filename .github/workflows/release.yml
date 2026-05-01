@@ -93,9 +93,11 @@ jobs:
           npm run package:mac:release -- --publish never
           DMG=$(ls release/*.dmg | head -1)
           ZIP=$(ls release/*.zip | head -1)
+          ZIP_BLOCKMAP=$(ls release/*.zip.blockmap | head -1)
           YML=$(ls release/latest-mac.yml 2>/dev/null | head -1)
           echo "DMG_PATH=${DMG}" >> $GITHUB_ENV
           echo "ZIP_PATH=${ZIP}" >> $GITHUB_ENV
+          echo "ZIP_BLOCKMAP_PATH=${ZIP_BLOCKMAP}" >> $GITHUB_ENV
           echo "YML_PATH=${YML}" >> $GITHUB_ENV
           echo "VERSION=${VERSION}" >> $GITHUB_ENV
 
@@ -103,8 +105,8 @@ jobs:
         run: |
           test -n "$DMG_PATH" && test -f "$DMG_PATH" || { echo "::error::Missing DMG artifact"; exit 1; }
           test -n "$ZIP_PATH" && test -f "$ZIP_PATH" || { echo "::error::Missing ZIP artifact"; exit 1; }
+          test -n "$ZIP_BLOCKMAP_PATH" && test -f "$ZIP_BLOCKMAP_PATH" || { echo "::error::Missing ZIP blockmap artifact"; exit 1; }
           test -n "$YML_PATH" && test -f "$YML_PATH" || { echo "::error::Missing latest-mac.yml artifact"; exit 1; }
-          ls release/*.blockmap >/dev/null 2>&1 || { echo "::error::Missing blockmap artifacts"; exit 1; }
 
       - name: Verify signed app
         run: |
@@ -129,6 +131,14 @@ jobs:
           xcrun stapler staple "$DMG_PATH"
           xcrun stapler validate "$DMG_PATH"
 
+      - name: Normalize updater metadata
+        run: |
+          node scripts/normalize-mac-update-metadata.cjs "$YML_PATH" "$ZIP_PATH"
+          if grep -q '\.dmg' "$YML_PATH"; then
+            echo "::error::latest-mac.yml must not reference the DMG after stapling mutates it"
+            exit 1
+          fi
+
       # ── 7. Publish to GitHub Releases ──────────────────────────────
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -150,5 +160,5 @@ jobs:
             ${{ env.DMG_PATH }}
             ${{ env.ZIP_PATH }}
             ${{ env.YML_PATH }}
-            release/*.blockmap
+            ${{ env.ZIP_BLOCKMAP_PATH }}
           token: ${{ secrets.GH_TOKEN }}
