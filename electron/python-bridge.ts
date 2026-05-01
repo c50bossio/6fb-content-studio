@@ -146,12 +146,16 @@ export async function checkPythonDeps(runtime: ClipExtractorRuntime): Promise<{
   const ffprobePath = runtime.ffprobePath || companionToolPath(ffmpegPath, 'ffprobe');
   const hasBinary = !!runtime.binaryPath && existsSync(runtime.binaryPath);
 
+  const bundledRuntimeReady = hasBinary && runtime.binaryPath
+    ? await check(runtime.binaryPath, ['--runtime-check'])
+    : false;
+
   const [python, ffmpeg, ffprobe, mediapipe] = hasBinary && runtime.binaryPath
     ? [
-      await check(runtime.binaryPath, ['--help']),
+      bundledRuntimeReady,
       await check(ffmpegPath, ['-version']),
       await check(ffprobePath, ['-version']),
-      await check(runtime.binaryPath, ['--help']),
+      bundledRuntimeReady,
     ]
     : await Promise.all([
       check(pythonPath, ['--version']),
