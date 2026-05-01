@@ -117,7 +117,7 @@ const TOOLS: {
     page: 'editor',
     Icon: Icons.VideoEdit,
     title: 'Video Editor',
-    description: 'Remotion-powered editing. Add captions, transitions, music, effects.',
+    description: 'Transcript editing is staged for the next MP4-rendering release.',
     color: '#EC4899',
     ready: false,
   },
@@ -125,9 +125,9 @@ const TOOLS: {
     page: 'schedule',
     Icon: Icons.Calendar,
     title: 'Post Scheduler',
-    description: 'Connect Instagram, TikTok, YouTube. Schedule & batch upload content.',
+    description: 'Push finished media into the Content Generator publishing queue.',
     color: '#EF4444',
-    ready: false,
+    ready: true,
   },
 ];
 
@@ -230,7 +230,7 @@ export default function Dashboard({ onNavigate, stats }: DashboardProps) {
             <div className="bg-gray-800 rounded-xl border border-gray-700 p-4 flex items-center justify-between gap-4">
               <p className="text-xs text-gray-500">No play scheduled for today. Open Manager to plan your week.</p>
               <a
-                href="https://content.6fbmentorship.com/dashboard"
+                href="https://content.6fbmentorship.com/apps/content/dashboard"
                 target="_blank"
                 rel="noreferrer"
                 className="shrink-0 text-xs text-green-500 hover:text-green-400 transition-colors font-semibold whitespace-nowrap"

@@ -4,6 +4,7 @@ import SlidePreview from '../components/carousel/SlidePreview';
 import { toPng } from 'html-to-image';
 import useGoogleFonts from '../hooks/useGoogleFonts';
 import ScheduleModal from '../components/ScheduleModal';
+import type { ContentStrategyBrief } from '../types/content-strategy';
 
 interface Props {
   brandProfile: BrandProfile | null;
@@ -23,6 +24,7 @@ interface LibraryRun {
   timestamp: number;
   sourceVideo: string;
   runPath: string;
+  strategyBrief?: ContentStrategyBrief | null;
   clips: LibraryClip[];
 }
 
@@ -77,6 +79,8 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
   const [justSaved, setJustSaved] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [schedulePreparing, setSchedulePreparing] = useState(false);
+  const [scheduleMediaFiles, setScheduleMediaFiles] = useState<string[]>([]);
 
   const exportContainerRef = useRef<HTMLDivElement>(null);
 
@@ -104,6 +108,7 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
   const [carouselPlaybookPostId, setCarouselPlaybookPostId] = useState<string | undefined>(undefined);
   const [carouselPlaybookTopicId, setCarouselPlaybookTopicId] = useState<string | undefined>(undefined);
   const [carouselLinkedTitle, setCarouselLinkedTitle] = useState<string | undefined>(undefined);
+  const [activeStrategyBrief, setActiveStrategyBrief] = useState<ContentStrategyBrief | null>(null);
 
   const loadLibrary = useCallback(async () => {
     try {
@@ -124,12 +129,18 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
 
   // When selected run changes, load any playbook meta stored by ClipExtractor
   useEffect(() => {
-    if (!selectedRun) { setActiveRunPlaybook(null); return; }
+    if (!selectedRun) { setActiveRunPlaybook(null); setActiveStrategyBrief(null); return; }
     try {
       const stored = localStorage.getItem(`clipex:playbook:${selectedRun.runId}`);
       setActiveRunPlaybook(stored ? JSON.parse(stored) : null);
     } catch {
       setActiveRunPlaybook(null);
+    }
+    try {
+      const stored = localStorage.getItem(`contentStrategy:run:${selectedRun.runId}`);
+      setActiveStrategyBrief(selectedRun.strategyBrief || (stored ? JSON.parse(stored) : null));
+    } catch {
+      setActiveStrategyBrief(selectedRun.strategyBrief || null);
     }
   }, [selectedRun]);
 
@@ -177,6 +188,7 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
       const result = await window.electronAPI.extractCarousel({
         transcript: txResult.transcript,
         brandProfile: localBrand,
+        strategyBrief: activeStrategyBrief,
         contentType,
         ...(activeRunPlaybook
           ? {
@@ -221,9 +233,18 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
     if (!topic.trim()) return;
     setLoading(true); setError(''); setSlides([]); setCurrentDeckId(null);
     try {
+      const manualStrategy = activeStrategyBrief || (() => {
+        try {
+          const raw = localStorage.getItem('contentStrategy:lastBrief');
+          return raw ? JSON.parse(raw) as ContentStrategyBrief : null;
+        } catch {
+          return null;
+        }
+      })();
       const result = await window.electronAPI.generateCarousel({
         topic, type: 'educational', keyPoints: keyPoints.filter(Boolean),
         brandProfile: localBrand,
+        strategyBrief: manualStrategy,
       });
       if (result.success && result.slides) {
         const mapped: CarouselSlide[] = (result.slides as any[]).map((s: any, i: number) => ({
@@ -235,6 +256,7 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
           slideType: s.slideType || (i === 0 ? 'cover' : i === (result.slides!.length - 1) ? 'cta' : 'content'),
         }));
         setSlides(mapped); setActiveSlide(0); setCurrentDeckTitle(topic);
+        setActiveStrategyBrief(manualStrategy);
         onCarouselCreated?.();
       } else { setError(result.error || 'Generation failed'); }
     } catch { setError('Something went wrong. Check your Claude API key.'); }
@@ -250,6 +272,7 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
         title: currentDeckTitle || 'Untitled Carousel',
         slides,
         brandSnapshot: localBrand,
+        strategySnapshot: activeStrategyBrief,
         ...(carouselPlaybookPostId ? { playbookPostId: carouselPlaybookPostId } : {}),
         ...(carouselPlaybookTopicId ? { playbookTopicId: carouselPlaybookTopicId } : {}),
       });
@@ -277,7 +300,7 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
         dataUrls.push(dataUrl);
       }
       
-      const res = await window.electronAPI.exportCarouselDeck(title, dataUrls);
+      const res = await window.electronAPI.exportCarouselDeck(title, dataUrls, activeStrategyBrief);
       if (res.success) {
         alert(`Successfully exported deck to:\n${res.folderPath}`);
       } else {
@@ -287,6 +310,39 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
       alert('Error rendering deck: ' + err);
     } finally {
       setExporting(false);
+    }
+  };
+
+  const renderSlidesToPngs = async () => {
+    if (!slides.length || !exportContainerRef.current) return [];
+    const nodes = exportContainerRef.current.children;
+    const dataUrls: string[] = [];
+    for (let i = 0; i < slides.length; i++) {
+      dataUrls.push(await toPng(nodes[i] as HTMLElement, {
+        quality: 1.0,
+        pixelRatio: 1,
+        style: { transform: 'scale(1)', transformOrigin: 'top left' },
+      }));
+    }
+    return dataUrls;
+  };
+
+  const handleScheduleCarousel = async () => {
+    if (!slides.length || schedulePreparing) return;
+    setSchedulePreparing(true);
+    try {
+      const dataUrls = await renderSlidesToPngs();
+      const res = await window.electronAPI.saveTempMediaFiles(currentDeckTitle || 'Untitled Carousel', dataUrls);
+      if (res.success && res.savedPaths?.length) {
+        setScheduleMediaFiles(res.savedPaths);
+        setScheduleOpen(true);
+      } else {
+        alert('Could not prepare carousel images for scheduling: ' + (res.error || 'No files generated'));
+      }
+    } catch (err) {
+      alert('Could not prepare carousel images for scheduling: ' + err);
+    } finally {
+      setSchedulePreparing(false);
     }
   };
 
@@ -305,6 +361,7 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
         setSlides(result.data.slides || []); setActiveSlide(0);
         setCurrentDeckId(deck.id); setCurrentDeckTitle(deck.title);
         if (result.data.brandSnapshot) setLocalBrand(result.data.brandSnapshot);
+        setActiveStrategyBrief(result.data.strategySnapshot || null);
       }
     } catch {}
   };
@@ -614,9 +671,9 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
                 )}
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <button onClick={() => setScheduleOpen(true)} disabled={!slides.length}
+                <button onClick={handleScheduleCarousel} disabled={!slides.length || schedulePreparing}
                   className="flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] text-white hover:border-[#00C851]/50 hover:text-[#00C851] transition-all disabled:opacity-40">
-                  📅 Schedule
+                  {schedulePreparing ? 'Preparing...' : 'Schedule'}
                 </button>
                 <button onClick={handleExport} disabled={exporting || !slides.length}
                   className="flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] text-white hover:border-blue-500/50 hover:text-blue-400 transition-all disabled:opacity-40">
@@ -751,10 +808,11 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
         <ScheduleModal
           isOpen={scheduleOpen}
           onClose={() => setScheduleOpen(false)}
-          filePath="__carousel__"
-          defaultCaption={`${currentDeckTitle} — ${slides.length} slides`}
+          mediaFiles={scheduleMediaFiles}
+          defaultCaption={activeStrategyBrief?.packageVariants?.[0]?.shortCaption || `${currentDeckTitle} - ${slides.length} slides`}
           mediaType="carousel"
           playbookPostId={carouselPlaybookPostId}
+          strategySnapshot={activeStrategyBrief}
         />
       )}
     </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import ScheduleModal from '../components/ScheduleModal';
+import type { ContentStrategyBrief, PackageVariant } from '../types/content-strategy';
 
 // ─── SVG Icons ────────────────────────────────────────────────────────
 const Icon = {
@@ -248,12 +249,19 @@ interface Clip {
   composedAt?: string | null;
   clipPath?: string;
   specPath?: string;
+  strategyLabel?: string;
+  strategyRationale?: string;
+  strategyScores?: Record<string, number> | null;
+  packageVariant?: PackageVariant | null;
+  strategyBrief?: ContentStrategyBrief | null;
 }
 
 interface LibraryRun {
   runId: string;
   timestamp: number;
   sourceVideo: string;
+  sourceVideoPath?: string | null;
+  strategyBrief?: ContentStrategyBrief | null;
   runPath?: string;
   clips: Clip[];
 }
@@ -282,6 +290,42 @@ const STATUS: Record<string, { label: string; color: string }> = {
   compose_failed: { label: 'Failed', color: '#EF4444' },
   pending: { label: 'Pending', color: '#F59E0B' },
 };
+
+function readLastStrategyBrief(): ContentStrategyBrief | null {
+  try {
+    const raw = localStorage.getItem('contentStrategy:lastBrief');
+    return raw ? JSON.parse(raw) as ContentStrategyBrief : null;
+  } catch {
+    return null;
+  }
+}
+
+function strategyFromPlaybook(playbook: PlaybookSelection): ContentStrategyBrief {
+  return {
+    id: `playbook_${Date.now()}`,
+    intent: 'education',
+    audience: `Barbershop owners focused on ${playbook.pillar.toLowerCase()}`,
+    viewerOutcome: `Apply "${playbook.topicTitle}" with one concrete action.`,
+    promise: playbook.hookIdea || playbook.topicTitle,
+    curiosityGap: playbook.visualSuggestion || 'The viewer needs the missing business insight behind this topic.',
+    proofAsset: playbook.shotList?.[0] || 'Use a real shop example or number from the recording.',
+    payoff: 'Give the viewer a decision they can make today.',
+    positioning: 'Better and more barber-specific than generic business advice.',
+    packageVariants: [],
+    scoreBreakdown: {
+      audienceClarity: 7,
+      outcomeValue: 7,
+      novelty: 5,
+      emotionalTrigger: 6,
+      packagingStrength: 6,
+      retentionPath: 6,
+      total: 62,
+      rationale: 'Generated from the linked playbook topic.',
+    },
+    createdAt: new Date().toISOString(),
+    source: 'playbook',
+  };
+}
 
 // ─── Rename Input ─────────────────────────────────────────────────────
 function RenameInput({ value, onSave, onCancel }: { value: string; onSave: (v: string) => void; onCancel: () => void }) {
@@ -314,6 +358,9 @@ function ClipCard({ clip, onDelete, onRename, onOpenInEditor, playbookPostId }: 
   const ct = CT[clip.contentType || 'vlog'] || CT.vlog;
   const st = clip.status ? STATUS[clip.status] : null;
   const dur = clip.duration || Math.max(0, (clip.end || 0) - (clip.start || 0));
+  const pkg = clip.packageVariant || clip.strategyBrief?.packageVariants?.[0] || null;
+  const strategyLabel = clip.strategyLabel || (pkg ? 'Best Package Fit' : '');
+  const defaultCaption = pkg?.shortCaption || pkg?.firstLineCaption || title;
 
   return (
     <div className="bg-[#161616] rounded-2xl border border-[#222] hover:border-[#333] transition-all overflow-hidden flex flex-col group/card">
@@ -362,6 +409,13 @@ function ClipCard({ clip, onDelete, onRename, onOpenInEditor, playbookPostId }: 
             </span>
           </div>
         )}
+        {strategyLabel && (
+          <div className="absolute left-2 bottom-6">
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-black/60 text-[#00C851] border border-[#00C851]/30 backdrop-blur-sm">
+              {strategyLabel}
+            </span>
+          </div>
+        )}
 
         {/* Bottom strip */}
         <div className="absolute bottom-0 left-0 right-0 px-2.5 py-1.5 bg-gradient-to-t from-black/80 to-transparent flex justify-between items-end">
@@ -379,6 +433,15 @@ function ClipCard({ clip, onDelete, onRename, onOpenInEditor, playbookPostId }: 
         }
         {clip.start > 0 && (
           <p className="text-[9px] text-[#555] font-mono -mt-1">{formatTime(clip.start)} – {formatTime(clip.end)}</p>
+        )}
+        {pkg && (
+          <div className="rounded-lg border border-[#222] bg-black/20 p-2">
+            <p className="text-[9px] font-bold text-[#00C851] uppercase tracking-wider truncate">{pkg.thumbnailText || 'Package'}</p>
+            <p className="text-[10px] text-[#888] mt-1 line-clamp-2">{pkg.title || pkg.shortCaption}</p>
+          </div>
+        )}
+        {clip.strategyRationale && !pkg && (
+          <p className="text-[10px] text-[#666] leading-snug line-clamp-2">{clip.strategyRationale}</p>
         )}
         <div className="flex gap-1.5 mt-auto pt-1">
           {clip.filePath && (
@@ -425,10 +488,11 @@ function ClipCard({ clip, onDelete, onRename, onOpenInEditor, playbookPostId }: 
         <ScheduleModal
           isOpen={scheduleOpen}
           onClose={() => setScheduleOpen(false)}
-          filePath={clip.filePath}
-          defaultCaption={title}
+          mediaFiles={[clip.filePath]}
+          defaultCaption={defaultCaption}
           mediaType="video"
           playbookPostId={playbookPostId}
+          strategySnapshot={clip.strategyBrief || null}
         />
       )}
     </div>
@@ -526,6 +590,7 @@ export default function ClipExtractor({ onClipCreated, onOpenInEditor }: { onCli
   const [todayBrief, setTodayBrief] = useState<TodayBrief | null>(null);
   const [showPlayModal, setShowPlayModal] = useState(false);
   const [pendingPlaybook, setPendingPlaybook] = useState<PlaybookSelection | null>(null);
+  const [pendingStrategyBrief, setPendingStrategyBrief] = useState<ContentStrategyBrief | null>(() => readLastStrategyBrief());
   const pendingVideoPathRef = useRef<string | null>(null);
 
   useEffect(() => { if (videoPath) localStorage.setItem('clipex:videoPath', videoPath); }, [videoPath]);
@@ -596,6 +661,7 @@ export default function ClipExtractor({ onClipCreated, onOpenInEditor }: { onCli
     if (!result.cancelled && result.filePath) {
       setClips([]);
       setSelectedRunId(null);
+      setPendingStrategyBrief(readLastStrategyBrief());
       localStorage.removeItem('clipex:runId');
       // If we have a today brief, show the modal before proceeding
       if (todayBrief) {
@@ -621,18 +687,21 @@ export default function ClipExtractor({ onClipCreated, onOpenInEditor }: { onCli
       shotList: todayBrief.shotList,
     };
     setPendingPlaybook(selection);
+    setPendingStrategyBrief(readLastStrategyBrief() || strategyFromPlaybook(selection));
     setVideoPath(pendingVideoPathRef.current);
   };
 
   const handlePlayModalDifferent = (picked: PlaybookSelection) => {
     setShowPlayModal(false);
     setPendingPlaybook(picked);
+    setPendingStrategyBrief(readLastStrategyBrief() || strategyFromPlaybook(picked));
     setVideoPath(pendingVideoPathRef.current);
   };
 
   const handlePlayModalNo = () => {
     setShowPlayModal(false);
     setPendingPlaybook(null);
+    setPendingStrategyBrief(readLastStrategyBrief());
     setVideoPath(pendingVideoPathRef.current);
   };
 
@@ -643,7 +712,8 @@ export default function ClipExtractor({ onClipCreated, onOpenInEditor }: { onCli
     setProgress({ percent: 0, label: 'Starting…' });
     try {
       // Pass 'auto' to both so the IX Pipeline is forced to behave intelligently
-      const result = await window.electronAPI.extractClips(videoPath, { outputFormat: 'auto', contentType: 'auto' });
+      const activeStrategy = pendingStrategyBrief || readLastStrategyBrief();
+      const result = await window.electronAPI.extractClips(videoPath, { outputFormat: 'auto', contentType: 'auto', strategyBrief: activeStrategy });
       if (result.success) {
         const raw: Clip[] = (result as any).data?.clips || [{
           start: 0, end: 0, score: 0.99, duration: 0,
@@ -655,6 +725,8 @@ export default function ClipExtractor({ onClipCreated, onOpenInEditor }: { onCli
           title: c.title || c.label || 'Untitled',
           thumbnailPath: c.thumbnailPath ||
             (c.filePath ? (c.filePath as string).replace(/\/[^/]+\.mp4$/, '/thumbnail.jpg') : undefined),
+          strategyBrief: c.strategyBrief || activeStrategy || null,
+          packageVariant: c.packageVariant || activeStrategy?.packageVariants?.[0] || null,
         }));
         setClips(enriched);
         enriched.forEach(() => onClipCreated?.());
@@ -664,6 +736,9 @@ export default function ClipExtractor({ onClipCreated, onOpenInEditor }: { onCli
         // Persist playbook selection alongside this run
         if (pendingPlaybook) {
           localStorage.setItem(`clipex:playbook:${runId}`, JSON.stringify(pendingPlaybook));
+        }
+        if (activeStrategy) {
+          localStorage.setItem(`contentStrategy:run:${runId}`, JSON.stringify(activeStrategy));
         }
         setTimeout(loadLibrary, 3000);
       } else {
@@ -680,10 +755,19 @@ export default function ClipExtractor({ onClipCreated, onOpenInEditor }: { onCli
     // directly use the run's clips — these come from the scanner
     const runClips = run.clips as Clip[];
     setClips(runClips);
-    setVideoPath(run.sourceVideo || null);
+    setVideoPath(run.sourceVideoPath || null);
+    const storedStrategy = run.strategyBrief || (() => {
+      try {
+        const raw = localStorage.getItem(`contentStrategy:run:${run.runId}`);
+        return raw ? JSON.parse(raw) as ContentStrategyBrief : null;
+      } catch {
+        return null;
+      }
+    })();
+    setPendingStrategyBrief(storedStrategy);
     localStorage.setItem('clipex:runId', run.runId);
     localStorage.setItem('clipex:clips', JSON.stringify(runClips));
-    if (run.sourceVideo) localStorage.setItem('clipex:videoPath', run.sourceVideo);
+    if (run.sourceVideoPath) localStorage.setItem('clipex:videoPath', run.sourceVideoPath);
   };
 
   const handleDeleteRun = async (runId: string) => {
@@ -814,6 +898,17 @@ export default function ClipExtractor({ onClipCreated, onOpenInEditor }: { onCli
 
           {/* Error */}
           {error && <p className="text-red-400 text-xs bg-red-900/20 border border-red-800/30 rounded-lg px-3 py-2 mb-4">{error}</p>}
+
+          {pendingStrategyBrief && !processing && (
+            <div className="mb-4 rounded-xl border border-[#00C851]/20 bg-[#00C851]/5 px-4 py-3 flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold text-[#00C851] uppercase tracking-widest mb-1">Strategy Linked</p>
+                <p className="text-xs font-semibold text-white truncate">{pendingStrategyBrief.promise || pendingStrategyBrief.viewerOutcome}</p>
+                <p className="text-[10px] text-[#666] mt-1 truncate">{pendingStrategyBrief.audience}</p>
+              </div>
+              <span className="text-[10px] text-[#00C851] border border-[#00C851]/30 rounded-full px-2 py-1 capitalize shrink-0">{pendingStrategyBrief.intent}</span>
+            </div>
+          )}
 
           {/* Drop zone */}
           {!videoPath && !processing && clips.length === 0 && (

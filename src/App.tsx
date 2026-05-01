@@ -9,8 +9,10 @@ import BlogWriter from './pages/BlogWriter';
 import ContentPlanner from './pages/ContentPlanner';
 import VideoEditor from './pages/VideoEditor';
 import PostScheduler from './pages/PostScheduler';
+import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
 import { useStudioStats } from './hooks/useStudioStats';
+import type { ContentStrategyBrief } from './types/content-strategy';
 
 export interface BrandProfile {
   brandName: string;
@@ -59,7 +61,8 @@ declare global {
       saveApiKey: (provider: string, key: string) => Promise<{ success: boolean }>;
       getApiKey: (provider: string) => Promise<{ hasKey: boolean; hint: string | null }>;
       deleteApiKey: (provider: string) => Promise<{ success: boolean }>;
-      getAllSettings: () => Promise<{ apiKeys: { claude: boolean; openai: boolean }; setupComplete: boolean }>;
+      getAllSettings: () => Promise<{ apiKeys: { claude: boolean; openai: boolean }; setupComplete: boolean; version?: string }>;
+      getAppVersion: () => Promise<string>;
       completeSetup: () => Promise<{ success: boolean }>;
       // Files
       selectVideo: () => Promise<{ cancelled: boolean; filePath?: string }>;
@@ -67,21 +70,27 @@ declare global {
       selectLogo: () => Promise<{ cancelled: boolean; filePath?: string }>;
     selectImageFile: () => Promise<{ cancelled: boolean; filePath?: string }>;
       // Clips
-      extractClips: (videoPath: string, options: Record<string, unknown>) => Promise<{ success: boolean; data?: unknown; error?: string }>;
+      extractClips: (videoPath: string, options: Record<string, unknown> & { strategyBrief?: ContentStrategyBrief | null }) => Promise<{ success: boolean; data?: unknown; error?: string; runId?: string }>;
       // Carousel
       generateCarousel: (data: {
         topic: string; type: string; keyPoints: string[]; brandProfile?: BrandProfile;
         playbookBrief?: { topicTitle: string; pillar: string; hookIdea: string; visualSuggestion: string; shotList: string[] };
+        strategyBrief?: ContentStrategyBrief | null;
         playbookPostId?: string; playbookTopicId?: string;
       }) => Promise<{ success: boolean; slides?: CarouselSlide[]; playbookPostId?: string; playbookTopicId?: string; error?: string }>;
-      extractCarousel: (data: { transcript: string; brandProfile: BrandProfile; contentType: string }) => Promise<{ success: boolean; slides?: CarouselSlide[]; error?: string }>;
+      extractCarousel: (data: {
+        transcript: string; brandProfile: BrandProfile; contentType: string; strategyBrief?: ContentStrategyBrief | null;
+        playbookBrief?: { topicTitle: string; pillar: string; hookIdea: string; visualSuggestion: string; shotList: string[] };
+        playbookPostId?: string; playbookTopicId?: string;
+      }) => Promise<{ success: boolean; slides?: CarouselSlide[]; playbookPostId?: string; playbookTopicId?: string; error?: string }>;
       readTranscript: (runPath: string) => Promise<{ success: boolean; transcript?: string; format?: string; error?: string }>;
       autoMatchCarouselFrames: (data: { runPath: string; timestamps: string[] }) => Promise<{ success: boolean; frames?: (string | null)[]; error?: string }>;
       // Carousel Persistence & Export
-      exportCarouselDeck: (title: string, images: string[]) => Promise<{ success: boolean; folderPath?: string; savedPaths?: string[]; error?: string }>;
-      saveCarousel: (data: { title: string; slides: object[]; brandSnapshot: object; playbookPostId?: string; playbookTopicId?: string }) => Promise<{ success: boolean; id?: string; error?: string }>;
+      exportCarouselDeck: (title: string, images: string[], strategySnapshot?: ContentStrategyBrief | null) => Promise<{ success: boolean; folderPath?: string; savedPaths?: string[]; error?: string }>;
+      saveTempMediaFiles: (title: string, images: string[]) => Promise<{ success: boolean; folderPath?: string; savedPaths?: string[]; error?: string }>;
+      saveCarousel: (data: { title: string; slides: object[]; brandSnapshot: object; strategySnapshot?: ContentStrategyBrief | null; playbookPostId?: string; playbookTopicId?: string }) => Promise<{ success: boolean; id?: string; error?: string }>;
       listCarousels: () => Promise<{ carousels: { id: string; title: string; slideCount: number; createdAt: string }[] }>;
-      loadCarousel: (id: string) => Promise<{ success: boolean; data?: { slides: CarouselSlide[]; title: string; brandSnapshot: BrandProfile } }>;
+      loadCarousel: (id: string) => Promise<{ success: boolean; data?: { slides: CarouselSlide[]; title: string; brandSnapshot: BrandProfile; strategySnapshot?: ContentStrategyBrief | null } }>;
       deleteCarousel: (id: string) => Promise<{ success: boolean }>;
       renameCarousel: (id: string, title: string) => Promise<{ success: boolean }>;
       // Playbook
@@ -95,20 +104,18 @@ declare global {
         pillar: string; contentType: string; status: string;
       }[] } | []>;
       // Planner
-      generateVideoPlan: (data: { topic: string; type: string; duration: string; perspective: string; useRag?: boolean; targetLocation?: string }) => Promise<{ success: boolean; data?: unknown; error?: string }>;
+      generateVideoPlan: (data: { topic: string; type: string; duration: string; perspective: string; useRag?: boolean; targetLocation?: string; strategyBrief?: Partial<ContentStrategyBrief> }) => Promise<{ success: boolean; data?: unknown; error?: string }>;
       // Blog
-      generateBlogPost: (data: { transcript: string; brandProfile: object; contentType: string }) => Promise<{ success: boolean; blogPost?: { title: string; metaDescription: string; sections: { id: string; heading: string; imageTimestamp: string; imagePath: string | null; body: string }[] }; error?: string }>;
-      saveBlogPost: (data: { title: string; metaDescription: string; sections: object[]; brandSnapshot: object }) => Promise<{ success: boolean; id?: string }>;
+      generateBlogPost: (data: { transcript: string; brandProfile: object; contentType: string; strategyBrief?: ContentStrategyBrief | null }) => Promise<{ success: boolean; blogPost?: { title: string; metaDescription: string; sections: { id: string; heading: string; imageTimestamp: string; imagePath: string | null; body: string }[] }; error?: string }>;
+      saveBlogPost: (data: { title: string; metaDescription: string; sections: object[]; brandSnapshot: object; strategySnapshot?: ContentStrategyBrief | null }) => Promise<{ success: boolean; id?: string }>;
       listBlogPosts: () => Promise<{ posts: { id: string; title: string; sectionCount: number; createdAt: string }[] }>;
       loadBlogPost: (id: string) => Promise<{ success: boolean; data?: unknown }>;
       deleteBlogPost: (id: string) => Promise<{ success: boolean }>;
-      exportBlogMarkdown: (data: { title: string; metaDescription: string; sections: { heading: string; body: string; imagePath?: string | null }[] }) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+      exportBlogMarkdown: (data: { title: string; metaDescription: string; sections: { heading: string; body: string; imagePath?: string | null }[]; strategySnapshot?: ContentStrategyBrief | null }) => Promise<{ success: boolean; filePath?: string; error?: string }>;
       // Brand
       saveBrandProfile: (profile: BrandProfile) => Promise<{ success: boolean }>;
       getBrandProfile: () => Promise<BrandProfile>;
       // System
-      renderVideo: (compositionId: string, props: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
-      postToSocial: (platform: string, content: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
       checkSystemHealth: () => Promise<unknown>;
       resetApp: () => Promise<{ success: boolean }>;
       openPath: (path: string) => Promise<{ success: boolean }>;
@@ -120,6 +127,8 @@ declare global {
       generateThumbnail: (videoPath: string, thumbPath: string) => Promise<{ success: boolean; thumbPath?: string }>;
       // Progress
       onProgress: (callback: (data: { percent: number; label: string }) => void) => () => void;
+      // Publishing
+      pushToScheduler: (payload: { filePath?: string; mediaFiles?: string[]; caption: string; mediaType: 'image' | 'video' | 'carousel'; scheduledFor: string; hashtags?: string[]; isTrial?: boolean; playbookPostId?: string; strategySnapshot?: ContentStrategyBrief | null }) => Promise<{ success: boolean; post?: unknown; error?: string }>;
       // Video Editor
       loadWordsJson: (path: string) => Promise<{ success: boolean; data?: { words: Array<{ word: string; start_ms: number; end_ms: number }> }; error?: string }>;
       exportEditedSpec: (path: string, spec: object) => Promise<{ success: boolean; error?: string }>;
@@ -152,6 +161,7 @@ export default function App() {
         saveApiKey: async () => ({ success: true }),
         getApiKey: async () => ({ hasKey: false, hint: null }),
         getAllSettings: async () => ({ apiKeys: { claude: false, openai: false }, setupComplete: false }),
+        getAppVersion: async () => '1.1.0',
         completeSetup: async () => ({ success: true }),
         selectVideo: async () => ({ cancelled: true }),
         selectOutputDir: async () => ({ cancelled: true }),
@@ -160,6 +170,7 @@ export default function App() {
         extractClips: async () => ({ success: false, error: 'Electron required' }),
         // Carousel Persistence & Export
         exportCarouselDeck: async () => ({ success: false, error: 'Not implemented in browser' }),
+        saveTempMediaFiles: async () => ({ success: false, error: 'Not implemented in browser' }),
         saveCarousel: async () => ({ success: false, error: 'Not implemented in browser' }),
         generateCarousel: async () => ({ success: false, error: 'Electron required' }),
         extractCarousel: async () => ({ success: false, error: 'Electron required' }),
@@ -171,13 +182,12 @@ export default function App() {
           backgroundColor: '#0f0f0f', fontPreset: 'clean-pro', headlineFont: 'Space Grotesk',
           bodyFont: 'Inter', layoutStyle: 'bold', tone: 'professional', logoPath: null,
         }),
-        renderVideo: async () => ({ success: false, error: 'Electron required' }),
-        postToSocial: async () => ({ success: false, error: 'Electron required' }),
         onProgress: () => () => {},
+        pushToScheduler: async () => ({ success: false, error: 'Electron required' }),
         deleteApiKey: async () => ({ success: true }),
         checkSystemHealth: async () => ({
-          deps: { python: false, ffmpeg: false, mediapipe: false, clipExtractor: false },
-          paths: { userData: '~/Library/Application Support/6fb-content-studio', ixClipExtractor: '' },
+          deps: { python: false, ffmpeg: false, ffprobe: false, mediapipe: false, clipExtractor: false },
+          paths: { userData: '~/Library/Application Support/6fb-content-studio', clipExtractor: '' },
           apiKeys: { claude: true, openai: false },
         }),
         resetApp: async () => ({ success: true }),
@@ -230,29 +240,15 @@ export default function App() {
       <main className="flex-1 overflow-y-auto">
         {currentPage === 'dashboard'  && <Dashboard onNavigate={setCurrentPage} stats={stats} />}
         {currentPage === 'planner'    && <ContentPlanner onPlanCreated={onClipCreated} hasClaudeKey={hasClaudeKey} />}
-        {currentPage === 'clips'      && <ClipExtractor onClipCreated={onClipCreated} onOpenInEditor={handleOpenInEditor} />}
+        {currentPage === 'clips'      && <ClipExtractor onClipCreated={onClipCreated} />}
         {currentPage === 'carousel'   && <CarouselStudio brandProfile={brandProfile} onNavigateToBrand={() => setCurrentPage('brand')} onCarouselCreated={onCarouselCreated} hasClaudeKey={hasClaudeKey} />}
         {currentPage === 'brand'      && <BrandStudio onSave={setBrandProfile} />}
         {currentPage === 'blog'       && <BlogWriter brandProfile={brandProfile} onBlogCreated={onBlogCreated} hasClaudeKey={hasClaudeKey} />}
         {currentPage === 'editor'     && <VideoEditor brandProfile={brandProfile} editorClip={editorClip} onNavigateToClips={() => setCurrentPage('clips')} />}
         {currentPage === 'schedule'   && <PostScheduler />}
-        {currentPage === 'analytics'  && <ComingSoon title="Content Analytics" />}
+        {currentPage === 'analytics'  && <Analytics />}
         {currentPage === 'settings'   && <Settings />}
       </main>
-    </div>
-  );
-}
-
-function ComingSoon({ title }: { title: string }) {
-  return (
-    <div className="h-full flex flex-col items-center justify-center text-center px-8">
-      <div className="w-12 h-12 text-[#2a2a2a] mb-5">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1} strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
-          <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-        </svg>
-      </div>
-      <h2 className="text-xl font-bold text-white mb-2">{title}</h2>
-      <p className="text-6fb-text-secondary text-sm">Coming in Phase 2</p>
     </div>
   );
 }

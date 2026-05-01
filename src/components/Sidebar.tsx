@@ -73,7 +73,7 @@ const NavIcons: Record<string, () => React.ReactElement> = {
 
 const GLOBAL_ITEMS: { page: Page; label: string; ready: boolean }[] = [
   { page: 'brand',     label: 'Brand Studio',   ready: true  },
-  { page: 'analytics', label: 'Analytics',      ready: false },
+  { page: 'analytics', label: 'Analytics',      ready: true  },
   { page: 'schedule',  label: 'Scheduler',      ready: true  },
 ];
 
@@ -82,7 +82,7 @@ const ENGINE_ITEMS: { page: Page; label: string; ready: boolean; subtitle?: stri
   { page: 'clips',     label: 'Clips',          ready: true  },
   { page: 'carousel',  label: 'Carousel',       ready: true  },
   { page: 'blog',      label: 'Blog Writer',    ready: true  },
-  { page: 'editor',    label: 'Video Editor',   ready: true  },
+  { page: 'editor',    label: 'Video Editor',   ready: false },
 ];
 
 export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
@@ -118,7 +118,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
             return (
               <button
                 key={item.page}
-                onClick={() => onNavigate(item.page)}
+                onClick={() => item.ready && onNavigate(item.page)}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all ${
                   active ? 'bg-6fb-green/10 text-6fb-green' : 'text-6fb-text-secondary hover:text-white hover:bg-white/5'
                 }`}
@@ -150,7 +150,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
             return (
               <button
                 key={item.page}
-                onClick={() => onNavigate(item.page)}
+                onClick={() => item.ready && onNavigate(item.page)}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all ${
                   active ? 'bg-6fb-green/10 text-6fb-green' : 'text-6fb-text-secondary hover:text-white hover:bg-white/5'
                 }`}

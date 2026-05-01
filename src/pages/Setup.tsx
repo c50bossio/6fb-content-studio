@@ -51,13 +51,13 @@ const SetupIcons = {
 const FEATURES = [
   { Icon: SetupIcons.Scissors, text: 'AI-powered clip extraction from long videos', color: '#8B5CF6' },
   { Icon: SetupIcons.Carousel, text: 'Instagram carousel generator with brand theming', color: '#00C851' },
-  { Icon: SetupIcons.Video, text: 'Remotion video editor with captions & effects', color: '#EC4899' },
-  { Icon: SetupIcons.Share, text: 'Multi-platform posting & scheduling', color: '#3B82F6' },
+  { Icon: SetupIcons.Video, text: 'Transcript edit specs with MP4 rendering staged next', color: '#EC4899' },
+  { Icon: SetupIcons.Share, text: 'Publishing queue bridge for finished media', color: '#3B82F6' },
 ];
 
 export default function Setup({ onComplete }: SetupProps) {
   const [step, setStep] = useState(0);
-  const [provider, setProvider] = useState<'claude' | 'openai'>('claude');
+  const provider: 'claude' = 'claude';
   const [apiKey, setApiKey] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -67,10 +67,6 @@ export default function Setup({ onComplete }: SetupProps) {
 
     if (provider === 'claude' && !apiKey.startsWith('sk-ant-')) {
       setError('Claude keys start with "sk-ant-". Check your key.');
-      return;
-    }
-    if (provider === 'openai' && !apiKey.startsWith('sk-')) {
-      setError('OpenAI keys start with "sk-". Check your key.');
       return;
     }
     if (apiKey.length < 20) {
@@ -150,25 +146,8 @@ export default function Setup({ onComplete }: SetupProps) {
               Your API key is stored locally on your computer. It never leaves your machine.
             </p>
 
-            {/* Provider Toggle */}
-            <label className="text-xs font-bold text-6fb-text-muted uppercase tracking-wider mb-2 block">
-              AI Provider
-            </label>
-            <div className="grid grid-cols-2 gap-2 mb-5">
-              {(['claude', 'openai'] as const).map(p => (
-                <button
-                  key={p}
-                  onClick={() => { setProvider(p); setApiKey(''); setError(''); }}
-                  className={`flex items-center justify-center gap-2 py-3 rounded-lg border text-sm font-medium transition-all ${
-                    provider === p
-                      ? 'border-6fb-green bg-6fb-green/10 text-6fb-green'
-                      : 'border-6fb-border bg-6fb-card text-6fb-text-secondary hover:border-6fb-text-muted'
-                  }`}
-                >
-                  <div className={`w-2 h-2 rounded-full ${p === 'claude' ? 'bg-purple-500' : 'bg-emerald-500'}`} />
-                  {p === 'claude' ? 'Claude' : 'OpenAI'}
-                </button>
-              ))}
+            <div className="mb-5 rounded-lg border border-6fb-green/25 bg-6fb-green/10 px-3 py-2 text-xs text-6fb-green">
+              Claude is the supported AI provider for this release.
             </div>
 
             {/* Key Input */}
@@ -179,15 +158,12 @@ export default function Setup({ onComplete }: SetupProps) {
               type="password"
               value={apiKey}
               onChange={e => { setApiKey(e.target.value); setError(''); }}
-              placeholder={provider === 'claude' ? 'sk-ant-api03-...' : 'sk-...'}
+              placeholder="sk-ant-api03-..."
               className="w-full bg-6fb-card border border-6fb-border rounded-lg px-4 py-3 text-white text-sm placeholder-6fb-text-muted focus:outline-none focus:border-6fb-green transition-colors mb-2"
             />
             <p className="text-[11px] text-6fb-text-muted mb-5 flex items-center gap-1.5">
               <span className="w-3 h-3 shrink-0 text-6fb-green"><SetupIcons.Link /></span>
-              Get your key: {provider === 'claude'
-                ? <a href="https://console.anthropic.com" target="_blank" className="text-6fb-green hover:underline">console.anthropic.com</a>
-                : <a href="https://platform.openai.com/api-keys" target="_blank" className="text-6fb-green hover:underline">platform.openai.com</a>
-              }
+              Get your key: <a href="https://console.anthropic.com" target="_blank" className="text-6fb-green hover:underline">console.anthropic.com</a>
             </p>
 
             {error && (

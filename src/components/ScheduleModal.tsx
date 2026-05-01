@@ -1,17 +1,19 @@
 import { useState } from 'react';
+import type { ContentStrategyBrief } from '../types/content-strategy';
 
 interface ScheduleModalProps {
   isOpen: boolean;
   onClose: () => void;
-  filePath: string;
+  mediaFiles: string[];
   defaultCaption?: string;
   mediaType: 'image' | 'video' | 'carousel';
   playbookPostId?: string;
+  strategySnapshot?: ContentStrategyBrief | null;
 }
 
 type ScheduleStatus = 'idle' | 'uploading' | 'scheduling' | 'done' | 'error';
 
-export default function ScheduleModal({ isOpen, onClose, filePath, defaultCaption = '', mediaType, playbookPostId }: ScheduleModalProps) {
+export default function ScheduleModal({ isOpen, onClose, mediaFiles, defaultCaption = '', mediaType, playbookPostId, strategySnapshot }: ScheduleModalProps) {
   const [caption, setCaption] = useState(defaultCaption);
   const [hashtags, setHashtags] = useState('#barbershop #6figures #barber');
   const [scheduleDate, setScheduleDate] = useState(() => {
@@ -27,7 +29,7 @@ export default function ScheduleModal({ isOpen, onClose, filePath, defaultCaptio
   const api = (window as any).electronAPI;
 
   const handleSchedule = async () => {
-    if (!caption.trim()) return;
+    if (!caption.trim() || mediaFiles.length === 0) return;
     setStatus('uploading');
     setErrorMsg('');
 
@@ -37,13 +39,14 @@ export default function ScheduleModal({ isOpen, onClose, filePath, defaultCaptio
 
       setStatus('scheduling');
       const result = await api.pushToScheduler({
-        filePath,
+        mediaFiles,
         caption: caption.trim(),
         mediaType,
         scheduledFor,
         hashtags: hashtagList,
         isTrial: mediaType === 'video' ? isTrial : false,
         ...(playbookPostId ? { playbookPostId } : {}),
+        ...(strategySnapshot ? { strategySnapshot } : {}),
       });
 
       if (result.success) {
@@ -76,7 +79,7 @@ export default function ScheduleModal({ isOpen, onClose, filePath, defaultCaptio
             <span className="text-lg">📅</span>
             <div>
               <h3 className="text-sm font-bold text-white">Schedule Post</h3>
-              <p className="text-[10px] text-[#555]">Push to Content Generator queue</p>
+            <p className="text-[10px] text-[#555]">Push to Content Generator queue</p>
             </div>
           </div>
           <button onClick={onClose} disabled={busy}
@@ -89,6 +92,11 @@ export default function ScheduleModal({ isOpen, onClose, filePath, defaultCaptio
 
         {/* Body */}
         <div className="p-5 space-y-4">
+          {/* Caption */}
+          {mediaFiles.length === 0 && (
+            <p className="text-xs text-red-400 bg-red-900/20 border border-red-800/30 rounded-xl px-3 py-2">Attach at least one media file before scheduling.</p>
+          )}
+
           {/* Caption */}
           <div>
             <label className="block text-[10px] font-bold text-[#555] uppercase tracking-widest mb-1.5">Caption</label>
@@ -173,7 +181,7 @@ export default function ScheduleModal({ isOpen, onClose, filePath, defaultCaptio
         <div className="px-5 pb-5">
           <button
             onClick={handleSchedule}
-            disabled={busy || !caption.trim() || status === 'done'}
+            disabled={busy || !caption.trim() || mediaFiles.length === 0 || status === 'done'}
             className={`w-full py-3 rounded-xl text-sm font-bold transition-all ${
               status === 'done' ? 'bg-[#00C851] text-black' :
               status === 'error' ? 'bg-red-600/20 border border-red-500/30 text-red-400' :

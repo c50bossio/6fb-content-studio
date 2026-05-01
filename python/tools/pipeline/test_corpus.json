@@ -1,0 +1,10 @@
+{
+    "vlog": "samples/vlog.mp4",
+    "day_in_the_life": "samples/day-in-the-life.mp4",
+    "motivational": "samples/motivational.mov",
+    "podcast": "samples/podcast.mp4",
+    "mentorship": "samples/mentorship.mp4",
+    "interview": "samples/interview.mp4",
+    "tutorial": "samples/tutorial.mp4",
+    "product_review": "samples/product-review.mp4"
+}

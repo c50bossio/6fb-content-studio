@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { BrandProfile } from '../App';
 import useGoogleFonts from '../hooks/useGoogleFonts';
 import ScheduleModal from '../components/ScheduleModal';
+import type { ContentStrategyBrief } from '../types/content-strategy';
 
 interface BlogSection {
   id: string;
@@ -16,6 +17,7 @@ interface LibraryRun {
   timestamp: number;
   sourceVideo: string;
   runPath: string;
+  strategyBrief?: ContentStrategyBrief | null;
   clips: { contentType?: string; thumbnailPath?: string }[];
 }
 
@@ -66,11 +68,13 @@ export default function BlogWriter({ brandProfile, onBlogCreated, hasClaudeKey }
   const [libraryRuns, setLibraryRuns] = useState<LibraryRun[]>([]);
   const [selectedRun, setSelectedRun] = useState<LibraryRun | null>(null);
   const [savedPosts, setSavedPosts] = useState<SavedPost[]>([]);
+  const [activeStrategyBrief, setActiveStrategyBrief] = useState<ContentStrategyBrief | null>(null);
 
   // Preview mode
   const [activeSection, setActiveSection] = useState(0);
   const [viewMode, setViewMode] = useState<'editor' | 'preview'>('editor');
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const blogMediaFiles = sections.map(s => s.imagePath).filter(Boolean) as string[];
 
   // Load library + saved posts
   const loadLibrary = useCallback(async () => {
@@ -101,7 +105,7 @@ export default function BlogWriter({ brandProfile, onBlogCreated, hasClaudeKey }
       }
       const contentType = selectedRun.clips[0]?.contentType || 'general';
       const result = await window.electronAPI.generateBlogPost({
-        transcript: txResult.transcript, brandProfile: brand, contentType,
+        transcript: txResult.transcript, brandProfile: brand, contentType, strategyBrief: activeStrategyBrief,
       });
       if (result.success && result.blogPost) {
         setTitle(result.blogPost.title);
@@ -147,7 +151,7 @@ export default function BlogWriter({ brandProfile, onBlogCreated, hasClaudeKey }
     setSaving(true);
     try {
       const result = await window.electronAPI.saveBlogPost({
-        title, metaDescription, sections, brandSnapshot: brand,
+        title, metaDescription, sections, brandSnapshot: brand, strategySnapshot: activeStrategyBrief,
       });
       if (result.success && result.id) {
         setCurrentPostId(result.id); loadSavedPosts();
@@ -161,7 +165,7 @@ export default function BlogWriter({ brandProfile, onBlogCreated, hasClaudeKey }
   const handleExport = async () => {
     if (!sections.length) return;
     try {
-      const result = await window.electronAPI.exportBlogMarkdown({ title, metaDescription, sections });
+      const result = await window.electronAPI.exportBlogMarkdown({ title, metaDescription, sections, strategySnapshot: activeStrategyBrief });
       if (result.success) {
         alert(`Blog exported to:\n${result.filePath}`);
       } else {
@@ -177,10 +181,11 @@ export default function BlogWriter({ brandProfile, onBlogCreated, hasClaudeKey }
     try {
       const res = await window.electronAPI.loadBlogPost(post.id);
       if (res.success && res.data) {
-        const d = res.data as { title: string; metaDescription: string; sections: BlogSection[]; brandSnapshot?: BrandProfile };
+        const d = res.data as { title: string; metaDescription: string; sections: BlogSection[]; brandSnapshot?: BrandProfile; strategySnapshot?: ContentStrategyBrief };
         setTitle(d.title); setMetaDescription(d.metaDescription);
         setSections(d.sections); setCurrentPostId(post.id); setActiveSection(0);
         if (d.brandSnapshot) setLocalBrand(d.brandSnapshot);
+        setActiveStrategyBrief(d.strategySnapshot || null);
       }
     } catch {}
   };
@@ -211,7 +216,7 @@ export default function BlogWriter({ brandProfile, onBlogCreated, hasClaudeKey }
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setScheduleOpen(true)} disabled={!sections.length}
+          <button onClick={() => setScheduleOpen(true)} disabled={!sections.length || blogMediaFiles.length === 0}
             className="text-[11px] font-bold px-3 py-1.5 rounded-lg border border-[#2a2a2a] bg-[#1a1a1a] text-white hover:border-[#00C851]/50 hover:text-[#00C851] transition-all disabled:opacity-40">
             📅 Schedule Caption
           </button>
@@ -238,6 +243,12 @@ export default function BlogWriter({ brandProfile, onBlogCreated, hasClaudeKey }
               onChange={e => {
                 const run = libraryRuns.find(r => r.runId === e.target.value);
                 setSelectedRun(run || null);
+                try {
+                  const stored = run ? localStorage.getItem(`contentStrategy:run:${run.runId}`) : null;
+                  setActiveStrategyBrief(run?.strategyBrief || (stored ? JSON.parse(stored) : null));
+                } catch {
+                  setActiveStrategyBrief(run?.strategyBrief || null);
+                }
               }}
               className="w-full bg-[#161616] border border-[#222] rounded-lg px-2.5 py-2 text-xs text-white focus:outline-none focus:border-[#00C851]/50"
             >
@@ -248,6 +259,12 @@ export default function BlogWriter({ brandProfile, onBlogCreated, hasClaudeKey }
                 </option>
               ))}
             </select>
+            {activeStrategyBrief && (
+              <div className="mt-3 rounded-lg border border-[#00C851]/20 bg-[#00C851]/5 p-2.5">
+                <p className="text-[10px] font-bold text-[#00C851] uppercase tracking-widest">Strategy</p>
+                <p className="text-[11px] text-white mt-1 leading-snug">{activeStrategyBrief.promise || activeStrategyBrief.viewerOutcome}</p>
+              </div>
+            )}
             {!hasClaudeKey ? (
               <div className="w-full mt-3 bg-red-500/10 border border-red-500/20 rounded-lg p-2.5 flex items-start gap-2">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5 text-red-500 shrink-0 mt-0.5">
@@ -438,12 +455,12 @@ export default function BlogWriter({ brandProfile, onBlogCreated, hasClaudeKey }
         <ScheduleModal
           isOpen={scheduleOpen}
           onClose={() => setScheduleOpen(false)}
-          filePath="__blog__"
+          mediaFiles={[blogMediaFiles[0]].filter(Boolean)}
           defaultCaption={`${title}\n\n${sections.map(s => s.body).join(' ').slice(0, 200)}…`}
           mediaType="image"
+          strategySnapshot={activeStrategyBrief}
         />
       )}
     </div>
   );
 }
-

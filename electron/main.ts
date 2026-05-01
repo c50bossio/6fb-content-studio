@@ -1,8 +1,16 @@
-import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Notification } from 'electron';
-import { join } from 'path';
-import { existsSync, readdirSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
-import { pathToFileURL } from 'url';
-import { runClipExtractor, checkPythonDeps } from './python-bridge';
+import { execFile } from 'child_process';
+import { app, BrowserWindow, ipcMain, dialog, shell, protocol, Notification } from 'electron';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'path';
+import { createReadStream, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'fs';
+import { Readable } from 'stream';
+import { put } from '@vercel/blob';
+import { runClipExtractor, checkPythonDeps, resolveSystemPython, type ClipExtractorRuntime } from './python-bridge';
+import type {
+  ContentIntent,
+  ContentStrategyBrief,
+  PackageVariant,
+  StrategyScoreBreakdown,
+} from '../src/types/content-strategy';
 
 // electron-store: handle ESM default export
 import Store from 'electron-store';
@@ -10,6 +18,235 @@ const ElectronStore = (Store as unknown as { default: typeof Store }).default ||
 
 const store = new ElectronStore();
 let mainWindow: BrowserWindow | null = null;
+
+app.disableHardwareAcceleration();
+
+const APP_VERSION = app.getVersion();
+const CONTENT_APP_BASE = 'https://content.6fbmentorship.com/apps/content';
+const TRUSTED_PATHS_KEY = 'trustedFilePaths';
+
+type PipelineSettings = {
+  mode?: 'bundled' | 'custom';
+  pythonPath?: string;
+  ffmpegPath?: string;
+  ffprobePath?: string;
+  toolsDir?: string;
+  pipelineScriptPath?: string;
+  binaryPath?: string;
+};
+
+function resourcePath(...parts: string[]) {
+  return app.isPackaged
+    ? join(process.resourcesPath, ...parts)
+    : join(process.cwd(), ...parts);
+}
+
+function bundledToolsDir() {
+  return resourcePath('python', 'tools');
+}
+
+function runtimeId() {
+  return `${process.platform}-${process.arch}`;
+}
+
+function bundledRuntimeDir() {
+  return resourcePath('python', 'runtime', runtimeId());
+}
+
+function bundledPipelineBinaryPath() {
+  const executable = process.platform === 'win32'
+    ? join(bundledRuntimeDir(), 'pipeline', '6fb-pipeline', '6fb-pipeline.exe')
+    : join(bundledRuntimeDir(), 'pipeline', '6fb-pipeline', '6fb-pipeline');
+  return existsSync(executable) ? executable : undefined;
+}
+
+function bundledFfmpegPath() {
+  const executable = process.platform === 'win32'
+    ? join(bundledRuntimeDir(), 'bin', 'ffmpeg.exe')
+    : join(bundledRuntimeDir(), 'bin', 'ffmpeg');
+  return existsSync(executable) ? executable : undefined;
+}
+
+function bundledFfprobePath() {
+  const executable = process.platform === 'win32'
+    ? join(bundledRuntimeDir(), 'bin', 'ffprobe.exe')
+    : join(bundledRuntimeDir(), 'bin', 'ffprobe');
+  return existsSync(executable) ? executable : undefined;
+}
+
+function pipelineSettings(): PipelineSettings {
+  return (store.get('pipeline') as PipelineSettings | undefined) || {};
+}
+
+function runtimeConfig(): ClipExtractorRuntime {
+  const settings = pipelineSettings();
+  const mode = settings.mode === 'custom' ? 'custom' : 'bundled';
+  const defaultToolsDir = bundledToolsDir();
+  const toolsDir = mode === 'custom' && settings.toolsDir ? settings.toolsDir : defaultToolsDir;
+  const pipelineScriptPath = mode === 'custom' && settings.pipelineScriptPath
+    ? settings.pipelineScriptPath
+    : join(toolsDir, 'pipeline', 'full_pipeline.py');
+
+  return {
+    mode,
+    pythonPath: settings.pythonPath || resolveSystemPython(),
+    ffmpegPath: settings.ffmpegPath || bundledFfmpegPath() || findFfmpeg(),
+    ffprobePath: settings.ffprobePath || bundledFfprobePath() || findFfprobe(),
+    toolsDir,
+    pipelineScriptPath,
+    binaryPath: settings.binaryPath || bundledPipelineBinaryPath(),
+    anthropicApiKey: (store.get('apiKeys.claude', '') as string) || '',
+  };
+}
+
+function asAbsolutePath(filePath: string): string | null {
+  if (!filePath || !isAbsolute(filePath)) return null;
+  return resolve(filePath);
+}
+
+function isInsidePath(parent: string, child: string) {
+  const rel = relative(resolve(parent), resolve(child));
+  return rel === '' || (!!rel && !rel.startsWith('..') && !isAbsolute(rel));
+}
+
+function trustedPaths(): string[] {
+  const paths = store.get(TRUSTED_PATHS_KEY, []) as string[];
+  return Array.isArray(paths) ? paths.filter(Boolean) : [];
+}
+
+function rememberTrustedPath(filePath: string) {
+  const abs = asAbsolutePath(filePath);
+  if (!abs) return;
+  const paths = new Set(trustedPaths());
+  paths.add(abs);
+  store.set(TRUSTED_PATHS_KEY, Array.from(paths).slice(-250));
+}
+
+function isTrustedPath(filePath: string, allowParentOfTrusted = false) {
+  const abs = asAbsolutePath(filePath);
+  if (!abs) return false;
+  if (isInsidePath(app.getPath('userData'), abs)) return true;
+  if (isInsidePath(resourcePath('python'), abs)) return true;
+  return trustedPaths().some(p => {
+    const trusted = asAbsolutePath(p);
+    if (!trusted) return false;
+    return abs === trusted || (allowParentOfTrusted && isInsidePath(dirname(trusted), abs));
+  });
+}
+
+function assertTrustedPath(filePath: string, allowParentOfTrusted = false) {
+  const abs = asAbsolutePath(filePath);
+  if (!abs || !isTrustedPath(abs, allowParentOfTrusted)) {
+    throw new Error('Path is outside trusted app locations');
+  }
+  return abs;
+}
+
+function contentApi(path: string) {
+  return `${CONTENT_APP_BASE}${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+function safeJsonFileId(id: string) {
+  return /^[a-zA-Z0-9_-]+$/.test(id) ? id : null;
+}
+
+function mediaContentType(filePath: string, fallback: 'image' | 'video' | 'carousel') {
+  const ext = filePath.split('.').pop()?.toLowerCase();
+  if (fallback === 'video' || ext === 'mp4') return 'video/mp4';
+  if (ext === 'png') return 'image/png';
+  if (ext === 'webp') return 'image/webp';
+  return 'image/jpeg';
+}
+
+function sanitizeText(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function clampScore(value: unknown, max = 10) {
+  return typeof value === 'number' && Number.isFinite(value)
+    ? Math.max(0, Math.min(max, value))
+    : 0;
+}
+
+function normalizeStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map(item => sanitizeText(item)).filter(Boolean).slice(0, 8)
+    : [];
+}
+
+function normalizePackageVariants(value: unknown): PackageVariant[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(0, 3).map((item: any) => ({
+    title: sanitizeText(item?.title),
+    thumbnailText: sanitizeText(item?.thumbnailText),
+    firstLineCaption: sanitizeText(item?.firstLineCaption),
+    shortCaption: sanitizeText(item?.shortCaption),
+    hashtags: normalizeStringList(item?.hashtags),
+    platformAngle: sanitizeText(item?.platformAngle),
+  }));
+}
+
+function normalizeStrategyScore(value: unknown): StrategyScoreBreakdown {
+  const score = value as Partial<StrategyScoreBreakdown> | undefined;
+  const normalized = {
+    audienceClarity: clampScore(score?.audienceClarity),
+    outcomeValue: clampScore(score?.outcomeValue),
+    novelty: clampScore(score?.novelty),
+    emotionalTrigger: clampScore(score?.emotionalTrigger),
+    packagingStrength: clampScore(score?.packagingStrength),
+    retentionPath: clampScore(score?.retentionPath),
+    total: clampScore(score?.total, 100),
+    rationale: sanitizeText(score?.rationale),
+  };
+  if (!normalized.total) {
+    normalized.total = Math.round((
+      normalized.audienceClarity +
+      normalized.outcomeValue +
+      normalized.novelty +
+      normalized.emotionalTrigger +
+      normalized.packagingStrength +
+      normalized.retentionPath
+    ) / 60 * 100);
+  }
+  return normalized;
+}
+
+function normalizeContentStrategyBrief(value: unknown, fallback?: Partial<ContentStrategyBrief>): ContentStrategyBrief | null {
+  const raw = (typeof value === 'object' && value) ? value as Partial<ContentStrategyBrief> : {};
+  const source = fallback || {};
+  const intent = (raw.intent || source.intent || 'education') as ContentIntent;
+  const brief: ContentStrategyBrief = {
+    id: sanitizeText(raw.id) || sanitizeText(source.id) || `brief_${Date.now()}`,
+    intent: ['education', 'entertainment', 'hybrid'].includes(intent) ? intent : 'education',
+    audience: sanitizeText(raw.audience) || sanitizeText(source.audience),
+    viewerOutcome: sanitizeText(raw.viewerOutcome) || sanitizeText(source.viewerOutcome),
+    promise: sanitizeText(raw.promise) || sanitizeText(source.promise),
+    curiosityGap: sanitizeText(raw.curiosityGap) || sanitizeText(source.curiosityGap),
+    proofAsset: sanitizeText(raw.proofAsset) || sanitizeText(source.proofAsset),
+    payoff: sanitizeText(raw.payoff) || sanitizeText(source.payoff),
+    positioning: sanitizeText(raw.positioning) || sanitizeText(source.positioning),
+    packageVariants: normalizePackageVariants(raw.packageVariants?.length ? raw.packageVariants : source.packageVariants),
+    scoreBreakdown: normalizeStrategyScore(raw.scoreBreakdown || source.scoreBreakdown),
+    createdAt: sanitizeText(raw.createdAt) || sanitizeText(source.createdAt) || new Date().toISOString(),
+    source: raw.source || source.source || 'planner',
+  };
+  return brief.audience || brief.viewerOutcome || brief.promise ? brief : null;
+}
+
+function strategyPromptBlock(strategyBrief?: ContentStrategyBrief | null) {
+  if (!strategyBrief) return '';
+  return `\n\nGROWTH STRATEGY BRIEF:
+- Intent: ${strategyBrief.intent}
+- Audience: ${strategyBrief.audience}
+- Viewer outcome: ${strategyBrief.viewerOutcome}
+- Promise: ${strategyBrief.promise}
+- Curiosity gap: ${strategyBrief.curiosityGap}
+- Proof asset: ${strategyBrief.proofAsset}
+- Payoff: ${strategyBrief.payoff}
+- Positioning: ${strategyBrief.positioning}
+
+Use this strategy brief as the source of truth. The title, thumbnail text, hook, body, and payoff must all point at the same viewer outcome.`;
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -31,7 +268,7 @@ function createWindow() {
     mainWindow.loadURL('http://localhost:5173');
     mainWindow.webContents.openDevTools({ mode: 'detach' });
   } else {
-    mainWindow.loadFile(join(__dirname, '../dist/index.html'));
+    mainWindow.loadFile(join(__dirname, '../renderer/index.html'));
   }
 
   mainWindow.on('closed', () => {
@@ -48,9 +285,56 @@ protocol.registerSchemesAsPrivileged([{
 
 app.whenReady().then(() => {
   protocol.handle('localfile', (request) => {
-    // localfile:///absolute/path/to/file.jpg
     const filePath = decodeURIComponent(request.url.replace('localfile://', ''));
-    return net.fetch(pathToFileURL(filePath).toString());
+    try {
+      const abs = assertTrustedPath(filePath, true);
+      if (!existsSync(abs)) return new Response('Not found', { status: 404 });
+
+      const ext = abs.split('.').pop()?.toLowerCase() || '';
+      const mime: Record<string, string> = {
+        mp4: 'video/mp4',
+        mov: 'video/quicktime',
+        webm: 'video/webm',
+        mkv: 'video/x-matroska',
+        avi: 'video/x-msvideo',
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        png: 'image/png',
+        webp: 'image/webp',
+        svg: 'image/svg+xml',
+      };
+      const contentType = mime[ext] || 'application/octet-stream';
+      const size = statSync(abs).size;
+      const range = request.headers.get('range');
+
+      if (range) {
+        const [startRaw, endRaw] = range.replace('bytes=', '').split('-');
+        const start = Math.max(0, Number.parseInt(startRaw, 10) || 0);
+        const end = endRaw ? Math.min(size - 1, Number.parseInt(endRaw, 10)) : size - 1;
+        const stream = createReadStream(abs, { start, end });
+        return new Response(Readable.toWeb(stream) as ReadableStream, {
+          status: 206,
+          headers: {
+            'Content-Type': contentType,
+            'Content-Range': `bytes ${start}-${end}/${size}`,
+            'Accept-Ranges': 'bytes',
+            'Content-Length': String(end - start + 1),
+          },
+        });
+      }
+
+      const stream = createReadStream(abs);
+      return new Response(Readable.toWeb(stream) as ReadableStream, {
+        status: 200,
+        headers: {
+          'Content-Type': contentType,
+          'Accept-Ranges': 'bytes',
+          'Content-Length': String(size),
+        },
+      });
+    } catch {
+      return new Response('Forbidden', { status: 403 });
+    }
   });
   createWindow();
 });
@@ -67,6 +351,8 @@ app.on('activate', () => {
 
 // API Key Management
 ipcMain.handle('save-api-key', async (_event, { provider, key }: { provider: string; key: string }) => {
+  const allowed = new Set(['claude', 'discordUserId']);
+  if (!allowed.has(provider)) return { success: false, error: 'Unsupported key provider' };
   store.set(`apiKeys.${provider}`, key);
   return { success: true };
 });
@@ -80,11 +366,14 @@ ipcMain.handle('get-all-settings', async () => {
   return {
     apiKeys: {
       claude: !!store.get('apiKeys.claude'),
-      openai: !!store.get('apiKeys.openai'),
+      openai: false,
     },
     setupComplete: store.get('setupComplete', false),
+    version: APP_VERSION,
   };
 });
+
+ipcMain.handle('get-app-version', async () => APP_VERSION);
 
 ipcMain.handle('complete-setup', async () => {
   store.set('setupComplete', true);
@@ -104,6 +393,7 @@ ipcMain.handle('select-video', async () => {
   if (result.canceled || result.filePaths.length === 0) {
     return { cancelled: true };
   }
+  rememberTrustedPath(result.filePaths[0]);
   return { cancelled: false, filePath: result.filePaths[0] };
 });
 
@@ -116,6 +406,7 @@ ipcMain.handle('select-output-dir', async () => {
   if (result.canceled || result.filePaths.length === 0) {
     return { cancelled: true };
   }
+  rememberTrustedPath(result.filePaths[0]);
   return { cancelled: false, dirPath: result.filePaths[0] };
 });
 
@@ -123,12 +414,22 @@ ipcMain.handle('select-output-dir', async () => {
 
 ipcMain.handle('extract-clips', async (_event, { videoPath, options }: {
   videoPath: string;
-  options: { outputFormat?: string; startSec?: number; endSec?: number; contentType?: string };
+  options: { outputFormat?: string; startSec?: number; endSec?: number; contentType?: string; strategyBrief?: ContentStrategyBrief | null };
 }) => {
+  const trustedVideoPath = assertTrustedPath(videoPath);
   const outputDir = join(app.getPath('userData'), 'clips', Date.now().toString());
+  mkdirSync(outputDir, { recursive: true });
+  const strategyBrief = normalizeContentStrategyBrief(options.strategyBrief);
+  writeFileSync(join(outputDir, 'run_meta.json'), JSON.stringify({
+    sourceVideoPath: trustedVideoPath,
+    ...(strategyBrief ? { strategyBrief } : {}),
+  }, null, 2));
+  if (strategyBrief) {
+    writeFileSync(join(outputDir, 'strategy_brief.json'), JSON.stringify(strategyBrief, null, 2));
+  }
   const bp = (store.get('brandProfile') as Record<string, unknown>) || DEFAULT_BRAND;
   const result = await runClipExtractor(
-    videoPath,
+    trustedVideoPath,
     outputDir,
     {
       outputFormat: (options.outputFormat as '9x16' | '1x1' | 'split' | 'auto') || 'auto',
@@ -137,10 +438,12 @@ ipcMain.handle('extract-clips', async (_event, { videoPath, options }: {
       brandName: (bp.brandName as string) || '6fbarber',
       logoPath: (bp.logoPath as string) || null,
       contentType: (options.contentType as string) || 'auto',
+      strategyBrief,
+      runtime: runtimeConfig(),
     },
     mainWindow,
   );
-  return result;
+  return { ...result, runId: basename(outputDir) };
 });
 
 // ─── Native Notifications ─────────────────────────────────────────
@@ -168,19 +471,27 @@ ipcMain.handle('notify-clip-complete', async (_event, { clipCount, title }: { cl
 // ─── System Health Check ──────────────────────────────────────────
 
 ipcMain.handle('check-system-health', async () => {
-  const deps = await checkPythonDeps();
+  const runtime = runtimeConfig();
+  const deps = await checkPythonDeps(runtime);
   return {
     deps,
     paths: {
       userData: app.getPath('userData'),
-      ixClipExtractor: join(
-        process.env.HOME || '~',
-        'clawd/projects/ix-social-media-manager/tools/clip_extractor'
-      ),
+      clipExtractor: join(runtime.toolsDir, 'clip_extractor'),
+      pipelineScript: runtime.pipelineScriptPath,
+      binaryPath: runtime.binaryPath,
+      toolsDir: runtime.toolsDir,
+      ffmpegPath: runtime.ffmpegPath,
+      ffprobePath: runtime.ffprobePath,
+      pythonPath: runtime.pythonPath,
     },
     apiKeys: {
       claude: !!store.get('apiKeys.claude'),
-      openai: !!store.get('apiKeys.openai'),
+      openai: false,
+    },
+    pipeline: {
+      mode: runtime.mode,
+      bundledToolsDir: bundledToolsDir(),
     },
   };
 });
@@ -198,18 +509,24 @@ ipcMain.handle('reset-app', async () => {
 });
 
 ipcMain.handle('open-path', async (_event, path: string) => {
-  shell.openPath(path);
-  return { success: true };
+  try {
+    const trustedPath = assertTrustedPath(path, true);
+    const error = await shell.openPath(trustedPath);
+    return error ? { success: false, error } : { success: true };
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
 });
 
 // Video Planner Generation
-ipcMain.handle('generate-video-plan', async (_event, { topic, type, duration, perspective, useRag, targetLocation }: {
+ipcMain.handle('generate-video-plan', async (_event, { topic, type, duration, perspective, useRag, targetLocation, strategyBrief }: {
   topic: string;
   type: string;
   duration: string;
   perspective: string;
   useRag?: boolean;
   targetLocation?: string;
+  strategyBrief?: Partial<ContentStrategyBrief>;
 }) => {
   const apiKey = store.get('apiKeys.claude') as string;
   if (!apiKey) return { success: false, error: 'No Claude API key configured' };
@@ -256,6 +573,17 @@ ipcMain.handle('generate-video-plan', async (_event, { topic, type, duration, pe
 
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
     const client = new Anthropic({ apiKey });
+    const draftBrief = normalizeContentStrategyBrief(strategyBrief) || normalizeContentStrategyBrief({
+      intent: 'education',
+      audience: 'Barbershop owners and high-level barbers',
+      viewerOutcome: topic,
+      promise: topic,
+      curiosityGap: 'The viewer does not yet know the key mistake or opportunity.',
+      proofAsset: '',
+      payoff: 'A clear next action for the viewer.',
+      positioning: 'Better and more specific than generic barber advice.',
+      source: 'planner',
+    });
 
     let prompt = `You are an expert viral content strategist and YouTube architect for 6 Figure Barbers (6FB Mentorship).
 Your primary audience is Barbershop Owners, Barber Entrepreneurs, and high-level barbers looking to scale their business.
@@ -265,14 +593,51 @@ Topic: ${topic}
 Format: ${type}
 Target Duration: ${duration}
 Creator Perspective: ${perspective}
+${strategyPromptBlock(draftBrief)}
 
 CRITICAL INSTRUCTION: Analyze the core topic and precisely engineer the script to align with the provided "Creator Perspective" (${perspective}). For example, if the perspective is "Shop Owner", speak from the vantage point of running a business and hiring. If "Solo Barber", speak from the vantage point of being behind the chair building clientele. Do NOT generalize.
 
 Your goal is to script the video structure in a way that builds in "AI Drop Zones". An AI Drop Zone is a specific 5-10 second segment where the creator delivers a punchy, perfectly-contained hook or payoff. This allows our autonomous downstream AI to extract viral 9:16 shorts perfectly.
 
+Before writing the script, engineer the package:
+- Create exactly 3 packageVariants with title, thumbnailText, firstLineCaption, shortCaption, hashtags, and platformAngle.
+- Score the idea from 1-10 on audienceClarity, outcomeValue, novelty, emotionalTrigger, packagingStrength, and retentionPath.
+- The package must lead with the viewer outcome or curiosity gap before production details.
+
 You must output your response as pure JSON matching EXACTLY this schema (no markdown, no extra text):
 {
   "title": "A catchy title for the blueprint",
+  "strategyBrief": {
+    "id": "${draftBrief?.id || `brief_${Date.now()}`}",
+    "intent": "education" | "entertainment" | "hybrid",
+    "audience": "Target viewer",
+    "viewerOutcome": "Specific outcome the viewer gets",
+    "promise": "The click promise",
+    "curiosityGap": "The unresolved tension",
+    "proofAsset": "The proof, story, number, or demo to use",
+    "payoff": "The satisfying final answer",
+    "positioning": "first | better | different | more, written as a phrase",
+    "packageVariants": [
+      {
+        "title": "Clickable YouTube title",
+        "thumbnailText": "2-5 word thumbnail text",
+        "firstLineCaption": "First caption line",
+        "shortCaption": "Short social caption",
+        "hashtags": ["#barbershop"],
+        "platformAngle": "Instagram/Reels angle"
+      }
+    ],
+    "scoreBreakdown": {
+      "audienceClarity": 8,
+      "outcomeValue": 8,
+      "novelty": 7,
+      "emotionalTrigger": 7,
+      "packagingStrength": 8,
+      "retentionPath": 8,
+      "total": 77,
+      "rationale": "One sentence reason"
+    }
+  },
   "sections": [
     {
       "type": "hook" | "body" | "payoff",
@@ -316,6 +681,11 @@ Make sure to include at least 1 "hook" at the beginning, 1 "payoff" near the end
       return { success: false, error: 'Failed to parse AI structure' };
     }
 
+    const normalizedBrief = normalizeContentStrategyBrief(parsedData.strategyBrief, draftBrief || undefined);
+    if (normalizedBrief) {
+      parsedData.strategyBrief = normalizedBrief;
+    }
+
     return { success: true, data: parsedData };
   } catch (error: any) {
     console.error('Shoot Plan Generation Error:', error);
@@ -324,7 +694,7 @@ Make sure to include at least 1 "hook" at the beginning, 1 "payoff" near the end
 });
 
 // Carousel Generation (uses student's Claude API key)
-ipcMain.handle('generate-carousel', async (_event, { topic, type, keyPoints, brandProfile, playbookBrief, playbookPostId, playbookTopicId }: {
+ipcMain.handle('generate-carousel', async (_event, { topic, type, keyPoints, brandProfile, playbookBrief, strategyBrief, playbookPostId, playbookTopicId }: {
   topic: string;
   type: string;
   keyPoints: string[];
@@ -336,6 +706,7 @@ ipcMain.handle('generate-carousel', async (_event, { topic, type, keyPoints, bra
     visualSuggestion: string;
     shotList: string[];
   };
+  strategyBrief?: ContentStrategyBrief | null;
   playbookPostId?: string;
   playbookTopicId?: string;
 }) => {
@@ -353,6 +724,7 @@ ipcMain.handle('generate-carousel', async (_event, { topic, type, keyPoints, bra
   const tone = toneMap[bp.tone as string] || toneMap.professional;
   const layoutStyle = bp.layoutStyle as string || 'bold';
   const brandName = bp.brandName as string || '6FB Mentorship';
+  const normalizedStrategy = normalizeContentStrategyBrief(strategyBrief);
 
   try {
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
@@ -363,6 +735,7 @@ ipcMain.handle('generate-carousel', async (_event, { topic, type, keyPoints, bra
       : '';
 
     const prompt = `${playbookContext}You are a professional carousel designer for ${brandName}.
+${strategyPromptBlock(normalizedStrategy)}
 
 Brand tone: ${tone}
 Visual style: ${layoutStyle} (affects how copy should be written — ${layoutStyle === 'minimal' ? 'very short, punchy' : layoutStyle === 'data-driven' ? 'lead with a number or stat' : 'bold headlines, clear value'})
@@ -373,6 +746,8 @@ Key Points:
 ${keyPoints.map((p, i) => `${i + 1}. ${p}`).join('\n')}
 
 Create a 5-slide Instagram carousel (1080x1350 each).
+
+Slide 1 must express the viewer outcome or curiosity gap from the strategy brief when one is provided. Slides 2-4 must prove the promise. Slide 5 must pay off the same promise and give a specific next action.
 
 You must output your response as pure JSON matching EXACTLY this schema (no markdown, no extra text).
 It must be a JSON array containing exactly 5 slide objects:
@@ -414,7 +789,7 @@ It must be a JSON array containing exactly 5 slide objects:
       slideType: s.slideType?.toLowerCase().includes('cover') ? 'cover' : s.slideType?.toLowerCase().includes('cta') ? 'cta' : 'content'
     }));
 
-    return { success: true, slides, playbookPostId, playbookTopicId };
+    return { success: true, slides, playbookPostId, playbookTopicId, strategyBrief: normalizedStrategy };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     return { success: false, error: msg };
@@ -437,6 +812,9 @@ const DEFAULT_BRAND: Record<string, unknown> = {
 };
 
 ipcMain.handle('save-brand-profile', async (_event, profile: Record<string, unknown>) => {
+  if (typeof profile.logoPath === 'string' && profile.logoPath) {
+    profile.logoPath = assertTrustedPath(profile.logoPath);
+  }
   store.set('brandProfile', profile);
   return { success: true };
 });
@@ -454,6 +832,7 @@ ipcMain.handle('select-logo', async () => {
     properties: ['openFile'],
   });
   if (result.canceled || !result.filePaths[0]) return { cancelled: true };
+  rememberTrustedPath(result.filePaths[0]);
   return { cancelled: false, filePath: result.filePaths[0] };
 });
 
@@ -465,10 +844,11 @@ ipcMain.handle('select-image-file', async () => {
     properties: ['openFile'],
   });
   if (result.canceled || !result.filePaths[0]) return { cancelled: true };
+  rememberTrustedPath(result.filePaths[0]);
   return { cancelled: false, filePath: result.filePaths[0] };
 });
 
-ipcMain.handle('export-carousel-deck', async (_event, { title, images }: { title: string; images: string[] }) => {
+ipcMain.handle('export-carousel-deck', async (_event, { title, images, strategySnapshot }: { title: string; images: string[]; strategySnapshot?: ContentStrategyBrief | null }) => {
   try {
     const defaultTitle = title ? title.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim() : `Carousel_${Date.now()}`;
     const downloadsPath = app.getPath('downloads');
@@ -484,9 +864,23 @@ ipcMain.handle('export-carousel-deck', async (_event, { title, images }: { title
       const base64Data = images[i].replace(/^data:image\/\w+;base64,/, '');
       const buffer = Buffer.from(base64Data, 'base64');
       const filePath = join(folderPath, `slide_${String(i + 1).padStart(2, '0')}.png`);
-      require('fs').writeFileSync(filePath, buffer);
+      writeFileSync(filePath, buffer);
+      rememberTrustedPath(filePath);
       savedPaths.push(filePath);
     }
+    const normalizedStrategy = normalizeContentStrategyBrief(strategySnapshot);
+    if (normalizedStrategy) {
+      const packagePath = join(folderPath, 'content_package.json');
+      writeFileSync(packagePath, JSON.stringify({
+        title,
+        strategySnapshot: normalizedStrategy,
+        packageVariants: normalizedStrategy.packageVariants,
+        exportedAt: new Date().toISOString(),
+      }, null, 2));
+      rememberTrustedPath(packagePath);
+      savedPaths.push(packagePath);
+    }
+    rememberTrustedPath(folderPath);
     
     return { success: true, folderPath, savedPaths };
   } catch (error) {
@@ -495,16 +889,38 @@ ipcMain.handle('export-carousel-deck', async (_event, { title, images }: { title
   }
 });
 
+ipcMain.handle('save-temp-media-files', async (_event, { title, images }: { title: string; images: string[] }) => {
+  try {
+    const safeTitle = title ? title.replace(/[^a-zA-Z0-9_\-\s]/g, '').trim() : `media_${Date.now()}`;
+    const folderPath = join(app.getPath('userData'), 'scheduled-media', `${Date.now()}_${safeTitle || 'media'}`);
+    mkdirSync(folderPath, { recursive: true });
+
+    const savedPaths: string[] = [];
+    for (let i = 0; i < images.length; i++) {
+      const base64Data = images[i].replace(/^data:image\/\w+;base64,/, '');
+      const buffer = Buffer.from(base64Data, 'base64');
+      const filePath = join(folderPath, `media_${String(i + 1).padStart(2, '0')}.png`);
+      writeFileSync(filePath, buffer);
+      savedPaths.push(filePath);
+    }
+
+    return { success: true, folderPath, savedPaths };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+});
+
 // ─── Transcript & Carousel Extraction ────────────────────────────
 ipcMain.handle('read-transcript', async (_event, runPath: string) => {
-  const formattedPath = join(runPath, 'formatted_transcript.txt');
-  const srtFiles = existsSync(runPath)
-    ? readdirSync(runPath).filter(f => f.endsWith('.srt'))
+  const trustedRunPath = assertTrustedPath(runPath, true);
+  const formattedPath = join(trustedRunPath, 'formatted_transcript.txt');
+  const srtFiles = existsSync(trustedRunPath)
+    ? readdirSync(trustedRunPath).filter(f => f.endsWith('.srt'))
     : [];
   if (existsSync(formattedPath)) {
     return { success: true, transcript: readFileSync(formattedPath, 'utf-8'), format: 'formatted' };
   } else if (srtFiles.length > 0) {
-    return { success: true, transcript: readFileSync(join(runPath, srtFiles[0]), 'utf-8'), format: 'srt' };
+    return { success: true, transcript: readFileSync(join(trustedRunPath, srtFiles[0]), 'utf-8'), format: 'srt' };
   }
   return { success: false, error: 'No transcript found in run directory' };
 });
@@ -512,8 +928,9 @@ ipcMain.handle('read-transcript', async (_event, runPath: string) => {
 // ─── Video Editor IPC ─────────────────────────────────────────────
 ipcMain.handle('load-words-json', (_event, wordsJsonPath: string) => {
   try {
-    if (!existsSync(wordsJsonPath)) return { success: false, error: 'Words JSON file not found' };
-    const data = JSON.parse(readFileSync(wordsJsonPath, 'utf-8'));
+    const trustedWordsPath = assertTrustedPath(wordsJsonPath, true);
+    if (!existsSync(trustedWordsPath)) return { success: false, error: 'Words JSON file not found' };
+    const data = JSON.parse(readFileSync(trustedWordsPath, 'utf-8'));
     return { success: true, data };
   } catch (err) {
     return { success: false, error: String(err) };
@@ -522,7 +939,8 @@ ipcMain.handle('load-words-json', (_event, wordsJsonPath: string) => {
 
 ipcMain.handle('export-edited-spec', (_event, outputPath: string, spec: object) => {
   try {
-    writeFileSync(outputPath, JSON.stringify(spec, null, 2), 'utf-8');
+    const trustedOutputPath = assertTrustedPath(outputPath, true);
+    writeFileSync(trustedOutputPath, JSON.stringify(spec, null, 2), 'utf-8');
     return { success: true };
   } catch (err) {
     return { success: false, error: String(err) };
@@ -533,6 +951,7 @@ ipcMain.handle('extract-carousel', async (_event, {
   transcript,
   brandProfile,
   contentType,
+  strategyBrief,
   playbookBrief,
   playbookPostId,
   playbookTopicId,
@@ -540,6 +959,7 @@ ipcMain.handle('extract-carousel', async (_event, {
   transcript: string;
   brandProfile: Record<string, unknown>;
   contentType: string;
+  strategyBrief?: ContentStrategyBrief | null;
   playbookBrief?: {
     topicTitle: string;
     pillar: string;
@@ -562,6 +982,7 @@ ipcMain.handle('extract-carousel', async (_event, {
   const tone = toneMap[brandProfile.tone as string] || toneMap.professional;
   const layoutStyle = brandProfile.layoutStyle as string || 'bold';
   const brandName = brandProfile.brandName as string || '6FB';
+  const normalizedStrategy = normalizeContentStrategyBrief(strategyBrief);
 
   const truncated = transcript.slice(0, 8000);
 
@@ -575,6 +996,7 @@ ipcMain.handle('extract-carousel', async (_event, {
 
     const prompt = `You are a social media content strategist for ${brandName}.
 ${playbookContext}
+${strategyPromptBlock(normalizedStrategy)}
 Content type: ${contentType || 'general'}
 Brand tone: ${tone}
 Visual style: ${layoutStyle} (affects how copy should be written — ${layoutStyle === 'minimal' ? 'very short, punchy' : layoutStyle === 'data-driven' ? 'lead with a number or stat' : 'bold headlines, clear value'})
@@ -586,9 +1008,9 @@ ${truncated}
 
 Extract the 5 most compelling, shareable insights from this transcript and structure them as an Instagram carousel.
 
-Slide 1 is always the HOOK — it must stop the scroll. Make it provocative or surprising.
+Slide 1 is always the HOOK. It must express the viewer outcome or curiosity gap from the strategy brief if present.
 Slides 2-4 are VALUE slides — each delivers one clear insight.
-Slide 5 is the CALL TO ACTION — direct, specific, tells them what to do next.
+Slide 5 is the CALL TO ACTION — direct, specific, and tied to the same payoff.
 
 IMPORTANT: For each slide, include the TIMESTAMP from the transcript where the insight comes from. Use the format MM:SS or HH:MM:SS matching the transcript timestamps.
 
@@ -633,7 +1055,7 @@ It must be a JSON array containing exactly 5 slide objects:
       slideType: s.slideNumber === 1 ? 'cover' : s.slideNumber === 5 ? 'cta' : 'content'
     }));
 
-    return { success: true, slides, playbookPostId, playbookTopicId };
+    return { success: true, slides, playbookPostId, playbookTopicId, strategyBrief: normalizedStrategy };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Unknown error';
     return { success: false, error: msg };
@@ -646,8 +1068,9 @@ ipcMain.handle('auto-match-carousel-frames', async (_event, {
   timestamps,
 }: { runPath: string; timestamps: string[] }) => {
   try {
+    const trustedRunPath = assertTrustedPath(runPath, true);
     // Read validated clips to get time ranges
-    const clipsFile = join(runPath, 'validated_clips.json');
+    const clipsFile = join(trustedRunPath, 'validated_clips.json');
     if (!existsSync(clipsFile)) return { success: false, error: 'No validated clips found' };
 
     const clips: { id: number; title: string; start: number; end: number }[] =
@@ -663,8 +1086,8 @@ ipcMain.handle('auto-match-carousel-frames', async (_event, {
     };
 
     // Find clip directories
-    const clipDirs = readdirSync(runPath)
-      .filter(d => d.startsWith('clip-') && existsSync(join(runPath, d, 'thumbnail.jpg')))
+    const clipDirs = readdirSync(trustedRunPath)
+      .filter(d => d.startsWith('clip-') && existsSync(join(trustedRunPath, d, 'thumbnail.jpg')))
       .map(d => {
         const match = d.match(/^clip-(\d+)/);
         const num = match ? parseInt(match[1], 10) : -1;
@@ -675,7 +1098,7 @@ ipcMain.handle('auto-match-carousel-frames', async (_event, {
           num,
           start: clipDef?.start ?? 0,
           end: clipDef?.end ?? 0,
-          thumbnailPath: join(runPath, d, 'thumbnail.jpg'),
+          thumbnailPath: join(trustedRunPath, d, 'thumbnail.jpg'),
         };
       })
       .filter(c => c.num > 0);
@@ -710,23 +1133,45 @@ ipcMain.handle('auto-match-carousel-frames', async (_event, {
 });
 
 // ─── Library & Thumbnails ─────────────────────────────────────────
-import { execFile } from 'child_process';
-import { rmSync } from 'fs';
 
 function findFfmpeg(): string {
+  const configured = pipelineSettings().ffmpegPath;
+  if (configured && existsSync(configured)) return configured;
+  const bundled = bundledFfmpegPath();
+  if (bundled) return bundled;
   const candidates = ['/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg', '/usr/bin/ffmpeg'];
   for (const p of candidates) { if (existsSync(p)) return p; }
   return 'ffmpeg';
 }
 
+function findFfprobe(): string {
+  const configured = pipelineSettings().ffprobePath;
+  if (configured && existsSync(configured)) return configured;
+  const bundled = bundledFfprobePath();
+  if (bundled) return bundled;
+  const candidates = ['/opt/homebrew/bin/ffprobe', '/usr/local/bin/ffprobe', '/usr/bin/ffprobe'];
+  for (const p of candidates) { if (existsSync(p)) return p; }
+  return 'ffprobe';
+}
+
 // Per-clip async thumbnail — never blocks scan
 ipcMain.handle('generate-thumbnail', (_event, { videoPath, thumbPath }: { videoPath: string; thumbPath: string }) => {
-  const ffmpeg = findFfmpeg();
   return new Promise<{ success: boolean; thumbPath?: string }>((resolve) => {
+    let trustedVideoPath = '';
+    let trustedThumbPath = '';
+    try {
+      trustedVideoPath = assertTrustedPath(videoPath, true);
+      trustedThumbPath = assertTrustedPath(thumbPath, true);
+      mkdirSync(dirname(trustedThumbPath), { recursive: true });
+    } catch {
+      resolve({ success: false });
+      return;
+    }
+    const ffmpeg = findFfmpeg();
     // -frames:v 1 -update 1 required for newer ffmpeg to write a single JPEG without pattern
-    execFile(ffmpeg, ['-y', '-ss', '1', '-i', videoPath, '-frames:v', '1', '-q:v', '3', '-vf', 'scale=540:960', '-update', '1', thumbPath],
+    execFile(ffmpeg, ['-y', '-ss', '1', '-i', trustedVideoPath, '-frames:v', '1', '-q:v', '3', '-vf', 'scale=540:960', '-update', '1', trustedThumbPath],
       { timeout: 12000 }, (err) => {
-        if (!err && existsSync(thumbPath)) resolve({ success: true, thumbPath });
+        if (!err && existsSync(trustedThumbPath)) resolve({ success: true, thumbPath: trustedThumbPath });
         else resolve({ success: false });
       });
   });
@@ -734,8 +1179,7 @@ ipcMain.handle('generate-thumbnail', (_event, { videoPath, thumbPath }: { videoP
 
 // Fast scan — no ffmpeg, returns immediately
 ipcMain.handle('scan-library', async () => {
-  // Scan both the IX pipeline output dir AND the local userData clips dir
-  const ixOutputDir = join(process.env.HOME || '~', 'clawd/projects/ix-social-media-manager/output/clips');
+  // Scan the app-owned clips dir. The packaged pipeline writes here.
   const localClipsDir = join(app.getPath('userData'), 'clips');
   
   const scanDir = (clipsRoot: string): object[] => {
@@ -749,12 +1193,39 @@ ipcMain.handle('scan-library', async () => {
         const runPath = join(clipsRoot, runId);
         const clips: object[] = [];
         let sourceVideoName = '';
+        let sourceVideoPath: string | null = null;
+        let runStrategyBrief: ContentStrategyBrief | null = null;
+        try {
+          const metaPath = join(runPath, 'run_meta.json');
+          if (existsSync(metaPath)) {
+            const meta = JSON.parse(readFileSync(metaPath, 'utf-8'));
+            sourceVideoPath = typeof meta.sourceVideoPath === 'string' ? meta.sourceVideoPath : null;
+            if (sourceVideoPath) sourceVideoName = basename(sourceVideoPath);
+            runStrategyBrief = normalizeContentStrategyBrief(meta.strategyBrief);
+          }
+        } catch {}
+        try {
+          const strategyPath = join(runPath, 'strategy_brief.json');
+          if (!runStrategyBrief && existsSync(strategyPath)) {
+            runStrategyBrief = normalizeContentStrategyBrief(JSON.parse(readFileSync(strategyPath, 'utf-8')));
+          }
+        } catch {}
         try {
           const srt = readdirSync(runPath).find(f => f.endsWith('.srt'));
-          if (srt) sourceVideoName = srt.replace(/\.srt$/, '');
+          if (!sourceVideoName && srt) sourceVideoName = srt.replace(/\.srt$/, '');
         } catch {}
 
         try {
+          const validatedById = new Map<string, Record<string, unknown>>();
+          const validatedPath = join(runPath, 'validated_clips.json');
+          if (existsSync(validatedPath)) {
+            try {
+              const validated = JSON.parse(readFileSync(validatedPath, 'utf-8'));
+              if (Array.isArray(validated)) {
+                for (const item of validated) validatedById.set(String(item.id).padStart(2, '0'), item);
+              }
+            } catch {}
+          }
           const clipDirs = readdirSync(runPath, { withFileTypes: true })
             .filter(d => d.isDirectory() && !d.name.startsWith('.'))
             .sort((a, b) => a.name.localeCompare(b.name));
@@ -773,54 +1244,73 @@ ipcMain.handle('scan-library', async () => {
             const thumbnailPath = existsSync(thumbPath) ? thumbPath : null;
             let spec: Record<string, unknown> = {};
             if (existsSync(specPath)) { try { spec = JSON.parse(readFileSync(specPath, 'utf-8')); } catch {} }
+            const idMatch = cd.name.match(/^clip-(\d+)/);
+            const clipMeta = idMatch ? validatedById.get(idMatch[1]) || {} : {};
             const dirTitle = cd.name.replace(/^clip-\d+-/, '');
             clips.push({
               clipId: spec.clipId || cd.name,
-              title: (spec.title as string) || dirTitle,
-              score: (spec.score as number) || (spec.total_score as number) || 0,
-              contentType: (spec.contentType as string) || 'vlog',
-              start: (spec.clipStart as number) || 0,
-              end: (spec.clipEnd as number) || 0,
-              duration: (spec.duration as number) || 0,
+              title: (spec.title as string) || (clipMeta.title as string) || dirTitle,
+              score: (spec.score as number) || (spec.total_score as number) || (clipMeta.total_score as number) || 0,
+              contentType: (spec.contentType as string) || (clipMeta.category as string) || 'vlog',
+              start: (spec.clipStart as number) || (clipMeta.start as number) || 0,
+              end: (spec.clipEnd as number) || (clipMeta.end as number) || 0,
+              duration: (spec.duration as number) || ((clipMeta.end as number) && (clipMeta.start as number) ? Number(clipMeta.end) - Number(clipMeta.start) : 0),
               filePath, thumbnailPath,
               thumbPath,
               needsThumbnail: !thumbnailPath && !!filePath,
               status: (spec.status as string) || 'unknown',
               composedAt: (spec.composedAt as string) || null,
+              strategyLabel: (spec.strategyLabel as string) || (spec.strategy_label as string) || (clipMeta.strategy_label as string) || '',
+              strategyRationale: (spec.strategyRationale as string) || (spec.strategy_rationale as string) || (clipMeta.strategy_rationale as string) || '',
+              strategyScores: (spec.strategyScores as object) || (spec.strategy_scores as object) || (clipMeta.strategy_scores as object) || null,
+              packageVariant: (spec.packageVariant as object) || (spec.package_variant as object) || (clipMeta.package_variant as object) || null,
+              strategyBrief: (spec.strategyBrief as object) || runStrategyBrief,
               clipPath, specPath,
             });
           }
         } catch {}
-        return { runId: `${clipsRoot}::${runId}`, timestamp: Number(runId) || Date.now(), sourceVideo: sourceVideoName, runPath, clips };
+        return { runId, timestamp: Number(runId) || Date.now(), sourceVideo: sourceVideoName, sourceVideoPath, strategyBrief: runStrategyBrief, runPath, clips };
       }).filter((r: any) => r.clips.length > 0);
     } catch { return []; }
   };
 
-  const ixRuns = scanDir(ixOutputDir);
   const localRuns = scanDir(localClipsDir);
   
   // Merge and sort by most recent
-  const allRuns = [...ixRuns, ...localRuns].sort((a: any, b: any) => b.timestamp - a.timestamp);
+  const allRuns = [...localRuns].sort((a: any, b: any) => b.timestamp - a.timestamp);
   return { runs: allRuns };
 });
 
 
 // ─── CRUD ────────────────────────────────────────────────────────────
 ipcMain.handle('delete-run', async (_event, runId: string) => {
-  try { rmSync(join(app.getPath('userData'), 'clips', runId), { recursive: true, force: true }); return { success: true }; }
+  try {
+    if (!safeJsonFileId(runId)) return { success: false, error: 'Invalid run id' };
+    const runPath = join(app.getPath('userData'), 'clips', runId);
+    if (!existsSync(runPath)) return { success: false, error: 'Run not found' };
+    rmSync(runPath, { recursive: true, force: true });
+    return { success: true };
+  }
   catch (err) { return { success: false, error: String(err) }; }
 });
 
 ipcMain.handle('delete-clip', async (_event, clipPath: string) => {
-  try { rmSync(clipPath, { recursive: true, force: true }); return { success: true }; }
+  try {
+    const trustedClipPath = assertTrustedPath(clipPath, true);
+    if (!isInsidePath(join(app.getPath('userData'), 'clips'), trustedClipPath)) return { success: false, error: 'Clip is outside app storage' };
+    rmSync(trustedClipPath, { recursive: true, force: true });
+    return { success: true };
+  }
   catch (err) { return { success: false, error: String(err) }; }
 });
 
 ipcMain.handle('rename-clip', async (_event, { specPath, newTitle }: { specPath: string; newTitle: string }) => {
   try {
-    const spec = JSON.parse(readFileSync(specPath, 'utf-8'));
+    const trustedSpecPath = assertTrustedPath(specPath, true);
+    if (!isInsidePath(join(app.getPath('userData'), 'clips'), trustedSpecPath)) return { success: false, error: 'Clip spec is outside app storage' };
+    const spec = JSON.parse(readFileSync(trustedSpecPath, 'utf-8'));
     spec.title = newTitle;
-    writeFileSync(specPath, JSON.stringify(spec, null, 2));
+    writeFileSync(trustedSpecPath, JSON.stringify(spec, null, 2));
     return { success: true };
   } catch (err) { return { success: false, error: String(err) }; }
 });
@@ -828,14 +1318,16 @@ ipcMain.handle('rename-clip', async (_event, { specPath, newTitle }: { specPath:
 // ─── Carousel Persistence ─────────────────────────────────────────
 const carouselsDir = () => join(app.getPath('userData'), 'carousels');
 
-ipcMain.handle('save-carousel', async (_event, { title, slides, brandSnapshot, playbookPostId, playbookTopicId }: {
-  title: string; slides: object[]; brandSnapshot: object; playbookPostId?: string; playbookTopicId?: string;
+ipcMain.handle('save-carousel', async (_event, { title, slides, brandSnapshot, strategySnapshot, playbookPostId, playbookTopicId }: {
+  title: string; slides: object[]; brandSnapshot: object; strategySnapshot?: ContentStrategyBrief | null; playbookPostId?: string; playbookTopicId?: string;
 }) => {
   const dir = carouselsDir();
   if (!existsSync(dir)) { const { mkdirSync } = await import('fs'); mkdirSync(dir, { recursive: true }); }
   const id = Date.now().toString();
   const filePath = join(dir, `${id}.json`);
   const record: Record<string, unknown> = { id, title, slides, brandSnapshot, createdAt: new Date().toISOString() };
+  const normalizedStrategy = normalizeContentStrategyBrief(strategySnapshot);
+  if (normalizedStrategy) record.strategySnapshot = normalizedStrategy;
   if (playbookPostId) record.playbookPostId = playbookPostId;
   if (playbookTopicId) record.playbookTopicId = playbookTopicId;
   writeFileSync(filePath, JSON.stringify(record, null, 2));
@@ -858,6 +1350,7 @@ ipcMain.handle('list-carousels', async () => {
 });
 
 ipcMain.handle('load-carousel', async (_event, id: string) => {
+  if (!safeJsonFileId(id)) return { success: false, error: 'Invalid carousel id' };
   const filePath = join(carouselsDir(), `${id}.json`);
   try {
     const data = JSON.parse(readFileSync(filePath, 'utf-8'));
@@ -866,12 +1359,14 @@ ipcMain.handle('load-carousel', async (_event, id: string) => {
 });
 
 ipcMain.handle('delete-carousel', async (_event, id: string) => {
+  if (!safeJsonFileId(id)) return { success: false, error: 'Invalid carousel id' };
   const filePath = join(carouselsDir(), `${id}.json`);
   try { rmSync(filePath, { force: true }); return { success: true }; }
   catch (err) { return { success: false, error: String(err) }; }
 });
 
 ipcMain.handle('rename-carousel', async (_event, { id, title }: { id: string; title: string }) => {
+  if (!safeJsonFileId(id)) return { success: false, error: 'Invalid carousel id' };
   const filePath = join(carouselsDir(), `${id}.json`);
   try {
     const data = JSON.parse(readFileSync(filePath, 'utf-8'));
@@ -886,7 +1381,8 @@ ipcMain.handle('generate-blog-post', async (_event, {
   transcript,
   brandProfile,
   contentType,
-}: { transcript: string; brandProfile: Record<string, unknown>; contentType: string }) => {
+  strategyBrief,
+}: { transcript: string; brandProfile: Record<string, unknown>; contentType: string; strategyBrief?: ContentStrategyBrief | null }) => {
   const apiKey = store.get('apiKeys.claude') as string;
   if (!apiKey) return { success: false, error: 'No Claude API key configured' };
 
@@ -899,12 +1395,14 @@ ipcMain.handle('generate-blog-post', async (_event, {
   const tone = toneMap[brandProfile.tone as string] || toneMap.professional;
   const brandName = brandProfile.brandName as string || 'Our Brand';
   const truncated = transcript.slice(0, 12000);
+  const normalizedStrategy = normalizeContentStrategyBrief(strategyBrief);
 
   try {
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
     const client = new Anthropic({ apiKey });
 
     const prompt = `You are a blog content writer for ${brandName}.
+${strategyPromptBlock(normalizedStrategy)}
 
 Content type: ${contentType || 'general'}
 Writing voice: ${tone}
@@ -919,6 +1417,8 @@ Transform this transcript into a well-structured, SEO-optimized blog post (800-1
 Rules:
 - Write a compelling title that would rank on Google
 - Write a meta description (under 160 characters) for SEO
+- Preserve the same viewer promise and outcome from the strategy brief when one is provided
+- Use the strategy payoff as the conclusion target
 - Create 4-6 sections, each with a clear H2 heading
 - Each section should have 2-4 paragraphs of substantive content
 - Include "[IMAGE]" markers where a supporting image from the video would add value (place 2-3 total)
@@ -969,7 +1469,7 @@ You must output your response as pure JSON matching EXACTLY this schema (no mark
       body: s.body || ''
     }));
 
-    return { success: true, blogPost: { title: parsed.title, metaDescription: parsed.metaDescription, sections } };
+    return { success: true, blogPost: { title: parsed.title, metaDescription: parsed.metaDescription, sections }, strategyBrief: normalizedStrategy };
   } catch (err) {
     return { success: false, error: String(err) };
   }
@@ -978,14 +1478,23 @@ You must output your response as pure JSON matching EXACTLY this schema (no mark
 // ─── Blog Post Persistence ────────────────────────────────────────
 const blogsDir = () => join(app.getPath('userData'), 'blogs');
 
-ipcMain.handle('save-blog-post', async (_event, { title, metaDescription, sections, brandSnapshot }: {
-  title: string; metaDescription: string; sections: object[]; brandSnapshot: object;
+ipcMain.handle('save-blog-post', async (_event, { title, metaDescription, sections, brandSnapshot, strategySnapshot }: {
+  title: string; metaDescription: string; sections: object[]; brandSnapshot: object; strategySnapshot?: ContentStrategyBrief | null;
 }) => {
   const dir = blogsDir();
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   const id = Date.now().toString();
   const filePath = join(dir, `${id}.json`);
-  require('fs').writeFileSync(filePath, JSON.stringify({ id, title, metaDescription, sections, brandSnapshot, createdAt: new Date().toISOString() }, null, 2));
+  const normalizedStrategy = normalizeContentStrategyBrief(strategySnapshot);
+  require('fs').writeFileSync(filePath, JSON.stringify({
+    id,
+    title,
+    metaDescription,
+    sections,
+    brandSnapshot,
+    ...(normalizedStrategy ? { strategySnapshot: normalizedStrategy } : {}),
+    createdAt: new Date().toISOString(),
+  }, null, 2));
   return { success: true, id };
 });
 
@@ -1005,6 +1514,7 @@ ipcMain.handle('list-blog-posts', async () => {
 });
 
 ipcMain.handle('load-blog-post', async (_event, id: string) => {
+  if (!safeJsonFileId(id)) return { success: false, error: 'Invalid post id' };
   const filePath = join(blogsDir(), `${id}.json`);
   try {
     const data = JSON.parse(readFileSync(filePath, 'utf-8'));
@@ -1013,6 +1523,7 @@ ipcMain.handle('load-blog-post', async (_event, id: string) => {
 });
 
 ipcMain.handle('delete-blog-post', async (_event, id: string) => {
+  if (!safeJsonFileId(id)) return { success: false, error: 'Invalid post id' };
   const filePath = join(blogsDir(), `${id}.json`);
   try { rmSync(filePath, { force: true }); return { success: true }; }
   catch (err) { return { success: false, error: String(err) }; }
@@ -1020,8 +1531,8 @@ ipcMain.handle('delete-blog-post', async (_event, id: string) => {
 
 // ─── Blog Export ──────────────────────────────────────────────────
 ipcMain.handle('export-blog-markdown', async (_event, {
-  title, metaDescription, sections,
-}: { title: string; metaDescription: string; sections: { heading: string; body: string; imagePath?: string | null }[] }) => {
+  title, metaDescription, sections, strategySnapshot,
+}: { title: string; metaDescription: string; sections: { heading: string; body: string; imagePath?: string | null }[]; strategySnapshot?: ContentStrategyBrief | null }) => {
   try {
     const sanitized = title.replace(/[^a-zA-Z0-9\s-]/g, '').replace(/\s+/g, '_').slice(0, 60);
     const downloadsPath = app.getPath('downloads');
@@ -1029,6 +1540,20 @@ ipcMain.handle('export-blog-markdown', async (_event, {
 
     let md = `# ${title}\n\n`;
     md += `> ${metaDescription}\n\n---\n\n`;
+    const normalizedStrategy = normalizeContentStrategyBrief(strategySnapshot);
+    if (normalizedStrategy) {
+      md += `## Content Package\n\n`;
+      md += `- Audience: ${normalizedStrategy.audience}\n`;
+      md += `- Promise: ${normalizedStrategy.promise}\n`;
+      md += `- Viewer outcome: ${normalizedStrategy.viewerOutcome}\n`;
+      md += `- Payoff: ${normalizedStrategy.payoff}\n\n`;
+      for (const [idx, variant] of normalizedStrategy.packageVariants.entries()) {
+        md += `### Package ${idx + 1}: ${variant.title}\n\n`;
+        md += `Thumbnail: ${variant.thumbnailText}\n\n`;
+        md += `${variant.shortCaption}\n\n`;
+      }
+      md += `---\n\n`;
+    }
 
     for (const section of sections) {
       md += `## ${section.heading}\n\n`;
@@ -1038,7 +1563,8 @@ ipcMain.handle('export-blog-markdown', async (_event, {
       md += `${section.body}\n\n`;
     }
 
-    require('fs').writeFileSync(filePath, md, 'utf-8');
+    writeFileSync(filePath, md, 'utf-8');
+    rememberTrustedPath(filePath);
     return { success: true, filePath };
   } catch (err) {
     return { success: false, error: String(err) };
@@ -1049,9 +1575,9 @@ ipcMain.handle('export-blog-markdown', async (_event, {
 
 ipcMain.handle('save-publishing-config', async (_event, config: { apiKey: string; userEmail: string; blobToken: string }) => {
   try {
-    store.set('publishingBridge.apiKey', config.apiKey);
-    store.set('publishingBridge.userEmail', config.userEmail);
-    store.set('publishingBridge.blobToken', config.blobToken);
+    if (config.apiKey?.trim()) store.set('publishingBridge.apiKey', config.apiKey.trim());
+    if (config.userEmail?.trim()) store.set('publishingBridge.userEmail', config.userEmail.trim());
+    if (config.blobToken?.trim()) store.set('publishingBridge.blobToken', config.blobToken.trim());
     return { success: true };
   } catch (err) {
     return { success: false, error: String(err) };
@@ -1059,11 +1585,17 @@ ipcMain.handle('save-publishing-config', async (_event, config: { apiKey: string
 });
 
 ipcMain.handle('get-publishing-config', async () => {
+  const apiKey = store.get('publishingBridge.apiKey', '') as string;
+  const blobToken = store.get('publishingBridge.blobToken', '') as string;
+  const hint = (value: string) => value ? `${value.slice(0, 7)}...${value.slice(-4)}` : '';
   return {
-    apiKey: store.get('publishingBridge.apiKey', '') as string,
+    apiKey: '',
+    apiKeyHint: hint(apiKey),
     userEmail: store.get('publishingBridge.userEmail', '') as string,
-    blobToken: store.get('publishingBridge.blobToken', '') as string,
-    configured: !!(store.get('publishingBridge.apiKey') && store.get('publishingBridge.userEmail')),
+    blobToken: '',
+    blobTokenHint: hint(blobToken),
+    configured: !!(apiKey && store.get('publishingBridge.userEmail') && blobToken),
+    hasBlobToken: !!blobToken,
   };
 });
 
@@ -1074,7 +1606,7 @@ ipcMain.handle('get-scheduled-queue', async () => {
     if (!apiKey || !userEmail) return { success: false, error: 'Publishing Bridge not configured. Go to Settings.' };
 
     const res = await fetch(
-      `https://content.6fbmentorship.com/apps/content/api/external/scheduled-posts?email=${encodeURIComponent(userEmail)}&status=scheduled`,
+      `${contentApi('/api/external/scheduled-posts')}?email=${encodeURIComponent(userEmail)}&status=scheduled`,
       { headers: { 'x-api-key': apiKey } }
     );
     if (!res.ok) return { success: false, error: `Content Generator returned ${res.status}` };
@@ -1086,48 +1618,46 @@ ipcMain.handle('get-scheduled-queue', async () => {
 });
 
 ipcMain.handle('push-to-scheduler', async (_event, payload: {
-  filePath: string;
+  filePath?: string;
+  mediaFiles?: string[];
   caption: string;
   mediaType: 'image' | 'video' | 'carousel';
   scheduledFor: string; // ISO string
   hashtags?: string[];
   isTrial?: boolean;
   playbookPostId?: string;
+  strategySnapshot?: ContentStrategyBrief | null;
 }) => {
   try {
     const apiKey = store.get('publishingBridge.apiKey', '') as string;
     const userEmail = store.get('publishingBridge.userEmail', '') as string;
     const blobToken = store.get('publishingBridge.blobToken', '') as string;
 
-    if (!apiKey || !userEmail) return { success: false, error: 'Publishing Bridge not configured. Go to Settings.' };
+    if (!apiKey || !userEmail || !blobToken) return { success: false, error: 'Publishing Bridge not configured. Go to Settings.' };
+    const normalizedStrategy = normalizeContentStrategyBrief(payload.strategySnapshot);
 
-    // 1. Upload file to Vercel Blob
-    const { readFileSync } = require('fs');
-    const { basename } = require('path');
-    const fileBuffer = readFileSync(payload.filePath);
-    const fileName = basename(payload.filePath);
+    const mediaFiles = (payload.mediaFiles?.length ? payload.mediaFiles : payload.filePath ? [payload.filePath] : [])
+      .map(file => assertTrustedPath(file, true));
+    if (mediaFiles.length === 0) return { success: false, error: 'No media files provided' };
 
-    const uploadRes = await fetch(`https://blob.vercel-storage.com/${fileName}`, {
-      method: 'PUT',
-      headers: {
-        'Authorization': `Bearer ${blobToken}`,
-        'Content-Type': payload.mediaType === 'video' ? 'video/mp4' : 'image/jpeg',
-        'x-content-type': 'application/octet-stream',
-      },
-      body: fileBuffer,
-    });
-
-    if (!uploadRes.ok) {
-      const errBody = await uploadRes.text();
-      return { success: false, error: `Blob upload failed: ${errBody}` };
+    // 1. Upload file(s) to Vercel Blob with the official SDK.
+    const mediaUrls: string[] = [];
+    for (const filePath of mediaFiles) {
+      if (!existsSync(filePath)) return { success: false, error: `Media file not found: ${basename(filePath)}` };
+      const fileBuffer = readFileSync(filePath);
+      const fileName = basename(filePath).replace(/[^a-zA-Z0-9._-]/g, '_');
+      const blob = await put(`content-studio/${Date.now()}-${fileName}`, fileBuffer, {
+        access: 'public',
+        token: blobToken,
+        addRandomSuffix: true,
+        contentType: mediaContentType(filePath, payload.mediaType),
+      });
+      mediaUrls.push(blob.url);
     }
-
-    const blobData = await uploadRes.json() as { url: string };
-    const mediaUrl = blobData.url;
 
     // 2. Create scheduled post via Content Generator External API
     const postRes = await fetch(
-      'https://content.6fbmentorship.com/apps/content/api/external/scheduled-posts',
+      contentApi('/api/external/scheduled-posts'),
       {
         method: 'POST',
         headers: {
@@ -1137,13 +1667,14 @@ ipcMain.handle('push-to-scheduler', async (_event, payload: {
         body: JSON.stringify({
           email: userEmail,
           caption: payload.caption,
-          mediaUrls: [mediaUrl],
+          mediaUrls,
           mediaType: payload.mediaType,
           hashtags: payload.hashtags || [],
           scheduledFor: payload.scheduledFor,
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           isTrial: payload.isTrial ?? false,
           ...(payload.playbookPostId ? { playbookPostId: payload.playbookPostId } : {}),
+          ...(normalizedStrategy ? { strategySnapshot: normalizedStrategy } : {}),
         }),
       }
     );
@@ -1166,10 +1697,10 @@ ipcMain.handle('fetch-playbook-topics', async () => {
   try {
     const apiKey = store.get('publishingBridge.apiKey', '') as string;
     const userEmail = store.get('publishingBridge.userEmail', '') as string;
-    if (!apiKey || !userEmail) return [];
+    if (!apiKey || !userEmail) return { posts: [] };
 
     const res = await fetch(
-      `https://content.6fbmentorship.com/apps/content/api/studio/planned-topics?userEmail=${encodeURIComponent(userEmail)}`,
+      `${contentApi('/api/studio/planned-topics')}?userEmail=${encodeURIComponent(userEmail)}`,
       {
         headers: {
           'x-api-key': apiKey,
@@ -1177,11 +1708,11 @@ ipcMain.handle('fetch-playbook-topics', async () => {
         },
       }
     );
-    if (!res.ok) return [];
+    if (!res.ok) return { posts: [] };
     const data = await res.json();
-    return data;
+    return Array.isArray(data) ? { posts: data } : { ...data, posts: data.posts || [] };
   } catch {
-    return [];
+    return { posts: [] };
   }
 });
 
@@ -1192,7 +1723,7 @@ ipcMain.handle('fetch-today-brief', async () => {
     if (!apiKey || !userEmail) return null;
 
     const res = await fetch(
-      `https://content.6fbmentorship.com/apps/content/api/studio/today-brief?userEmail=${encodeURIComponent(userEmail)}`,
+      `${contentApi('/api/studio/today-brief')}?userEmail=${encodeURIComponent(userEmail)}`,
       {
         headers: {
           'x-api-key': apiKey,

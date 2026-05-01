@@ -1,4 +1,10 @@
 node_modules/
 out/
 dist/
+release/
+python/.build-venv/
+python/build/
+python/dist/
+python/runtime/
+.omc/
 .DS_Store

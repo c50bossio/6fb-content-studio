@@ -4,12 +4,19 @@ interface SystemHealth {
   deps: {
     python: boolean;
     ffmpeg: boolean;
+    ffprobe: boolean;
     mediapipe: boolean;
     clipExtractor: boolean;
   };
   paths: {
     userData: string;
-    ixClipExtractor: string;
+    clipExtractor: string;
+    pipelineScript?: string;
+    binaryPath?: string;
+    toolsDir?: string;
+    ffmpegPath?: string;
+    ffprobePath?: string;
+    pythonPath?: string;
   };
   apiKeys: {
     claude: boolean;
@@ -19,15 +26,19 @@ interface SystemHealth {
 
 interface PublishingConfig {
   apiKey: string;
+  apiKeyHint?: string;
   userEmail: string;
   blobToken: string;
+  blobTokenHint?: string;
   configured: boolean;
+  hasBlobToken?: boolean;
 }
 
 export default function Settings() {
   const [health, setHealth] = useState<SystemHealth | null>(null);
   const [loading, setLoading] = useState(true);
   const [resetConfirm, setResetConfirm] = useState(false);
+  const [appVersion, setAppVersion] = useState('');
 
   // Publishing Bridge state
   const [pubConfig, setPubConfig] = useState<PublishingConfig>({ apiKey: '', userEmail: '', blobToken: '', configured: false });
@@ -46,13 +57,15 @@ export default function Settings() {
       (api.getPublishingConfig() as Promise<PublishingConfig>).then((cfg) => {
         if (cfg) setPubConfig(cfg);
       }).catch(() => {});
+      (api.getAppVersion?.() as Promise<string> | undefined)?.then(setAppVersion).catch(() => {});
     } else {
       // Browser mock
       setHealth({
-        deps: { python: false, ffmpeg: false, mediapipe: false, clipExtractor: false },
-        paths: { userData: '~/Library/Application Support/6fb-content-studio', ixClipExtractor: '~/clawd/projects/ix-social-media-manager/tools/clip_extractor' },
+        deps: { python: false, ffmpeg: false, ffprobe: false, mediapipe: false, clipExtractor: false },
+        paths: { userData: '~/Library/Application Support/6fb-content-studio', clipExtractor: 'Bundled with packaged app' },
         apiKeys: { claude: true, openai: false },
       });
+      setAppVersion('1.1.0');
       setLoading(false);
     }
   }, []);
@@ -109,6 +122,9 @@ export default function Settings() {
     <div className="p-4 sm:p-6 lg:p-8 max-w-3xl">
       <h1 className="text-3xl font-bold text-white mb-2">Settings</h1>
       <p className="text-6fb-text-muted mb-8">Manage your API keys, check system health, and configure the studio.</p>
+      {appVersion && (
+        <p className="text-[11px] text-6fb-text-muted -mt-6 mb-8">Version {appVersion}</p>
+      )}
 
       {/* API Keys Section */}
       <section className="mb-8">
@@ -140,26 +156,6 @@ export default function Settings() {
             )}
           </div>
 
-          {/* OpenAI */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <StatusDot ok={health?.apiKeys.openai ?? false} />
-              <div>
-                <p className="text-sm font-medium text-white">OpenAI</p>
-                <p className="text-xs text-6fb-text-muted">
-                  {health?.apiKeys.openai ? 'Key configured' : 'Not configured'}
-                </p>
-              </div>
-            </div>
-            {health?.apiKeys.openai && (
-              <button
-                onClick={() => handleDeleteKey('openai')}
-                className="text-xs text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg border border-red-500/20 hover:border-red-500/40 transition-colors"
-              >
-                Remove
-              </button>
-            )}
-          </div>
         </div>
       </section>
 
@@ -193,6 +189,14 @@ export default function Settings() {
               </div>
 
               <div className="flex items-center gap-3">
+                <StatusDot ok={health?.deps.ffprobe ?? false} />
+                <div>
+                  <p className="text-sm text-white">FFprobe</p>
+                  <p className="text-xs text-6fb-text-muted">Required for video metadata</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
                 <StatusDot ok={health?.deps.mediapipe ?? false} />
                 <div>
                   <p className="text-sm text-white">MediaPipe</p>
@@ -203,9 +207,19 @@ export default function Settings() {
               <div className="flex items-center gap-3">
                 <StatusDot ok={health?.deps.clipExtractor ?? false} />
                 <div>
-                  <p className="text-sm text-white">IX Clip Extractor</p>
+                  <p className="text-sm text-white">Clip Extractor</p>
                   <p className="text-xs text-6fb-text-muted truncate max-w-md">
-                    {health?.paths.ixClipExtractor}
+                    {health?.paths.clipExtractor}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <StatusDot ok={!!(health?.paths.binaryPath || health?.paths.pipelineScript)} />
+                <div>
+                  <p className="text-sm text-white">Bundled Pipeline</p>
+                  <p className="text-xs text-6fb-text-muted truncate max-w-md">
+                    {health?.paths.binaryPath || health?.paths.pipelineScript || 'Not found'}
                   </p>
                 </div>
               </div>
@@ -221,6 +235,11 @@ export default function Settings() {
         {health && !health.deps.ffmpeg && (
           <p className="text-xs text-amber-400 mt-1 px-2">
             Install FFmpeg: <code className="bg-[#1e1e1e] px-1.5 py-0.5 rounded text-6fb-green">brew install ffmpeg</code>
+          </p>
+        )}
+        {health && !health.deps.ffprobe && (
+          <p className="text-xs text-amber-400 mt-1 px-2">
+            Install FFprobe: <code className="bg-[#1e1e1e] px-1.5 py-0.5 rounded text-6fb-green">brew install ffmpeg</code>
           </p>
         )}
         {health && !health.deps.mediapipe && (
@@ -321,7 +340,8 @@ export default function Settings() {
               type="password"
               value={pubConfig.apiKey}
               onChange={e => setPubConfig(c => ({ ...c, apiKey: e.target.value }))}
-              placeholder="EXTERNAL_API_KEY from content generator"
+              placeholder={pubConfig.apiKeyHint ? `Configured (${pubConfig.apiKeyHint}) - leave blank to keep` : 'EXTERNAL_API_KEY from content generator'}
+              title={pubConfig.apiKeyHint ? `Configured: ${pubConfig.apiKeyHint}` : undefined}
               className="w-full bg-[#161616] border border-6fb-border rounded-lg px-3 py-2 text-xs text-white placeholder-[#444] focus:outline-none focus:border-6fb-green/50 font-mono transition-colors"
             />
           </div>
@@ -343,7 +363,8 @@ export default function Settings() {
               type="password"
               value={pubConfig.blobToken}
               onChange={e => setPubConfig(c => ({ ...c, blobToken: e.target.value }))}
-              placeholder="vercel_blob_rw_..."
+              placeholder={pubConfig.blobTokenHint ? `Configured (${pubConfig.blobTokenHint}) - leave blank to keep` : 'vercel_blob_rw_...'}
+              title={pubConfig.blobTokenHint ? `Configured: ${pubConfig.blobTokenHint}` : undefined}
               className="w-full bg-[#161616] border border-6fb-border rounded-lg px-3 py-2 text-xs text-white placeholder-[#444] focus:outline-none focus:border-6fb-green/50 font-mono transition-colors"
             />
           </div>

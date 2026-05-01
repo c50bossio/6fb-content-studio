@@ -4,15 +4,21 @@
  */
 
 import { spawn, ChildProcess } from 'child_process';
-import { join } from 'path';
+import { delimiter, dirname, join } from 'path';
 import { existsSync } from 'fs';
 import { BrowserWindow, Notification } from 'electron';
+import type { ContentStrategyBrief } from '../src/types/content-strategy';
 
-// Path to IX clip extractor
-const IX_CLIP_EXTRACTOR = join(
-  process.env.HOME || '~',
-  'clawd/projects/ix-social-media-manager/tools/clip_extractor'
-);
+export interface ClipExtractorRuntime {
+  mode: 'bundled' | 'custom';
+  pythonPath: string;
+  ffmpegPath: string;
+  ffprobePath?: string;
+  toolsDir: string;
+  pipelineScriptPath: string;
+  binaryPath?: string;
+  anthropicApiKey?: string;
+}
 
 interface ClipExtractorOptions {
   outputFormat?: '9x16' | '1x1' | 'split' | 'auto';
@@ -22,6 +28,9 @@ interface ClipExtractorOptions {
   brandName?: string;
   logoPath?: string | null;
   contentType?: string;
+  numClips?: number;
+  strategyBrief?: ContentStrategyBrief | null;
+  runtime: ClipExtractorRuntime;
 }
 
 interface ExtractResult {
@@ -38,28 +47,44 @@ interface ExtractResult {
   error?: string;
 }
 
-/**
- * Resolve the best available Python binary: prefer IX venv, fall back to system python3/python.
- */
-export function resolveVenvPython(): string {
-  const venvPath = join(
-    process.env.HOME || '~',
-    'clawd/projects/ix-social-media-manager/venv/bin/python'
-  );
-  if (existsSync(venvPath)) return venvPath;
-  // Fallback chain
+export function resolveSystemPython(): string {
   return 'python3';
+}
+
+function companionToolPath(toolPath: string | undefined, executable: string): string {
+  const fileName = process.platform === 'win32' ? `${executable}.exe` : executable;
+  if (toolPath && toolPath !== executable) {
+    const candidate = join(dirname(toolPath), fileName);
+    if (existsSync(candidate)) return candidate;
+  }
+  return fileName;
+}
+
+function toolPathDirs(...toolPaths: Array<string | undefined>): string {
+  const dirs = new Set<string>();
+  for (const toolPath of toolPaths) {
+    if (!toolPath || toolPath === 'ffmpeg' || toolPath === 'ffprobe') continue;
+    dirs.add(dirname(toolPath));
+  }
+  return Array.from(dirs).join(delimiter);
 }
 
 /**
  * Check if Python and required dependencies are available.
  */
-export async function checkPythonDeps(): Promise<{
+export async function checkPythonDeps(runtime: ClipExtractorRuntime): Promise<{
   python: boolean;
   ffmpeg: boolean;
+  ffprobe: boolean;
   mediapipe: boolean;
   clipExtractor: boolean;
   pythonPath: string;
+  ffmpegPath: string;
+  ffprobePath: string;
+  pipelineScriptPath: string;
+  binaryPath?: string;
+  toolsDir: string;
+  mode: 'bundled' | 'custom';
 }> {
   const check = (cmd: string, args: string[]): Promise<boolean> =>
     new Promise(resolve => {
@@ -68,17 +93,44 @@ export async function checkPythonDeps(): Promise<{
       proc.on('error', () => resolve(false));
     });
 
-  const pythonPath = resolveVenvPython();
+  const pythonPath = runtime.pythonPath || resolveSystemPython();
+  const ffmpegPath = runtime.ffmpegPath || 'ffmpeg';
+  const ffprobePath = runtime.ffprobePath || companionToolPath(ffmpegPath, 'ffprobe');
 
-  const [python, ffmpeg, mediapipe] = await Promise.all([
-    check(pythonPath, ['--version']),
-    check('ffmpeg', ['-version']),
-    check(pythonPath, ['-c', 'import mediapipe; print(mediapipe.__version__)']),
-  ]);
+  const hasBinary = !!runtime.binaryPath && existsSync(runtime.binaryPath);
+  const [python, ffmpeg, ffprobe, mediapipe] = hasBinary && runtime.binaryPath
+    ? [
+      await check(runtime.binaryPath, ['--help']),
+      await check(ffmpegPath, ['-version']),
+      await check(ffprobePath, ['-version']),
+      await check(runtime.binaryPath, ['--help']),
+    ]
+    : await Promise.all([
+      check(pythonPath, ['--version']),
+      check(ffmpegPath, ['-version']),
+      check(ffprobePath, ['-version']),
+      check(pythonPath, ['-c', 'import mediapipe; print(mediapipe.__version__)']),
+    ]);
 
-  const clipExtractor = existsSync(join(IX_CLIP_EXTRACTOR, 'core/pipeline.py'));
+  const clipExtractor = (hasBinary && python) || (
+    existsSync(runtime.pipelineScriptPath)
+    && existsSync(join(runtime.toolsDir, 'clip_extractor/core/pipeline.py'))
+  );
 
-  return { python, ffmpeg, mediapipe, clipExtractor, pythonPath };
+  return {
+    python,
+    ffmpeg,
+    ffprobe,
+    mediapipe,
+    clipExtractor,
+    pythonPath,
+    ffmpegPath,
+    ffprobePath,
+    pipelineScriptPath: runtime.pipelineScriptPath,
+    binaryPath: runtime.binaryPath,
+    toolsDir: runtime.toolsDir,
+    mode: runtime.mode,
+  };
 }
 
 /**
@@ -92,22 +144,34 @@ export function runClipExtractor(
 ): Promise<ExtractResult> {
   return new Promise((resolve) => {
     const format = options.outputFormat || '9x16';
+    const runtime = options.runtime;
 
-    // Determine script path
-    const pipelineScript = join(IX_CLIP_EXTRACTOR, '../pipeline/full_pipeline.py');
+    if (runtime?.binaryPath && !existsSync(runtime.binaryPath)) {
+      resolve({
+        success: false,
+        error: 'Configured clip pipeline binary was not found.',
+      });
+      return;
+    }
+
+    if (!runtime?.binaryPath && (!runtime?.pipelineScriptPath || !existsSync(runtime.pipelineScriptPath))) {
+      resolve({
+        success: false,
+        error: 'Bundled clip pipeline not found. Reinstall 6FB Content Studio or configure a custom pipeline in Settings.',
+      });
+      return;
+    }
 
     // Number of clips to extract
-    const numClips = 3; // default for opus style processing
+    const numClips = options.numClips || 3;
 
     // Build args
     const args = [
-      pipelineScript,
       '--video', videoPath,
       '--output', outputDir,
       '--format', format,
       '--clips', numClips.toString(),
       '--brand', options.brandName || '6fbarber',
-      '--compose', // render typography
       '--no-post'
     ];
     if (options.logoPath) {
@@ -120,28 +184,21 @@ export function runClipExtractor(
       args.push('--content-type', options.contentType);
     }
 
-    const pythonBin = resolveVenvPython();
+    const command = runtime.binaryPath || runtime.pythonPath || resolveSystemPython();
+    const commandArgs = runtime.binaryPath ? args : [runtime.pipelineScriptPath, ...args];
+    const ffprobePath = runtime.ffprobePath || companionToolPath(runtime.ffmpegPath, 'ffprobe');
+    const pathDirs = toolPathDirs(runtime.ffmpegPath, ffprobePath);
+    const pathPrefix = pathDirs ? `${pathDirs}:` : '';
     
-    // Read API key directly from config file (store only lives in main.ts)
-    let storedApiKey = '';
-    try {
-      const configPath = join(process.env.HOME || '~', 'Library/Application Support/6fb-content-studio/config.json');
-      const { readFileSync } = require('fs');
-      if (existsSync(configPath)) {
-        const config = JSON.parse(readFileSync(configPath, 'utf-8'));
-        storedApiKey = config?.apiKeys?.claude || '';
-      }
-    } catch (_) {}
-
-    const toolsDir = join(process.env.HOME || '~', 'clawd/projects/ix-social-media-manager/tools');
-    
-    const proc: ChildProcess = spawn(pythonBin, args, {
-      cwd: toolsDir,
+    const proc: ChildProcess = spawn(command, commandArgs, {
+      cwd: runtime.toolsDir,
       env: { 
         ...process.env, 
+        PATH: `${pathPrefix}${process.env.PATH || ''}`,
         PYTHONUNBUFFERED: '1',
-        PYTHONPATH: toolsDir,
-        ANTHROPIC_API_KEY: storedApiKey,
+        PYTHONPATH: runtime.toolsDir,
+        ANTHROPIC_API_KEY: runtime.anthropicApiKey || '',
+        CONTENT_STRATEGY_BRIEF: options.strategyBrief ? JSON.stringify(options.strategyBrief) : '',
       },
     });
 
@@ -273,17 +330,29 @@ export function runClipExtractor(
             // Find the generated mp4 
             const formattedId = String(clip.id || i + 1).padStart(2, '0');
             const clipFolder = `clip-${formattedId}-${clip.title}`;
-            const expectedRenderPath = join(outputDir, clipFolder, 'rendered_composition.mp4');
-            const fallbackPath = join(outputDir, clipFolder, 'reframed-9x16.mp4');
-            const finalPath = existsSync(expectedRenderPath) ? expectedRenderPath : fallbackPath;
+            const clipDir = join(outputDir, clipFolder);
+            const candidates = [
+              join(clipDir, 'rendered_composition.mp4'),
+              join(clipDir, 'reframed-9x16.mp4'),
+              join(clipDir, 'reframed-split.mp4'),
+              join(clipDir, 'reframed-1x1.mp4'),
+              join(clipDir, 'reframed-4x5.mp4'),
+              join(clipDir, 'reframed-auto.mp4'),
+            ];
+            const finalPath = candidates.find(existsSync) || candidates[1];
 
             return {
               start: clip.start || 0,
               end: clip.end || 0,
-              score: clip.score ? clip.score / 100 : 0.90, // score is typically 80-100
+              score: clip.score ? clip.score / 100 : clip.total_score ? clip.total_score / 100 : 0.90,
               label: clip.title || `AI Segment ${i+1}`,
               filePath: finalPath,
               rationale: clip.reason,
+              strategyLabel: clip.strategy_label || clip.strategyLabel || '',
+              strategyRationale: clip.strategy_rationale || clip.strategyRationale || '',
+              strategyScores: clip.strategy_scores || clip.strategyScores || null,
+              packageVariant: clip.package_variant || clip.packageVariant || null,
+              strategyBrief: options.strategyBrief || null,
             };
           });
 

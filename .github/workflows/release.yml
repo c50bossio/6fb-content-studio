@@ -5,9 +5,12 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
   build-mac:
-    runs-on: macos-latest
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,41 +24,75 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build and package macOS
-        env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: npm run package:mac
+      - name: Build bundled Python runtime
+        run: npm run runtime:mac
 
-      - name: Notarize PKG
+      - name: Validate macOS release secrets
         env:
+          CSC_LINK: ${{ secrets.CSC_LINK || secrets.APPLE_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD || secrets.APPLE_CERTIFICATE_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD || secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          PKG=$(ls release/*.pkg | head -1)
-          xcrun notarytool submit "$PKG" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait
-          sleep 30
-          xcrun stapler staple "$PKG"
+          missing=0
+          for name in \
+            CSC_LINK \
+            CSC_KEY_PASSWORD \
+            APPLE_ID \
+            APPLE_APP_SPECIFIC_PASSWORD \
+            APPLE_TEAM_ID
+          do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing required macOS release secret: $name"
+              missing=1
+            fi
+          done
+          exit "$missing"
 
-      - name: Upload DMG to Release
+      - name: Build and package macOS
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK || secrets.APPLE_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD || secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD || secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run package:mac:release
+
+      - name: Verify signed macOS artifacts
+        run: |
+          codesign --verify --deep --strict --verbose=2 "release/mac-arm64/6FB Content Studio.app"
+          xcrun stapler validate "release/mac-arm64/6FB Content Studio.app"
+          spctl --assess --type execute --verbose=4 "release/mac-arm64/6FB Content Studio.app"
+
+      - name: Notarize DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD || secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          shopt -s nullglob
+          artifacts=(release/*.dmg)
+          if [ ${#artifacts[@]} -ne 1 ]; then
+            echo "::error::Expected exactly one DMG artifact, found ${#artifacts[@]}"
+            exit 1
+          fi
+
+          for artifact in "${artifacts[@]}"; do
+            xcrun notarytool submit "$artifact" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait
+            xcrun stapler staple "$artifact"
+            xcrun stapler validate "$artifact"
+          done
+
+      - name: Upload macOS artifacts to Release
         uses: softprops/action-gh-release@v1
         with:
-          files: release/*.dmg
-
-      - name: Upload PKG to Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: release/*.pkg
-
-      - name: Upload ZIP to Release
-        uses: softprops/action-gh-release@v1
-        with:
-          files: release/*.zip
+          files: |
+            release/*.dmg
+            release/*.zip
+            release/*.yml
+            release/*.blockmap
