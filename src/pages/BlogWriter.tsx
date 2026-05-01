@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { BrandProfile } from '../App';
 import useGoogleFonts from '../hooks/useGoogleFonts';
+import type { ContentStrategyBrief } from '../types/content-strategy';
 
 interface BlogSection {
   id: string;
@@ -15,6 +16,7 @@ interface LibraryRun {
   timestamp: number;
   sourceVideo: string;
   runPath: string;
+  strategyBrief?: ContentStrategyBrief;
   clips: { contentType?: string; thumbnailPath?: string }[];
 }
 
@@ -99,7 +101,7 @@ export default function BlogWriter({ brandProfile, onBlogCreated, hasClaudeKey }
       }
       const contentType = selectedRun.clips[0]?.contentType || 'general';
       const result = await window.electronAPI.generateBlogPost({
-        transcript: txResult.transcript, brandProfile: brand, contentType,
+        transcript: txResult.transcript, brandProfile: brand, contentType, strategyBrief: selectedRun.strategyBrief,
       });
       if (result.success && result.blogPost) {
         setTitle(result.blogPost.title);

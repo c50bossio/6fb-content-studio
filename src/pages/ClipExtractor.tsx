@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import InstagramPostModal from '../components/InstagramPostModal';
+import type { ContentStrategyBrief, PackageVariant } from '../types/content-strategy';
 
 // ─── SVG Icons ────────────────────────────────────────────────────────
 const Icon = {
@@ -52,6 +53,10 @@ interface Clip {
   composedAt?: string | null;
   clipPath?: string;
   specPath?: string;
+  strategyLabel?: string;
+  strategyRationale?: string;
+  strategyScores?: Record<string, number>;
+  packageVariant?: PackageVariant;
 }
 
 interface LibraryRun {
@@ -68,6 +73,7 @@ interface VideoPlanSummary {
   targetLength: string;
   timeline: { type: string; label: string; timestamp: string; endTimestamp: string }[];
   createdAt: string;
+  strategyBrief?: ContentStrategyBrief;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────
@@ -281,6 +287,9 @@ function ClipPreviewModal({ clip, onClose, onOpenInEditor }: {
           <div>
             <h3 className="text-sm font-bold text-white leading-snug mb-1">{clip.title}</h3>
             <p className="text-[10px] text-[#555] font-mono">{fmtFull(clip.start)} – {fmtFull(clip.end)}</p>
+            {clip.strategyLabel && (
+              <p className="text-[10px] text-[#00C851] mt-1">{clip.strategyLabel}{clip.strategyRationale ? ` · ${clip.strategyRationale}` : ''}</p>
+            )}
           </div>
 
           {/* Show in Finder */}
@@ -453,6 +462,18 @@ function ClipCard({ clip, onDelete, onRename, onPreview }: {
         }
         {clip.start > 0 && (
           <p className="text-[9px] text-[#555] font-mono -mt-1">{fmt(clip.start)} – {fmt(clip.end)}</p>
+        )}
+        {clip.strategyLabel && (
+          <div className="flex flex-wrap gap-1">
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-[#00C851]/10 text-[#00C851] border border-[#00C851]/20">
+              {clip.strategyLabel}
+            </span>
+            {clip.packageVariant?.thumbnailText && (
+              <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-white/5 text-[#888] border border-white/10">
+                {clip.packageVariant.thumbnailText}
+              </span>
+            )}
+          </div>
         )}
 
         {/* Micro score bars */}
@@ -685,6 +706,7 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
 
     // Build Drop Zone context from selected plan
     const selectedPlan = savedPlans.find(p => p.id === selectedPlanId);
+    const strategyBrief = selectedPlan?.strategyBrief;
     const dropZones = selectedPlan?.timeline
       .filter(e => e.type === 'dropzone')
       .map(e => ({ label: e.label, timestamp: e.timestamp, endTimestamp: e.endTimestamp })) ?? [];
@@ -696,6 +718,7 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
         numClips: 5,
         autoTrack: true,
         ...(dropZones.length > 0 ? { planContext: { topic: selectedPlan!.topic, dropZones } } : {}),
+        ...(strategyBrief ? { strategyBrief } : {}),
       });
 
       if (result.success) {
@@ -722,6 +745,7 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
         const runId = (result as any).runId || String(Date.now());
         setSelectedRunId(runId);
         localStorage.setItem('clipex:runId', runId);
+        if (strategyBrief) localStorage.setItem(`contentStrategy:run:${runId}`, JSON.stringify(strategyBrief));
         setTimeout(loadLibrary, 3000);
       } else {
         setError(result.error || 'Extraction failed');
@@ -865,7 +889,7 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
               </div>
               {selectedPlanId && (
                 <p className="text-[10px] text-[#00C851]/70 mt-1 px-1">
-                  Drop Zone timestamps will guide clip scoring — moments matching your planned hooks score highest.
+                  Drop Zone timestamps and the Growth Brief will guide clip scoring, packaging labels, and caption angles.
                 </p>
               )}
             </div>

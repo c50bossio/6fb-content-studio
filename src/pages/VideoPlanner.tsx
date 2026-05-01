@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import type { ContentIntent, ContentStrategyBrief, PackageVariant, StrategyScoreBreakdown } from '../types/content-strategy';
 
 // ── Copy hook ─────────────────────────────────────────────────────────────
 function useCopy() {
@@ -36,6 +37,7 @@ interface VideoPlan {
   timeline: TimelineEvent[];
   recordingTips: string[];
   createdAt: string;
+  strategyBrief?: ContentStrategyBrief;
 }
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -75,18 +77,129 @@ const FALLBACK_TRENDING = [
   'Building a brand as a barber',
 ];
 
+const INTENT_OPTIONS: { value: ContentIntent; label: string }[] = [
+  { value: 'education', label: 'Education' },
+  { value: 'entertainment', label: 'Entertainment' },
+  { value: 'hybrid', label: 'Hybrid' },
+];
+
+const emptyScore = (rationale = 'Starter score until AI generation finishes.'): StrategyScoreBreakdown => ({
+  audienceClarity: 70,
+  outcomeValue: 70,
+  novelty: 60,
+  emotionalTrigger: 60,
+  packagingStrength: 65,
+  retentionPath: 65,
+  total: 65,
+  rationale,
+});
+
+const fallbackPackage = (topic: string, promise: string, viewerOutcome: string): PackageVariant[] => ([
+  {
+    title: promise || topic,
+    thumbnailText: viewerOutcome || 'Clear result',
+    firstLineCaption: promise || `Most barbers miss this: ${topic}`,
+    shortCaption: viewerOutcome || 'Save this before your next shoot.',
+    hashtags: ['#barber', '#barberlife', '#barbershop', '#contentstrategy'],
+    platformAngle: 'Lead with the outcome, then prove it with one specific example.',
+  },
+]);
+
+const jsonForPrompt = (value: unknown) => JSON.stringify(value, null, 2).replace(/</g, '\\u003c');
+
+function buildStrategyBrief(input: {
+  topic: string;
+  intent: ContentIntent;
+  audience: string;
+  viewerOutcome: string;
+  promise: string;
+  curiosityGap: string;
+  proofAsset: string;
+  payoff: string;
+  positioning: string;
+  packageVariants?: PackageVariant[];
+  scoreBreakdown?: StrategyScoreBreakdown;
+}): ContentStrategyBrief {
+  const normalizedAudience = input.audience.trim() || 'Barbers and barbershop owners';
+  const normalizedViewerOutcome = input.viewerOutcome.trim() || `Understand ${input.topic} well enough to take action`;
+  const normalizedPromise = input.promise.trim() || input.topic;
+  const normalizedCuriosityGap = input.curiosityGap.trim() || 'What most people miss before they record';
+  const normalizedProofAsset = input.proofAsset.trim() || 'Specific example, number, client story, or before/after';
+  const normalizedPayoff = input.payoff.trim() || 'One memorable takeaway viewers can repeat';
+  const normalizedPositioning = input.positioning.trim() || 'Practical, direct, barber-specific advice';
+  return {
+    id: `strategy-${Date.now()}`,
+    intent: input.intent,
+    audience: normalizedAudience,
+    viewerOutcome: normalizedViewerOutcome,
+    promise: normalizedPromise,
+    curiosityGap: normalizedCuriosityGap,
+    proofAsset: normalizedProofAsset,
+    payoff: normalizedPayoff,
+    positioning: normalizedPositioning,
+    packageVariants: input.packageVariants?.length
+      ? input.packageVariants
+      : fallbackPackage(input.topic, normalizedPromise, normalizedViewerOutcome),
+    scoreBreakdown: input.scoreBreakdown || emptyScore(),
+    createdAt: new Date().toISOString(),
+    source: 'planner',
+  };
+}
+
 // ── Claude prompt ──────────────────────────────────────────────────────────
 
-function buildPrompt(topic: string, perspective: string, videoType: string, targetLength: string) {
+function buildPrompt(topic: string, perspective: string, videoType: string, targetLength: string, strategyBrief: ContentStrategyBrief) {
   const lengthMeta = TARGET_LENGTHS.find(l => l.value === targetLength) ?? TARGET_LENGTHS[1];
   const perspLabel = PERSPECTIVES.find(p => p.value === perspective)?.label ?? perspective;
   const typeLabel  = VIDEO_TYPES.find(t => t.value === videoType)?.label ?? videoType;
+  const strategyScaffold = {
+    intent: strategyBrief.intent,
+    audience: strategyBrief.audience,
+    viewerOutcome: strategyBrief.viewerOutcome,
+    promise: strategyBrief.promise,
+    curiosityGap: 'A sharper curiosity gap if you can improve it',
+    proofAsset: strategyBrief.proofAsset,
+    payoff: strategyBrief.payoff,
+    positioning: strategyBrief.positioning,
+    packageVariants: [
+      {
+        title: 'Title variant',
+        thumbnailText: '3-5 words',
+        firstLineCaption: 'First line for caption',
+        shortCaption: 'Short caption',
+        hashtags: ['#barber', '#barberlife'],
+        platformAngle: 'Platform-specific angle',
+      },
+    ],
+    scoreBreakdown: {
+      audienceClarity: 0,
+      outcomeValue: 0,
+      novelty: 0,
+      emotionalTrigger: 0,
+      packagingStrength: 0,
+      retentionPath: 0,
+      total: 0,
+      rationale: 'Why this idea should or should not be shot',
+    },
+  };
 
   return `You are a YouTube/Instagram content strategist specializing in the barber & barbershop niche.
 
 Create a structured shoot plan for a ${lengthMeta.label} ${typeLabel} video on this topic:
 "${topic}"
 Perspective: ${perspLabel}
+
+Strategy brief:
+- Intent: ${strategyBrief.intent}
+- Target audience: ${strategyBrief.audience}
+- Viewer outcome: ${strategyBrief.viewerOutcome}
+- Promise: ${strategyBrief.promise}
+- Curiosity gap: ${strategyBrief.curiosityGap}
+- Proof asset: ${strategyBrief.proofAsset}
+- Payoff: ${strategyBrief.payoff}
+- Positioning: ${strategyBrief.positioning}
+
+Package the idea BEFORE the script. Generate title and thumbnail directions first, then build the timeline around that promise.
 
 The plan must be a TIMELINE — a mix of "dropzone" events and "body" events.
 - DROP ZONEs are short (5-10 sec) high-impact moments: HOOK, MID-HOOK, PAYOFF. These are the exact words to say on camera that will score highest in clip extraction.
@@ -117,7 +230,8 @@ Return ONLY valid JSON, no markdown fences:
   ],
   "recordingTips": [
     "Specific tip about setup, lighting, or energy for this topic and format"
-  ]
+  ],
+  "strategyBrief": ${jsonForPrompt(strategyScaffold)}
 }
 
 Rules:
@@ -132,6 +246,17 @@ Rules:
 
 function buildFallbackPlan(topic: string, perspective: string, videoType: string, targetLength: string): VideoPlan {
   const lengthMeta = TARGET_LENGTHS.find(l => l.value === targetLength) ?? TARGET_LENGTHS[1];
+  const strategyBrief = buildStrategyBrief({
+    topic,
+    intent: 'hybrid',
+    audience: 'Barbers and barbershop owners',
+    viewerOutcome: `Know what to do next about ${topic}`,
+    promise: topic,
+    curiosityGap: 'The part most barbers overlook before they record',
+    proofAsset: 'Use one real client, price, retention, or before/after example',
+    payoff: 'A single line viewers can save and repeat',
+    positioning: 'Practical barber-business advice with a strong hook and complete payoff',
+  });
 
   const timeline: TimelineEvent[] = [
     { type: 'dropzone', label: 'DROP ZONE 1: HOOK', timestamp: '0:00', endTimestamp: '0:08', duration: '8 sec',
@@ -168,6 +293,7 @@ function buildFallbackPlan(topic: string, perspective: string, videoType: string
       'Slightly higher energy than feels natural — compresses well on camera',
     ],
     createdAt: new Date().toISOString(),
+    strategyBrief,
   };
 }
 
@@ -202,6 +328,14 @@ export default function VideoPlanner() {
   const [perspective, setPerspective]   = useState('barber');
   const [videoType, setVideoType]       = useState('talking-head');
   const [targetLength, setTargetLength] = useState('15-20');
+  const [intent, setIntent]             = useState<ContentIntent>('hybrid');
+  const [audience, setAudience]         = useState('Barbers and barbershop owners');
+  const [viewerOutcome, setViewerOutcome] = useState('');
+  const [promise, setPromise]           = useState('');
+  const [curiosityGap, setCuriosityGap] = useState('');
+  const [proofAsset, setProofAsset]     = useState('');
+  const [payoff, setPayoff]             = useState('');
+  const [positioning, setPositioning]   = useState('Practical, direct, barber-specific advice');
   const [generating, setGenerating]     = useState(false);
   const [plan, setPlan]                 = useState<VideoPlan | null>(null);
   const [savedPlans, setSavedPlans]     = useState<VideoPlan[]>([]);
@@ -253,12 +387,40 @@ export default function VideoPlanner() {
     setGenerating(true);
     setPlan(null);
     try {
-      const prompt = buildPrompt(topic, perspective, videoType, targetLength);
+      const strategyDraft = buildStrategyBrief({
+        topic,
+        intent,
+        audience,
+        viewerOutcome,
+        promise,
+        curiosityGap,
+        proofAsset,
+        payoff,
+        positioning,
+      });
+      const prompt = buildPrompt(topic, perspective, videoType, targetLength, strategyDraft);
       const response = await (window.electronAPI as any).generateVideoPlan?.({ prompt });
-      const raw: Omit<VideoPlan, 'id' | 'topic' | 'perspective' | 'videoType' | 'targetLength' | 'createdAt'> =
+      const raw: Omit<VideoPlan, 'id' | 'topic' | 'perspective' | 'videoType' | 'targetLength' | 'createdAt'> & { strategyBrief?: Partial<ContentStrategyBrief> } =
         (response?.success && response.plan) ? response.plan : buildFallbackPlan(topic, perspective, videoType, targetLength);
-      setPlan({ ...raw, id: Date.now().toString(), topic, perspective, videoType, targetLength, createdAt: new Date().toISOString() });
-    } catch { setPlan(buildFallbackPlan(topic, perspective, videoType, targetLength)); }
+      const generatedBrief = {
+        ...strategyDraft,
+        ...raw.strategyBrief,
+        id: strategyDraft.id,
+        createdAt: strategyDraft.createdAt,
+        source: 'planner' as const,
+        packageVariants: raw.strategyBrief?.packageVariants?.length
+          ? raw.strategyBrief.packageVariants
+          : strategyDraft.packageVariants,
+        scoreBreakdown: raw.strategyBrief?.scoreBreakdown || strategyDraft.scoreBreakdown,
+      };
+      const nextPlan = { ...raw, id: Date.now().toString(), topic, perspective, videoType, targetLength, createdAt: new Date().toISOString(), strategyBrief: generatedBrief };
+      setPlan(nextPlan);
+      localStorage.setItem('contentStrategy:lastBrief', JSON.stringify(generatedBrief));
+    } catch {
+      const fallback = buildFallbackPlan(topic, perspective, videoType, targetLength);
+      setPlan(fallback);
+      if (fallback.strategyBrief) localStorage.setItem('contentStrategy:lastBrief', JSON.stringify(fallback.strategyBrief));
+    }
     setGenerating(false);
   }
 
@@ -267,6 +429,7 @@ export default function VideoPlanner() {
     setSaving(true);
     try {
       await (window.electronAPI as any).saveVideoPlan?.(plan);
+      if (plan.strategyBrief) localStorage.setItem('contentStrategy:lastBrief', JSON.stringify(plan.strategyBrief));
       setSaved(true); setTimeout(() => setSaved(false), 2000);
       loadSavedPlans();
     } catch { /* no-op */ }
@@ -392,6 +555,36 @@ export default function VideoPlanner() {
               </div>
             </div>
 
+            {/* Strategy Brief */}
+            <div className="bg-6fb-card border border-6fb-border rounded-xl p-4 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-white">Growth Brief</p>
+                  <p className="text-[10px] text-6fb-text-muted mt-0.5">Package the outcome before the shoot plan.</p>
+                </div>
+                <select value={intent} onChange={e => setIntent(e.target.value as ContentIntent)}
+                  className="bg-[#0f0f0f] border border-6fb-border rounded-lg px-2 py-1.5 text-[11px] text-white focus:outline-none focus:border-6fb-green/50">
+                  {INTENT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <input value={audience} onChange={e => setAudience(e.target.value)} placeholder="Target audience"
+                  className="bg-[#0f0f0f] border border-6fb-border rounded-lg px-3 py-2 text-xs text-white placeholder:text-6fb-text-muted focus:outline-none focus:border-6fb-green/50" />
+                <input value={viewerOutcome} onChange={e => setViewerOutcome(e.target.value)} placeholder="Viewer outcome"
+                  className="bg-[#0f0f0f] border border-6fb-border rounded-lg px-3 py-2 text-xs text-white placeholder:text-6fb-text-muted focus:outline-none focus:border-6fb-green/50" />
+                <input value={promise} onChange={e => setPromise(e.target.value)} placeholder="Promise"
+                  className="bg-[#0f0f0f] border border-6fb-border rounded-lg px-3 py-2 text-xs text-white placeholder:text-6fb-text-muted focus:outline-none focus:border-6fb-green/50" />
+                <input value={curiosityGap} onChange={e => setCuriosityGap(e.target.value)} placeholder="Curiosity gap"
+                  className="bg-[#0f0f0f] border border-6fb-border rounded-lg px-3 py-2 text-xs text-white placeholder:text-6fb-text-muted focus:outline-none focus:border-6fb-green/50" />
+                <input value={proofAsset} onChange={e => setProofAsset(e.target.value)} placeholder="Proof asset"
+                  className="bg-[#0f0f0f] border border-6fb-border rounded-lg px-3 py-2 text-xs text-white placeholder:text-6fb-text-muted focus:outline-none focus:border-6fb-green/50" />
+                <input value={payoff} onChange={e => setPayoff(e.target.value)} placeholder="Payoff"
+                  className="bg-[#0f0f0f] border border-6fb-border rounded-lg px-3 py-2 text-xs text-white placeholder:text-6fb-text-muted focus:outline-none focus:border-6fb-green/50" />
+              </div>
+              <input value={positioning} onChange={e => setPositioning(e.target.value)} placeholder="Positioning"
+                className="w-full bg-[#0f0f0f] border border-6fb-border rounded-lg px-3 py-2 text-xs text-white placeholder:text-6fb-text-muted focus:outline-none focus:border-6fb-green/50" />
+            </div>
+
             {/* Generate */}
             <button onClick={handleGenerate} disabled={!topic.trim() || generating}
               className="w-full py-4 rounded-xl bg-6fb-green text-black font-bold text-sm transition-all hover:bg-6fb-green/90 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
@@ -447,6 +640,8 @@ export default function VideoPlanner() {
             </div>
 
             {/* Timeline */}
+            {plan.strategyBrief && <StrategyPackagePanel brief={plan.strategyBrief} />}
+
             <div className="space-y-2">
               {plan.timeline.map((event, idx) => (
                 event.type === 'dropzone'
@@ -472,6 +667,40 @@ export default function VideoPlanner() {
             )}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Strategy Package Panel ─────────────────────────────────────────────────
+
+function StrategyPackagePanel({ brief }: { brief: ContentStrategyBrief }) {
+  const score = brief.scoreBreakdown?.total ?? 0;
+  const variants = brief.packageVariants?.slice(0, 3) ?? [];
+  return (
+    <div className="mb-4 rounded-xl border border-6fb-green/20 bg-6fb-green/[0.03] p-4">
+      <div className="flex items-start justify-between gap-4 mb-3">
+        <div>
+          <p className="text-[10px] font-bold text-6fb-green uppercase tracking-wider">Packaging Lab</p>
+          <h3 className="text-sm font-semibold text-white mt-1">{brief.promise}</h3>
+          <p className="text-xs text-6fb-text-muted mt-1">{brief.viewerOutcome}</p>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-2xl font-bold text-white">{Math.round(score)}</p>
+          <p className="text-[10px] text-6fb-text-muted">Idea score</p>
+        </div>
+      </div>
+      <div className="grid gap-2">
+        {variants.map((variant, i) => (
+          <div key={i} className="rounded-lg border border-white/5 bg-black/20 p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-[9px] text-6fb-green font-bold">#{i + 1}</span>
+              <p className="text-xs font-semibold text-white">{variant.title}</p>
+            </div>
+            <p className="text-[11px] text-6fb-text-secondary">Thumbnail: {variant.thumbnailText}</p>
+            <p className="text-[11px] text-6fb-text-muted mt-1">{variant.platformAngle}</p>
+          </div>
+        ))}
       </div>
     </div>
   );

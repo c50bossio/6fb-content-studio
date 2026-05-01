@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { ContentStrategyBrief } from '../src/types/content-strategy';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // API Key Management
@@ -32,7 +33,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('select-image-file'),
 
   // Clip Extraction (Python bridge)
-  extractClips: (videoPath: string, options: Record<string, unknown>) =>
+  extractClips: (videoPath: string, options: Record<string, unknown> & { strategyBrief?: ContentStrategyBrief }) =>
     ipcRenderer.invoke('extract-clips', { videoPath, options }),
   cancelExtraction: () =>
     ipcRenderer.invoke('cancel-extraction'),
@@ -40,9 +41,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('read-clip-transcript', clipPath),
 
   // Carousel Generation
-  generateCarousel: (data: { topic: string; type: string; keyPoints: string[]; brandProfile?: object }) =>
+  generateCarousel: (data: { topic: string; type: string; keyPoints: string[]; brandProfile?: object; strategyBrief?: ContentStrategyBrief }) =>
     ipcRenderer.invoke('generate-carousel', data),
-  extractCarousel: (data: { transcript: string; brandProfile: object; contentType: string }) =>
+  extractCarousel: (data: { transcript: string; brandProfile: object; contentType: string; strategyBrief?: ContentStrategyBrief }) =>
     ipcRenderer.invoke('extract-carousel', data),
   readTranscript: (runPath: string) =>
     ipcRenderer.invoke('read-transcript', runPath),
@@ -64,7 +65,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('rename-carousel', { id, title }),
 
   // Blog Post Writer
-  generateBlogPost: (data: { transcript: string; brandProfile: object; contentType: string }) =>
+  generateBlogPost: (data: { transcript: string; brandProfile: object; contentType: string; strategyBrief?: ContentStrategyBrief }) =>
     ipcRenderer.invoke('generate-blog-post', data),
   saveBlogPost: (data: { title: string; metaDescription: string; sections: object[]; brandSnapshot: object }) =>
     ipcRenderer.invoke('save-blog-post', data),

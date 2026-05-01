@@ -1116,6 +1116,45 @@ def run_pipeline(
                 f"Give clips starting within 15s of a Drop Zone +8 to +10 bonus points."
             )
 
+        strategy_brief = None
+        strategy_raw = os.environ.get("CONTENT_STRATEGY_BRIEF", "")
+        if strategy_raw:
+            try:
+                strategy_brief = json.loads(strategy_raw)
+                if not isinstance(strategy_brief, dict):
+                    raise ValueError("strategy brief must be a JSON object")
+                print(f"[pipeline] 📦 Strategy brief linked: {strategy_brief.get('promise', 'Untitled promise')}")
+            except (json.JSONDecodeError, ValueError) as e:
+                print(f"[pipeline] ⚠️  Strategy brief ignored: {e}")
+                strategy_brief = None
+
+        strategy_section = ""
+        if strategy_brief:
+            packages = strategy_brief.get("packageVariants") or []
+            if not isinstance(packages, list):
+                packages = []
+            package_lines = "\n".join(
+                f"  - {p.get('title', '')} | Thumb: {p.get('thumbnailText', '')} | Angle: {p.get('platformAngle', '')}"
+                for p in packages[:3]
+                if isinstance(p, dict)
+            )
+            strategy_section = f"""
+
+CONTENT STUDIO STRATEGY BRIEF:
+- Intent: {strategy_brief.get('intent', '')}
+- Audience: {strategy_brief.get('audience', '')}
+- Viewer outcome: {strategy_brief.get('viewerOutcome', '')}
+- Promise: {strategy_brief.get('promise', '')}
+- Curiosity gap: {strategy_brief.get('curiosityGap', '')}
+- Proof asset: {strategy_brief.get('proofAsset', '')}
+- Payoff: {strategy_brief.get('payoff', '')}
+- Positioning: {strategy_brief.get('positioning', '')}
+Package variants:
+{package_lines}
+
+When selecting clips, score for hook clarity, standalone context, promise/payoff alignment, proof moments, and shareability.
+Add strategy_label, strategy_rationale, strategy_scores, and package_variant to each selection.
+"""
 
         prompt = f"""You are a master social media content strategist for the brand '{brand}'.
 Analyze this video transcript and identify highly engaging, viral clip boundaries for 30-60 second shorts.
@@ -1146,7 +1185,7 @@ Filter criteria:
 - Each clip MUST be between 30-60 seconds. Score any clip over 60s as 0.
 - Selected clips MUST NOT overlap — enforce at least 15 seconds between the end of one clip and the start of the next.
 - Prioritize clips with natural setup → buildup → payoff structure.
-- Provide verbatim 5-word quotes for both the exact Start and End of each segment.{drop_zone_section}
+- Provide verbatim 5-word quotes for both the exact Start and End of each segment.{drop_zone_section}{strategy_section}
 
 CRITICAL: Do NOT output any conversational text, pleasantries, or your internal critique. You must ONLY output pure JSON exactly in this schema:
 {{
@@ -1161,7 +1200,24 @@ CRITICAL: Do NOT output any conversational text, pleasantries, or your internal 
       "category": "EDUCATIONAL",
       "total_score": 92,
       "hook_preview": "first 10 words of clip",
-      "payoff_preview": "last 10 words of clip"
+      "payoff_preview": "last 10 words of clip",
+      "strategy_label": "Strong Hook",
+      "strategy_rationale": "Why this clip fits the strategy brief",
+      "strategy_scores": {{
+        "hook_clarity": 0,
+        "standalone_context": 0,
+        "promise_alignment": 0,
+        "proof_moment": 0,
+        "shareability": 0
+      }},
+      "package_variant": {{
+        "title": "Best title variant for this clip",
+        "thumbnailText": "3-5 words",
+        "firstLineCaption": "First caption line",
+        "shortCaption": "Short caption",
+        "hashtags": ["#barber"],
+        "platformAngle": "Why this angle works"
+      }}
     }}
   ]
 }}
@@ -1286,11 +1342,17 @@ Transcript (with timestamps):
     )
 
     fixed_clips = validated_to_clip_definitions(validated)
+    strategy_lookup = {str(c.get("id")): c for c in qualified_clips}
+    for fc in fixed_clips:
+        source = strategy_lookup.get(str(fc.get("id")), {})
+        for key in ("strategy_label", "strategy_rationale", "strategy_scores", "package_variant"):
+            if source.get(key) is not None:
+                fc[key] = source.get(key)
 
     # Second dedup pass: boundary validation can extend clips, creating new near-overlaps
-    score_lookup = {c.get("id", i): c.get("total_score", 0) for i, c in enumerate(qualified_clips)}
+    score_lookup = {str(c.get("id", i)): c.get("total_score", 0) for i, c in enumerate(qualified_clips)}
     dedup_input = [
-        {**fc, "total_score": score_lookup.get(fc["id"], 0)}
+        {**fc, "total_score": score_lookup.get(str(fc["id"]), 0)}
         for fc in fixed_clips
     ]
     pre_dedup2 = len(dedup_input)
@@ -1298,10 +1360,10 @@ Transcript (with timestamps):
     if len(dedup_output) < pre_dedup2:
         print(f"[pipeline] Post-validation dedup: removed {pre_dedup2 - len(dedup_output)} clip(s) that became too close after boundary adjustment")
         # Keep only the surviving clips in both lists
-        surviving_ids = {c["id"] for c in dedup_output}
-        fixed_clips = [fc for fc in fixed_clips if fc["id"] in surviving_ids]
-        validated = [v for v in validated if v.id in surviving_ids]
-        qualified_clips = [qc for qc in qualified_clips if qc.get("id") in surviving_ids]
+        surviving_ids = {str(c["id"]) for c in dedup_output}
+        fixed_clips = [fc for fc in fixed_clips if str(fc["id"]) in surviving_ids]
+        validated = [v for v in validated if str(v.id) in surviving_ids]
+        qualified_clips = [qc for qc in qualified_clips if str(qc.get("id")) in surviving_ids]
 
     # --- Hook and ending quality gates ---
     srt_segments = parse_srt(srt_path)
@@ -1370,7 +1432,7 @@ Transcript (with timestamps):
             clip_id=f"{video_name}-{clip_fixed['id']:02d}",
             video_source=video_path,
             brand=brand,
-            internal_scores=clip_raw.get("scores", {}),
+            internal_scores=clip_raw.get("strategy_scores") or clip_raw.get("scores", {}),
             total_score=clip_raw.get("total_score", 0),
             category=clip_raw.get("category", "unknown"),
             duration=clip_fixed["end"] - clip_fixed["start"],
@@ -1418,6 +1480,13 @@ Transcript (with timestamps):
                 content_type=content_type,
                 logo_override=logo_override,
             )
+            if any(clip_fixed.get(k) is not None for k in ("strategy_label", "strategy_rationale", "strategy_scores", "package_variant")):
+                spec["strategyLabel"] = clip_fixed.get("strategy_label")
+                spec["strategyRationale"] = clip_fixed.get("strategy_rationale")
+                spec["strategyScores"] = clip_fixed.get("strategy_scores")
+                spec["packageVariant"] = clip_fixed.get("package_variant")
+                with open(clip_dir / "clip_spec.json", "w") as f:
+                    json.dump(spec, f, indent=2)
             clip_specs.append(spec)
             cap_status = f"✅ {Path(captions_src).name}" if captions_src else "⚠️ No captions"
             print(f"  📋 {clip_fixed['title']}: spec generated ({spec['status']}) | captions: {cap_status}")

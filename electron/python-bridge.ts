@@ -7,6 +7,7 @@ import { spawn, ChildProcess } from 'child_process';
 import { delimiter, dirname, join } from 'path';
 import { existsSync } from 'fs';
 import { BrowserWindow } from 'electron';
+import type { ContentStrategyBrief } from '../src/types/content-strategy';
 
 // 35-minute hard timeout for long 4K renders; cancellable via cancelActiveExtraction()
 const EXTRACTION_TIMEOUT_MS = 35 * 60 * 1000;
@@ -48,6 +49,7 @@ interface ClipExtractorOptions {
     topic: string;
     dropZones: { label: string; timestamp: string; endTimestamp: string }[];
   };
+  strategyBrief?: ContentStrategyBrief;
   runtime: ClipExtractorRuntime;
 }
 
@@ -211,6 +213,9 @@ export function runClipExtractor(
         ...(options.planContext ? {
           PLAN_TOPIC: options.planContext.topic,
           PLAN_DROP_ZONES: JSON.stringify(options.planContext.dropZones),
+        } : {}),
+        ...(options.strategyBrief ? {
+          CONTENT_STRATEGY_BRIEF: JSON.stringify(options.strategyBrief),
         } : {}),
       },
     });
@@ -386,6 +391,10 @@ export function runClipExtractor(
               filePath: finalPath,
               clipPath: join(outputDir, clipFolder),
               rationale: clip.reason,
+              strategyLabel: clip.strategy_label,
+              strategyRationale: clip.strategy_rationale,
+              strategyScores: clip.strategy_scores,
+              packageVariant: clip.package_variant,
             };
           });
 

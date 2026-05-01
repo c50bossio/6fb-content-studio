@@ -13,6 +13,7 @@ import Scheduler from './pages/Scheduler';
 import Analytics from './pages/Analytics';
 import { useStudioStats } from './hooks/useStudioStats';
 import UpdateBanner from './components/UpdateBanner';
+import type { ContentStrategyBrief } from './types/content-strategy';
 
 export interface BrandProfile {
   brandName: string;
@@ -53,11 +54,11 @@ declare global {
       selectLogo: () => Promise<{ cancelled: boolean; filePath?: string }>;
     selectImageFile: () => Promise<{ cancelled: boolean; filePath?: string }>;
       // Clips
-      extractClips: (videoPath: string, options: Record<string, unknown>) => Promise<{ success: boolean; data?: unknown; error?: string }>;
+      extractClips: (videoPath: string, options: Record<string, unknown> & { strategyBrief?: ContentStrategyBrief }) => Promise<{ success: boolean; data?: unknown; error?: string }>;
       cancelExtraction: () => Promise<{ success: boolean }>;
       // Carousel
-      generateCarousel: (data: { topic: string; type: string; keyPoints: string[]; brandProfile?: BrandProfile }) => Promise<{ success: boolean; slides?: CarouselSlide[]; error?: string }>;
-      extractCarousel: (data: { transcript: string; brandProfile: BrandProfile; contentType: string }) => Promise<{ success: boolean; slides?: CarouselSlide[]; error?: string }>;
+      generateCarousel: (data: { topic: string; type: string; keyPoints: string[]; brandProfile?: BrandProfile; strategyBrief?: ContentStrategyBrief }) => Promise<{ success: boolean; slides?: CarouselSlide[]; error?: string }>;
+      extractCarousel: (data: { transcript: string; brandProfile: BrandProfile; contentType: string; strategyBrief?: ContentStrategyBrief }) => Promise<{ success: boolean; slides?: CarouselSlide[]; error?: string }>;
       readClipTranscript: (clipPath: string) => Promise<{ word: string; start: number; end: number }[] | null>;
       readTranscript: (runPath: string) => Promise<{ success: boolean; transcript?: string; format?: string; error?: string }>;
       autoMatchCarouselFrames: (data: { runPath: string; timestamps: string[] }) => Promise<{ success: boolean; frames?: (string | null)[]; error?: string }>;
@@ -69,7 +70,7 @@ declare global {
       deleteCarousel: (id: string) => Promise<{ success: boolean }>;
       renameCarousel: (id: string, title: string) => Promise<{ success: boolean }>;
       // Blog
-      generateBlogPost: (data: { transcript: string; brandProfile: object; contentType: string }) => Promise<{ success: boolean; blogPost?: { title: string; metaDescription: string; sections: { id: string; heading: string; imageTimestamp: string; imagePath: string | null; body: string }[] }; error?: string }>;
+      generateBlogPost: (data: { transcript: string; brandProfile: object; contentType: string; strategyBrief?: ContentStrategyBrief }) => Promise<{ success: boolean; blogPost?: { title: string; metaDescription: string; sections: { id: string; heading: string; imageTimestamp: string; imagePath: string | null; body: string }[] }; error?: string }>;
       saveBlogPost: (data: { title: string; metaDescription: string; sections: object[]; brandSnapshot: object }) => Promise<{ success: boolean; id?: string }>;
       listBlogPosts: () => Promise<{ posts: { id: string; title: string; sectionCount: number; createdAt: string }[] }>;
       loadBlogPost: (id: string) => Promise<{ success: boolean; data?: unknown }>;
