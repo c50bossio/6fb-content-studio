@@ -128,11 +128,12 @@ export default function Settings() {
   const StatusDot = ({ ok }: { ok: boolean }) => (
     <span className={`inline-block w-2.5 h-2.5 rounded-full ${ok ? 'bg-6fb-green' : 'bg-red-500'}`} />
   );
+  const hasBundledRuntime = !!(health?.paths.binaryPath || health?.paths.pipelineScript);
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-3xl">
       <h1 className="text-3xl font-bold text-white mb-2">Settings</h1>
-      <p className="text-6fb-text-muted mb-8">Manage your API keys, check system health, and configure the studio.</p>
+      <p className="text-6fb-text-muted mb-8">Manage Claude, your 6FB account, and the local extraction runtime.</p>
 
       {/* API Keys Section */}
       <section className="mb-8">
@@ -150,7 +151,7 @@ export default function Settings() {
               <div>
                 <p className="text-sm font-medium text-white">Claude (Anthropic)</p>
                 <p className="text-xs text-6fb-text-muted">
-                  {health?.apiKeys.claude ? 'Key configured' : 'Not configured'}
+                  {health?.apiKeys.claude ? 'Ready for clip, carousel, and blog generation' : 'Required for production AI generation'}
                 </p>
               </div>
             </div>
@@ -164,26 +165,26 @@ export default function Settings() {
             )}
           </div>
 
-          {/* OpenAI */}
-          <div className="flex items-center justify-between">
+          {/* OpenAI legacy key cleanup */}
+          {health?.apiKeys.openai && (
+          <div className="flex items-center justify-between border-t border-6fb-border pt-4">
             <div className="flex items-center gap-3">
-              <StatusDot ok={health?.apiKeys.openai ?? false} />
+              <StatusDot ok={false} />
               <div>
-                <p className="text-sm font-medium text-white">OpenAI</p>
+                <p className="text-sm font-medium text-white">OpenAI legacy key</p>
                 <p className="text-xs text-6fb-text-muted">
-                  {health?.apiKeys.openai ? 'Key configured' : 'Not configured'}
+                  Not used in this production release. Claude is the supported provider.
                 </p>
               </div>
             </div>
-            {health?.apiKeys.openai && (
-              <button
-                onClick={() => handleDeleteKey('openai')}
-                className="text-xs text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg border border-red-500/20 hover:border-red-500/40 transition-colors"
-              >
-                Remove
-              </button>
-            )}
+            <button
+              onClick={() => handleDeleteKey('openai')}
+              className="text-xs text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg border border-red-500/20 hover:border-red-500/40 transition-colors"
+            >
+              Remove
+            </button>
           </div>
+          )}
         </div>
       </section>
 
@@ -200,24 +201,34 @@ export default function Settings() {
             <p className="text-sm text-6fb-text-muted animate-pulse">Checking system...</p>
           ) : (
             <>
-              <div className="flex items-center gap-3">
-                <StatusDot ok={health?.deps.python ?? false} />
+              <div className="flex items-center gap-3 pb-3 border-b border-6fb-border">
+                <StatusDot ok={!!(health?.paths.binaryPath || health?.paths.pipelineScript)} />
                 <div>
-                  <p className="text-sm text-white">Python 3.10+</p>
-                  <p className="text-xs text-6fb-text-muted">Required for clip extraction</p>
+                  <p className="text-sm text-white">Bundled Extraction Runtime</p>
+                  <p className="text-xs text-6fb-text-muted truncate max-w-md">
+                    {health?.paths.binaryPath || health?.paths.pipelineScript || 'Not found'}
+                  </p>
                 </div>
               </div>
 
               <div className="flex items-center gap-3">
-                <StatusDot ok={health?.deps.ffmpeg ?? false} />
+                <StatusDot ok={hasBundledRuntime || (health?.deps.python ?? false)} />
+                <div>
+                  <p className="text-sm text-white">Python Runtime</p>
+                  <p className="text-xs text-6fb-text-muted">Bundled in the signed app for students</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <StatusDot ok={hasBundledRuntime || (health?.deps.ffmpeg ?? false)} />
                 <div>
                   <p className="text-sm text-white">FFmpeg</p>
-                  <p className="text-xs text-6fb-text-muted">Required for video processing</p>
+                  <p className="text-xs text-6fb-text-muted">Required for video processing and clip rendering</p>
                 </div>
               </div>
 
               <div className="flex items-center gap-3">
-                <StatusDot ok={health?.deps.ffprobe ?? false} />
+                <StatusDot ok={hasBundledRuntime || (health?.deps.ffprobe ?? false)} />
                 <div>
                   <p className="text-sm text-white">FFprobe</p>
                   <p className="text-xs text-6fb-text-muted">Required for video metadata</p>
@@ -225,7 +236,7 @@ export default function Settings() {
               </div>
 
               <div className="flex items-center gap-3">
-                <StatusDot ok={health?.deps.mediapipe ?? false} />
+                <StatusDot ok={hasBundledRuntime || (health?.deps.mediapipe ?? false)} />
                 <div>
                   <p className="text-sm text-white">MediaPipe</p>
                   <p className="text-xs text-6fb-text-muted">Face tracking & pose estimation</p>
@@ -233,21 +244,11 @@ export default function Settings() {
               </div>
 
               <div className="flex items-center gap-3">
-                <StatusDot ok={health?.deps.clipExtractor ?? false} />
+                <StatusDot ok={hasBundledRuntime || (health?.deps.clipExtractor ?? false)} />
                 <div>
-                  <p className="text-sm text-white">Clip Extractor</p>
+                  <p className="text-sm text-white">Clip Extractor Tools</p>
                   <p className="text-xs text-6fb-text-muted truncate max-w-md">
                     {health?.paths.clipExtractor}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <StatusDot ok={!!(health?.paths.binaryPath || health?.paths.pipelineScript)} />
-                <div>
-                  <p className="text-sm text-white">Bundled Pipeline</p>
-                  <p className="text-xs text-6fb-text-muted truncate max-w-md">
-                    {health?.paths.binaryPath || health?.paths.pipelineScript || 'Not found'}
                   </p>
                 </div>
               </div>
@@ -255,22 +256,22 @@ export default function Settings() {
           )}
         </div>
 
-        {health && !health.deps.python && (
+        {health && !hasBundledRuntime && !health.deps.python && (
           <p className="text-xs text-amber-400 mt-3 px-2">
             Install Python: <code className="bg-[#1e1e1e] px-1.5 py-0.5 rounded text-6fb-green">brew install python@3.11</code>
           </p>
         )}
-        {health && !health.deps.ffmpeg && (
+        {health && !hasBundledRuntime && !health.deps.ffmpeg && (
           <p className="text-xs text-amber-400 mt-1 px-2">
             Install FFmpeg: <code className="bg-[#1e1e1e] px-1.5 py-0.5 rounded text-6fb-green">brew install ffmpeg</code>
           </p>
         )}
-        {health && !health.deps.ffprobe && (
+        {health && !hasBundledRuntime && !health.deps.ffprobe && (
           <p className="text-xs text-amber-400 mt-1 px-2">
             Install FFprobe: <code className="bg-[#1e1e1e] px-1.5 py-0.5 rounded text-6fb-green">brew install ffmpeg</code>
           </p>
         )}
-        {health && !health.deps.mediapipe && (
+        {health && !hasBundledRuntime && !health.deps.mediapipe && (
           <p className="text-xs text-amber-400 mt-1 px-2">
             Install MediaPipe: <code className="bg-[#1e1e1e] px-1.5 py-0.5 rounded text-6fb-green">pip3 install mediapipe</code>
           </p>

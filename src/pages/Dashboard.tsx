@@ -79,7 +79,7 @@ const TOOLS: {
     page: 'clips',
     Icon: Icons.Scissors,
     title: 'Clip Extractor',
-    description: 'Upload a long video. AI selects the best moments and reframes to 9:16.',
+    description: 'Upload a long video, find the strongest moments, and render vertical clips.',
     color: '#8B5CF6',
     ready: true,
   },
@@ -87,7 +87,7 @@ const TOOLS: {
     page: 'carousel',
     Icon: Icons.Carousel,
     title: 'Carousel Generator',
-    description: 'Create professional Instagram carousels with AI. Brand-aligned slide decks.',
+    description: 'Turn an idea, transcript, or clip into a brand-aligned Instagram deck.',
     color: '#00C851',
     ready: true,
   },
@@ -95,7 +95,7 @@ const TOOLS: {
     page: 'blog',
     Icon: Icons.Blog,
     title: 'Blog Post Writer',
-    description: 'Transform video transcripts into SEO-ready blog posts with auto-images.',
+    description: 'Turn transcripts into SEO-ready drafts that keep your voice intact.',
     color: '#3B82F6',
     ready: true,
   },
@@ -111,7 +111,7 @@ const TOOLS: {
     page: 'editor',
     Icon: Icons.VideoEdit,
     title: 'Video Editor',
-    description: 'Remotion-powered editing. Add captions, transitions, music, effects.',
+    description: 'Preview, trim, and fine-tune finished clips before posting.',
     color: '#EC4899',
     ready: true,
   },
@@ -119,7 +119,7 @@ const TOOLS: {
     page: 'schedule',
     Icon: Icons.Calendar,
     title: 'Post Scheduler',
-    description: 'Connect Instagram, TikTok, YouTube. Schedule & batch upload content.',
+    description: 'Queue finished clips and posts through your connected 6FB tools.',
     color: '#EF4444',
     ready: true,
   },
@@ -176,6 +176,13 @@ export default function Dashboard({ onNavigate, stats, hasBrandProfile }: Dashbo
     } catch { /* ignore */ }
   };
 
+  const hasAnyOutput = stats.clipsCreated > 0 || stats.carouselsMade > 0 || stats.blogPostsWritten > 0 || stats.videosRendered > 0;
+  const firstRunSteps = [
+    { step: '1', title: 'Brand', body: hasBrandProfile === false ? 'Add your colors, logo, and tone.' : 'Brand profile is ready.', page: 'brand' as Page, done: hasBrandProfile !== false },
+    { step: '2', title: 'Source Video', body: 'Choose a 3-20 minute talking-head or shop video.', page: 'clips' as Page, done: false },
+    { step: '3', title: 'Publish Path', body: 'Preview the best clip, then schedule or export it.', page: 'schedule' as Page, done: false },
+  ];
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-4xl mx-auto">
       {/* Brand Profile Setup Nudge */}
@@ -202,11 +209,48 @@ export default function Dashboard({ onNavigate, stats, hasBrandProfile }: Dashbo
 
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-white mb-1">Welcome back</h1>
+        <h1 className="text-3xl font-bold text-white mb-1">
+          {hasAnyOutput ? 'Welcome back' : 'Start with one strong video'}
+        </h1>
         <p className="text-sm text-6fb-text-secondary">
-          Your local AI content studio. Everything runs on your machine.
+          A focused workspace for planning, extracting, and packaging content for your shop.
         </p>
       </div>
+
+      {/* First-run workflow */}
+      {!hasAnyOutput && (
+        <div className="mb-8 border-y border-6fb-border py-5">
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <p className="text-xs font-bold text-6fb-green uppercase tracking-wider mb-1">Recommended first run</p>
+              <h2 className="text-lg font-bold text-white">Build one usable post before exploring every tool.</h2>
+            </div>
+            <button
+              onClick={() => onNavigate(hasBrandProfile === false ? 'brand' : 'clips')}
+              className="shrink-0 rounded-lg bg-6fb-green px-3 py-2 text-xs font-bold text-black hover:bg-6fb-green-hover transition-colors"
+            >
+              {hasBrandProfile === false ? 'Set Brand' : 'Extract Clips'}
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {firstRunSteps.map(item => (
+              <button
+                key={item.step}
+                onClick={() => onNavigate(item.page)}
+                className="text-left rounded-lg border border-white/5 bg-black/20 p-3 hover:border-6fb-green/30 transition-colors"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold ${item.done ? 'bg-6fb-green text-black' : 'bg-white/10 text-6fb-text-secondary'}`}>
+                    {item.step}
+                  </span>
+                  <span className="text-sm font-bold text-white">{item.title}</span>
+                </div>
+                <p className="text-xs text-6fb-text-secondary leading-relaxed">{item.body}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Today's Play Widget */}
       {!hasContentToken ? (
@@ -371,9 +415,9 @@ export default function Dashboard({ onNavigate, stats, hasBrandProfile }: Dashbo
       <div className="mt-6 bg-6fb-card rounded-xl border border-6fb-border p-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-1.5 h-1.5 rounded-full bg-6fb-green animate-pulse" />
-          <span className="text-xs text-6fb-text-secondary">All systems local — zero server costs</span>
+          <span className="text-xs text-6fb-text-secondary">macOS runtime bundled - ready for pilot students</span>
         </div>
-        <span className="text-[10px] text-6fb-text-muted">Powered by IX</span>
+        <span className="text-[10px] text-6fb-text-muted">Claude supported</span>
       </div>
     </div>
   );

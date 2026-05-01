@@ -49,15 +49,14 @@ const SetupIcons = {
 };
 
 const FEATURES = [
-  { Icon: SetupIcons.Scissors, text: 'AI-powered clip extraction from long videos', color: '#8B5CF6' },
-  { Icon: SetupIcons.Carousel, text: 'Instagram carousel generator with brand theming', color: '#00C851' },
-  { Icon: SetupIcons.Video, text: 'Remotion video editor with captions & effects', color: '#EC4899' },
-  { Icon: SetupIcons.Share, text: 'Multi-platform posting & scheduling', color: '#3B82F6' },
+  { Icon: SetupIcons.Scissors, text: 'Turn long videos into short-form clip candidates', color: '#8B5CF6' },
+  { Icon: SetupIcons.Carousel, text: 'Create branded carousel posts from your ideas and clips', color: '#00C851' },
+  { Icon: SetupIcons.Video, text: 'Preview, trim, and prepare clips for posting', color: '#EC4899' },
+  { Icon: SetupIcons.Share, text: 'Connect 6FB tools for planner and scheduler handoff', color: '#3B82F6' },
 ];
 
 export default function Setup({ onComplete }: SetupProps) {
   const [step, setStep] = useState(0);
-  const [provider, setProvider] = useState<'claude' | 'openai'>('claude');
   const [apiKey, setApiKey] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -65,12 +64,8 @@ export default function Setup({ onComplete }: SetupProps) {
   const handleSave = async () => {
     setError('');
 
-    if (provider === 'claude' && !apiKey.startsWith('sk-ant-')) {
+    if (!apiKey.startsWith('sk-ant-')) {
       setError('Claude keys start with "sk-ant-". Check your key.');
-      return;
-    }
-    if (provider === 'openai' && !apiKey.startsWith('sk-')) {
-      setError('OpenAI keys start with "sk-". Check your key.');
       return;
     }
     if (apiKey.length < 20) {
@@ -80,7 +75,7 @@ export default function Setup({ onComplete }: SetupProps) {
 
     setSaving(true);
     try {
-      await window.electronAPI.saveApiKey(provider, apiKey);
+      await window.electronAPI.saveApiKey('claude', apiKey);
       await window.electronAPI.completeSetup();
       onComplete();
     } catch {
@@ -105,8 +100,8 @@ export default function Setup({ onComplete }: SetupProps) {
               <span className="text-6fb-green">6FB Content Studio</span>
             </h1>
             <p className="text-6fb-text-secondary text-sm mb-8 leading-relaxed">
-              Professional content tools for barbers.<br />
-              Extract clips, create carousels, edit videos — all locally powered.
+              A focused content workflow for barbers.<br />
+              Start with your brand, extract clips, then turn the best ideas into posts.
             </p>
 
             <div className="space-y-2.5 text-left mb-8">
@@ -145,30 +140,20 @@ export default function Setup({ onComplete }: SetupProps) {
               </div>
             </div>
 
-            <h2 className="text-xl sm:text-2xl font-bold text-white mb-2">Connect Your AI</h2>
+            <h2 className="text-xl sm:text-2xl font-bold text-white mb-2">Connect Claude</h2>
             <p className="text-sm text-6fb-text-secondary mb-6">
-              Your API key is stored locally on your computer. It never leaves your machine.
+              Your Claude key is stored locally and used only for AI generation requests you start.
             </p>
 
-            {/* Provider Toggle */}
             <label className="text-xs font-bold text-6fb-text-muted uppercase tracking-wider mb-2 block">
-              AI Provider
+              Supported AI Provider
             </label>
-            <div className="grid grid-cols-2 gap-2 mb-5">
-              {(['claude', 'openai'] as const).map(p => (
-                <button
-                  key={p}
-                  onClick={() => { setProvider(p); setApiKey(''); setError(''); }}
-                  className={`flex items-center justify-center gap-2 py-3 rounded-lg border text-sm font-medium transition-all ${
-                    provider === p
-                      ? 'border-6fb-green bg-6fb-green/10 text-6fb-green'
-                      : 'border-6fb-border bg-6fb-card text-6fb-text-secondary hover:border-6fb-text-muted'
-                  }`}
-                >
-                  <div className={`w-2 h-2 rounded-full ${p === 'claude' ? 'bg-purple-500' : 'bg-emerald-500'}`} />
-                  {p === 'claude' ? 'Claude' : 'OpenAI'}
-                </button>
-              ))}
+            <div className="mb-5 rounded-lg border border-6fb-green/30 bg-6fb-green/10 px-4 py-3 flex items-start gap-3">
+              <div className="w-2 h-2 rounded-full bg-6fb-green mt-2 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-white">Claude is the production provider for this release.</p>
+                <p className="text-xs text-6fb-text-muted mt-0.5">Claude powers clip, carousel, and blog generation in the student pilot.</p>
+              </div>
             </div>
 
             {/* Key Input */}
@@ -179,15 +164,12 @@ export default function Setup({ onComplete }: SetupProps) {
               type="password"
               value={apiKey}
               onChange={e => { setApiKey(e.target.value); setError(''); }}
-              placeholder={provider === 'claude' ? 'sk-ant-api03-...' : 'sk-...'}
+              placeholder="sk-ant-api03-..."
               className="w-full bg-6fb-card border border-6fb-border rounded-lg px-4 py-3 text-white text-sm placeholder-6fb-text-muted focus:outline-none focus:border-6fb-green transition-colors mb-2"
             />
             <p className="text-[11px] text-6fb-text-muted mb-5 flex items-center gap-1.5">
               <span className="w-3 h-3 shrink-0 text-6fb-green"><SetupIcons.Link /></span>
-              Get your key: {provider === 'claude'
-                ? <a href="https://console.anthropic.com" target="_blank" className="text-6fb-green hover:underline">console.anthropic.com</a>
-                : <a href="https://platform.openai.com/api-keys" target="_blank" className="text-6fb-green hover:underline">platform.openai.com</a>
-              }
+              Get your key: <a href="https://console.anthropic.com" target="_blank" className="text-6fb-green hover:underline">console.anthropic.com</a>
             </p>
 
             {error && (
@@ -201,12 +183,12 @@ export default function Setup({ onComplete }: SetupProps) {
               disabled={!apiKey || saving}
               className="w-full bg-6fb-green hover:bg-6fb-green-hover disabled:bg-6fb-border disabled:text-6fb-text-muted text-white font-semibold py-3 rounded-lg transition-colors"
             >
-              {saving ? 'Saving...' : 'Save & Launch Studio'}
+              {saving ? 'Saving...' : 'Save Claude Key & Launch Studio'}
             </button>
 
             <p className="text-[10px] text-6fb-text-muted text-center mt-4 flex items-center justify-center gap-1.5">
               <span className="w-3 h-3 shrink-0"><SetupIcons.Lock /></span>
-              Stored locally via electron-store. Your key never touches the internet.
+              Stored locally via electron-store. The app never sends your key to 6FB.
             </p>
           </div>
         )}

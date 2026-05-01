@@ -99,6 +99,16 @@ const STATUS: Record<string, { label: string; color: string }> = {
   pending:        { label: 'Pending', color: '#F59E0B' },
 };
 
+const PROGRESS_COPY = [
+  { max: 15, title: 'Reading the video', detail: 'Extracting audio and preparing the transcript.' },
+  { max: 35, title: 'Finding strong hooks', detail: 'Scoring speech, pacing, and retention moments.' },
+  { max: 60, title: 'Tracking the subject', detail: 'Keeping faces and movement framed for vertical video.' },
+  { max: 85, title: 'Composing clips', detail: 'Building candidate reels and metadata.' },
+  { max: 101, title: 'Rendering exports', detail: 'Writing MP4 files, thumbnails, and captions.' },
+];
+
+const getProgressCopy = (percent: number) => PROGRESS_COPY.find(step => percent < step.max) ?? PROGRESS_COPY[PROGRESS_COPY.length - 1];
+
 // ─── Score Bar ────────────────────────────────────────────────────────
 function ScoreBar({ label, value, color, icon }: { label: string; value: number; color: string; icon: React.ReactNode }) {
   const pct = Math.round(Math.min(1, Math.max(0, value)) * 100);
@@ -760,6 +770,7 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
 
   const selectedRun = library.find(r => r.runId === selectedRunId);
   const videoName = (selectedRun?.sourceVideo || videoPath?.split('/').pop()?.split('.')[0] || '').slice(0, 44);
+  const progressCopy = getProgressCopy(progress.percent);
 
   return (
     <div className="flex h-full overflow-hidden bg-[#0f0f0f]">
@@ -847,7 +858,7 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
                   <option value="">No Video Plan linked (standard extraction)</option>
                   {savedPlans.map(p => (
                     <option key={p.id} value={p.id}>
-                      🟢 {p.topic} — {p.timeline.filter(e => e.type === 'dropzone').length} Drop Zones
+                      {p.topic} - {p.timeline.filter(e => e.type === 'dropzone').length} Drop Zones
                     </option>
                   ))}
                 </select>
@@ -865,8 +876,7 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
 
           {/* Hero Progress */}
           {processing && (
-            <div className="flex flex-col items-center justify-center min-h-[450px] bg-[#111] rounded-2xl border flex-1 border-[#222] relative overflow-hidden mb-5 backdrop-blur-3xl">
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-[#00C851]/10 blur-[120px] rounded-full mix-blend-screen animate-pulse" />
+            <div className="flex flex-col items-center justify-center min-h-[450px] bg-[#111] rounded-2xl border flex-1 border-[#222] relative overflow-hidden mb-5">
               <div className="relative flex items-center justify-center w-48 h-48 mb-8">
                 <div className="absolute inset-0 rounded-full border-t border-[#00C851]/40 animate-[spin_4s_linear_infinite]" />
                 <div className="absolute inset-2 rounded-full border-r border-[#00C851]/20 animate-[spin_3s_linear_infinite_reverse]" />
@@ -878,10 +888,10 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
               </div>
               <div className="text-center z-10 flex flex-col items-center">
                 <p className="text-lg font-semibold text-white mb-2">
-                  {progress.percent < 15 ? 'Transcribing & Analyzing...' :
-                   progress.percent < 35 ? 'Detecting Viral Hooks...' :
-                   progress.percent < 60 ? 'Reframing Subjects...' :
-                   progress.percent < 85 ? 'Drafting AI Overlays...' : 'Rendering Subtitles...'}
+                  {progressCopy.title}
+                </p>
+                <p className="text-xs text-[#777] max-w-sm mb-4 leading-relaxed">
+                  {progressCopy.detail} Long videos can take several minutes; keep Content Studio open until this finishes.
                 </p>
                 <div className="flex items-center justify-center gap-2 bg-[#1a1a1a] border border-[#222] px-3 py-1.5 rounded-full">
                   <div className="w-3 h-3"><Icon.Sparkles /></div>
@@ -896,21 +906,43 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
                   }}
                   className="mt-5 px-4 py-1.5 rounded-lg border border-[#333] text-[11px] text-[#555] hover:text-[#ff4444] hover:border-[#ff4444]/40 transition-colors"
                 >
-                  Cancel
+                  Cancel Extraction
                 </button>
               </div>
             </div>
           )}
 
-          {error && <p className="text-red-400 text-xs bg-red-900/20 border border-red-800/30 rounded-lg px-3 py-2 mb-4">{error}</p>}
+          {error && (
+            <div className="mb-4 rounded-xl border border-red-800/30 bg-red-900/20 px-4 py-3">
+              <p className="text-sm font-bold text-red-300 mb-1">Extraction needs attention</p>
+              <p className="text-xs text-red-200/80 leading-relaxed">{error}</p>
+              <div className="flex flex-wrap gap-2 mt-3">
+                <button
+                  onClick={handleNewExtraction}
+                  className="rounded-lg border border-red-500/30 px-3 py-1.5 text-xs font-semibold text-red-200 hover:border-red-400/60 transition-colors"
+                >
+                  Choose Different Video
+                </button>
+                {videoPath && (
+                  <button
+                    onClick={handleExtract}
+                    disabled={processing}
+                    className="rounded-lg bg-red-500/20 px-3 py-1.5 text-xs font-semibold text-red-100 hover:bg-red-500/30 disabled:opacity-50 transition-colors"
+                  >
+                    Try Again
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Drop zone */}
           {!videoPath && !processing && clips.length === 0 && (
             <button onClick={handleNewExtraction}
               className="w-full border-2 border-dashed border-[#222] rounded-2xl p-16 flex flex-col items-center justify-center hover:border-[#00C851]/30 hover:bg-[#00C851]/3 transition-all group">
               <div className="w-10 h-10 text-[#2a2a2a] group-hover:text-[#444] transition-colors mb-4"><Icon.Upload /></div>
-              <p className="text-sm font-semibold text-[#555] group-hover:text-white transition-colors">Start a new extraction</p>
-              <p className="text-xs text-[#333] mt-1">Select a long-form video to get AI-generated clips</p>
+              <p className="text-sm font-semibold text-[#555] group-hover:text-white transition-colors">Choose a source video</p>
+              <p className="text-xs text-[#333] mt-1">Best results: 3-20 minutes, clear speech, visible face, MP4 or MOV</p>
             </button>
           )}
 
@@ -995,6 +1027,20 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
                   <p className="text-xs text-[#ff4444]/80 mt-0.5 font-medium truncate max-w-[240px]">{videoName}</p>
                 </div>
                 <p className="text-xs text-[#555] mt-1">The AI found no high-scoring segments. Try a different video or adjust the number of clips.</p>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={handleExtract}
+                    className="rounded-lg bg-[#ff4444]/10 px-3 py-1.5 text-xs font-semibold text-[#ff8888] hover:bg-[#ff4444]/20 transition-colors"
+                  >
+                    Try Again
+                  </button>
+                  <button
+                    onClick={handleNewExtraction}
+                    className="rounded-lg border border-[#ff4444]/20 px-3 py-1.5 text-xs font-semibold text-[#ff8888] hover:border-[#ff4444]/40 transition-colors"
+                  >
+                    Choose Video
+                  </button>
+                </div>
               </div>
             </div>
           )}
@@ -1012,7 +1058,21 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
                   <p className="text-sm font-bold text-white">Video loaded</p>
                   <p className="text-xs text-[#00C851]/80 mt-0.5 font-medium truncate max-w-[240px]">{videoName}</p>
                 </div>
-                <p className="text-xs text-[#555] mt-1">Hit <span className="text-white font-semibold">Extract Clips</span> to begin AI analysis</p>
+                <p className="text-xs text-[#555] mt-1">Expect 5-20 minutes for longer videos. Keep the app open during extraction.</p>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={handleExtract}
+                    className="rounded-lg bg-[#00C851] px-3 py-1.5 text-xs font-bold text-black hover:bg-[#00b548] transition-colors"
+                  >
+                    Extract Clips
+                  </button>
+                  <button
+                    onClick={handleNewExtraction}
+                    className="rounded-lg border border-[#00C851]/20 px-3 py-1.5 text-xs font-semibold text-[#00C851] hover:border-[#00C851]/40 transition-colors"
+                  >
+                    Choose Different Video
+                  </button>
+                </div>
               </div>
             </div>
           )}
