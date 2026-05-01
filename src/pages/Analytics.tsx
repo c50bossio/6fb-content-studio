@@ -38,6 +38,16 @@ interface AnalyticsData {
   error?: string;
 }
 
+interface ManualPerformanceEntry {
+  id: string;
+  title: string;
+  predicted: number;
+  views: number;
+  saves: number;
+  shares: number;
+  comments: number;
+}
+
 // ─── Helpers ────────────────────────────────────────────────────────────
 const fmt = (n: number) => n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 const relDate = (iso: string) => {
@@ -150,6 +160,8 @@ export default function Analytics() {
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [manualEntries, setManualEntries] = useState<ManualPerformanceEntry[]>([]);
+  const [manualDraft, setManualDraft] = useState({ title: '', predicted: '70', views: '', saves: '', shares: '', comments: '' });
 
   const load = async () => {
     setLoading(true);
@@ -164,6 +176,27 @@ export default function Analytics() {
   };
 
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    try { setManualEntries(JSON.parse(localStorage.getItem('analytics:manualPerformance') || '[]')); }
+    catch { setManualEntries([]); }
+  }, []);
+
+  const addManualEntry = () => {
+    if (!manualDraft.title.trim()) return;
+    const entry: ManualPerformanceEntry = {
+      id: Date.now().toString(),
+      title: manualDraft.title.trim(),
+      predicted: Number(manualDraft.predicted) || 0,
+      views: Number(manualDraft.views) || 0,
+      saves: Number(manualDraft.saves) || 0,
+      shares: Number(manualDraft.shares) || 0,
+      comments: Number(manualDraft.comments) || 0,
+    };
+    const next = [entry, ...manualEntries].slice(0, 20);
+    setManualEntries(next);
+    localStorage.setItem('analytics:manualPerformance', JSON.stringify(next));
+    setManualDraft({ title: '', predicted: '70', views: '', saves: '', shares: '', comments: '' });
+  };
 
   if (loading) {
     return (
@@ -213,6 +246,49 @@ export default function Analytics() {
             <p className="text-xs text-red-400">{error}</p>
           </div>
         )}
+
+        <div className="mb-6 rounded-2xl border border-[#1e1e1e] bg-[#111] p-4">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <div>
+              <h2 className="text-sm font-bold text-white">Learning Loop</h2>
+              <p className="text-[10px] text-[#555] mt-0.5">Manual predicted vs actual performance until imports are wired.</p>
+            </div>
+            {manualEntries.length > 0 && (
+              <span className="text-[10px] text-[#00C851]">
+                {manualEntries.filter(e => (e.views + e.saves * 10 + e.shares * 15 + e.comments * 8) / 100 > e.predicted).length} overperforming
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-6 gap-2 mb-3">
+            <input value={manualDraft.title} onChange={e => setManualDraft({ ...manualDraft, title: e.target.value })} placeholder="Title"
+              className="col-span-2 bg-[#0f0f0f] border border-[#222] rounded-lg px-3 py-2 text-xs text-white placeholder:text-[#444] focus:outline-none focus:border-[#00C851]/50" />
+            {(['predicted', 'views', 'saves', 'shares', 'comments'] as const).map(key => (
+              <input key={key} value={manualDraft[key]} onChange={e => setManualDraft({ ...manualDraft, [key]: e.target.value })} placeholder={key}
+                className="bg-[#0f0f0f] border border-[#222] rounded-lg px-2 py-2 text-xs text-white placeholder:text-[#444] focus:outline-none focus:border-[#00C851]/50" />
+            ))}
+          </div>
+          <button onClick={addManualEntry}
+            className="mb-3 rounded-lg bg-[#00C851] px-3 py-1.5 text-xs font-bold text-black hover:bg-[#00b548] transition-colors">
+            Add Result
+          </button>
+          {manualEntries.length > 0 && (
+            <div className="space-y-1.5">
+              {manualEntries.slice(0, 5).map(entry => {
+                const actual = Math.round(Math.min(100, (entry.views + entry.saves * 10 + entry.shares * 15 + entry.comments * 8) / 100));
+                const delta = actual - entry.predicted;
+                return (
+                  <div key={entry.id} className="flex items-center justify-between gap-3 rounded-lg bg-black/20 border border-white/5 px-3 py-2">
+                    <p className="text-xs text-white truncate">{entry.title}</p>
+                    <div className="flex items-center gap-3 text-[10px]">
+                      <span className="text-[#777]">Pred {entry.predicted}</span>
+                      <span className={delta >= 0 ? 'text-[#00C851]' : 'text-[#F59E0B]'}>Actual {actual} ({delta >= 0 ? '+' : ''}{delta})</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         {/* IG Profile Banner (if connected) */}
         {igConnected && account && (

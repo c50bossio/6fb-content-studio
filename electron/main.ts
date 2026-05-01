@@ -4,6 +4,7 @@ import { existsSync, readdirSync, readFileSync, mkdirSync } from 'fs';
 import { pathToFileURL } from 'url';
 import { runClipExtractor, checkPythonDeps, cancelActiveExtraction, resolveSystemPython, type ClipExtractorRuntime } from './python-bridge';
 import { autoUpdater } from 'electron-updater';
+import type { ContentStrategyBrief } from '../src/types/content-strategy';
 
 // ── MUST be called before app.whenReady() ──────────────────────────────────
 // Disables GPU hardware acceleration & accelerated video decode.
@@ -358,7 +359,7 @@ ipcMain.handle('select-output-dir', async () => {
 
 ipcMain.handle('extract-clips', async (_event, { videoPath, options }: {
   videoPath: string;
-  options: { outputFormat?: string; contentType?: string; numClips?: number; startSec?: number; endSec?: number; planContext?: { topic: string; dropZones: { label: string; timestamp: string; endTimestamp: string }[] } };
+  options: { outputFormat?: string; contentType?: string; numClips?: number; startSec?: number; endSec?: number; planContext?: { topic: string; dropZones: { label: string; timestamp: string; endTimestamp: string }[] }; strategyBrief?: ContentStrategyBrief };
 }) => {
   const outputDir = join(app.getPath('userData'), 'clips', Date.now().toString());
   const bp = (store.get('brandProfile') as Record<string, unknown>) || DEFAULT_BRAND;
@@ -366,7 +367,8 @@ ipcMain.handle('extract-clips', async (_event, { videoPath, options }: {
   // Save the full source video path so re-extraction works
   const mkdirSync = require('fs').mkdirSync;
   mkdirSync(outputDir, { recursive: true });
-  writeFileSync(join(outputDir, 'run_meta.json'), JSON.stringify({ sourceVideoPath: videoPath }));
+  writeFileSync(join(outputDir, 'run_meta.json'), JSON.stringify({ sourceVideoPath: videoPath, strategyBrief: options.strategyBrief || null }, null, 2));
+  if (options.strategyBrief) writeFileSync(join(outputDir, 'strategy_brief.json'), JSON.stringify(options.strategyBrief, null, 2));
 
   const result = await runClipExtractor(
     videoPath,
@@ -379,6 +381,7 @@ ipcMain.handle('extract-clips', async (_event, { videoPath, options }: {
       endSec: options.endSec,
       brandName: (bp.brandName as string) || '6fbarber',
       planContext: options.planContext,
+      strategyBrief: options.strategyBrief,
       runtime: runtimeConfig(),
     },
     mainWindow,
@@ -478,13 +481,34 @@ ipcMain.handle('show-in-finder', async (_event, path: string) => {
   return { success: true };
 });
 
+function strategyPromptBlock(strategyBrief?: ContentStrategyBrief): string {
+  if (!strategyBrief) return '';
+  const variants = (strategyBrief.packageVariants || []).slice(0, 3).map((p, i) =>
+    `${i + 1}. ${p.title} | Thumb: ${p.thumbnailText} | Angle: ${p.platformAngle}`
+  ).join('\n');
+  return `
+
+Content strategy brief:
+- Intent: ${strategyBrief.intent}
+- Audience: ${strategyBrief.audience}
+- Viewer outcome: ${strategyBrief.viewerOutcome}
+- Promise: ${strategyBrief.promise}
+- Curiosity gap: ${strategyBrief.curiosityGap}
+- Proof asset: ${strategyBrief.proofAsset}
+- Payoff: ${strategyBrief.payoff}
+- Positioning: ${strategyBrief.positioning}
+Package variants:
+${variants}
+`;
+}
 
 // Carousel Generation (uses student's Claude API key)
-ipcMain.handle('generate-carousel', async (_event, { topic, type, keyPoints, brandProfile }: {
+ipcMain.handle('generate-carousel', async (_event, { topic, type, keyPoints, brandProfile, strategyBrief }: {
   topic: string;
   type: string;
   keyPoints: string[];
   brandProfile?: Record<string, unknown>;
+  strategyBrief?: ContentStrategyBrief;
 }) => {
   const apiKey = store.get('apiKeys.claude') as string;
   if (!apiKey) return { success: false, error: 'No Claude API key configured' };
@@ -511,11 +535,13 @@ Brand tone: ${tone}
 Visual style: ${layoutStyle} (affects how copy should be written — ${layoutStyle === 'minimal' ? 'very short, punchy' : layoutStyle === 'data-driven' ? 'lead with a number or stat' : 'bold headlines, clear value'})
 Style: ${type === 'educational' ? 'Educational' : 'Product Announcement'}
 Topic: ${topic}
+${strategyPromptBlock(strategyBrief)}
 
 Key Points:
 ${keyPoints.map((p, i) => `${i + 1}. ${p}`).join('\n')}
 
 Create a 5-slide Instagram carousel (1080x1350 each).
+The cover slide must express the viewer outcome or curiosity gap from the strategy brief when available.
 
 You must output your response as pure JSON matching EXACTLY this schema (no markdown, no extra text).
 It must be a JSON array containing exactly 5 slide objects:
@@ -656,7 +682,8 @@ ipcMain.handle('extract-carousel', async (_event, {
   transcript,
   brandProfile,
   contentType,
-}: { transcript: string; brandProfile: Record<string, unknown>; contentType: string }) => {
+  strategyBrief,
+}: { transcript: string; brandProfile: Record<string, unknown>; contentType: string; strategyBrief?: ContentStrategyBrief }) => {
   const apiKey = store.get('apiKeys.claude') as string;
   if (!apiKey) return { success: false, error: 'No Claude API key configured' };
 
@@ -681,6 +708,7 @@ ipcMain.handle('extract-carousel', async (_event, {
 Content type: ${contentType || 'general'}
 Brand tone: ${tone}
 Visual style: ${layoutStyle} (affects how copy should be written — ${layoutStyle === 'minimal' ? 'very short, punchy' : layoutStyle === 'data-driven' ? 'lead with a number or stat' : 'bold headlines, clear value'})
+${strategyPromptBlock(strategyBrief)}
 
 Here is the video transcript (with timestamps):
 ---
@@ -690,6 +718,7 @@ ${truncated}
 Extract the 5 most compelling, shareable insights from this transcript and structure them as an Instagram carousel.
 
 Slide 1 is always the HOOK — it must stop the scroll. Make it provocative or surprising.
+When a strategy brief is available, Slide 1 must express the viewer outcome or curiosity gap.
 Slides 2-4 are VALUE slides — each delivers one clear insight.
 Slide 5 is the CALL TO ACTION — direct, specific, tells them what to do next.
 
@@ -863,12 +892,18 @@ ipcMain.handle('scan-library', async () => {
       const clips: object[] = [];
       let sourceVideoName = '';
       let sourceVideoPath = '';
+      let strategyBrief: ContentStrategyBrief | null = null;
       try {
         const metaPath = join(runPath, 'run_meta.json');
         if (existsSync(metaPath)) {
           const meta = JSON.parse(readFileSync(metaPath, 'utf-8'));
           sourceVideoPath = meta.sourceVideoPath || '';
           sourceVideoName = sourceVideoPath.split('/').pop()?.replace(/\.[^.]+$/, '') || '';
+          strategyBrief = meta.strategyBrief || null;
+        }
+        const strategyPath = join(runPath, 'strategy_brief.json');
+        if (!strategyBrief && existsSync(strategyPath)) {
+          strategyBrief = JSON.parse(readFileSync(strategyPath, 'utf-8'));
         }
         if (!sourceVideoName) {
           const srt = readdirSync(runPath).find(f => f.endsWith('.srt'));
@@ -905,11 +940,15 @@ ipcMain.handle('scan-library', async () => {
             needsThumbnail: !thumbnailPath && !!filePath,
             status: (spec.status as string) || 'unknown',
             composedAt: (spec.composedAt as string) || null,
+            strategyLabel: spec.strategyLabel,
+            strategyRationale: spec.strategyRationale,
+            strategyScores: spec.strategyScores,
+            packageVariant: spec.packageVariant,
             clipPath, specPath,
           });
         }
       } catch {}
-      return { runId, timestamp: Number(runId), sourceVideo: sourceVideoPath || sourceVideoName, runPath, clips };
+      return { runId, timestamp: Number(runId), sourceVideo: sourceVideoPath || sourceVideoName, runPath, strategyBrief, clips };
     }).filter(r => r.clips.length > 0);
 
     return { runs };
@@ -1157,7 +1196,8 @@ ipcMain.handle('generate-blog-post', async (_event, {
   transcript,
   brandProfile,
   contentType,
-}: { transcript: string; brandProfile: Record<string, unknown>; contentType: string }) => {
+  strategyBrief,
+}: { transcript: string; brandProfile: Record<string, unknown>; contentType: string; strategyBrief?: ContentStrategyBrief }) => {
   const apiKey = store.get('apiKeys.claude') as string;
   if (!apiKey) return { success: false, error: 'No Claude API key configured' };
 
@@ -1202,6 +1242,7 @@ ipcMain.handle('generate-blog-post', async (_event, {
 Content type: ${contentType || 'general'}
 Writing voice: ${tone}
 ${voiceProfileNote}
+${strategyPromptBlock(strategyBrief)}
 
 Here is a video transcript (with timestamps):
 ---
@@ -1213,6 +1254,7 @@ Transform this transcript into a well-structured, SEO-optimized blog post (800-1
 Rules:
 - Write a compelling title that would rank on Google
 - Write a meta description (under 160 characters) for SEO
+- Preserve the promise and viewer outcome from the strategy brief when available
 - Create 4-6 sections, each with a clear H2 heading
 - Each section should have 2-4 paragraphs of substantive content
 - Include "[IMAGE]" markers where a supporting image from the video would add value (place 2-3 total)

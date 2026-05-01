@@ -9,6 +9,7 @@
     "preview": "electron-vite preview",
     "package": "npm run package:mac",
     "package:mac": "node scripts/assert-packaged-runtime.cjs darwin-arm64 && electron-vite build && electron-builder --mac",
+    "package:mac:release": "node scripts/assert-packaged-runtime.cjs darwin-arm64 && electron-vite build && electron-builder --mac --config.forceCodeSigning=true",
     "package:win": "node scripts/assert-packaged-runtime.cjs win32-x64 && electron-vite build && electron-builder --win --x64",
     "runtime:mac": "bash scripts/build-pipeline-runtime.sh"
   },

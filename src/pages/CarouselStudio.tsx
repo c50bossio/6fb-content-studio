@@ -4,6 +4,7 @@ import SlidePreview from '../components/carousel/SlidePreview';
 import { toPng } from 'html-to-image';
 import useGoogleFonts from '../hooks/useGoogleFonts';
 import InstagramPostModal from '../components/InstagramPostModal';
+import type { ContentStrategyBrief } from '../types/content-strategy';
 
 interface Props {
   brandProfile: BrandProfile | null;
@@ -23,6 +24,7 @@ interface LibraryRun {
   timestamp: number;
   sourceVideo: string;
   runPath: string;
+  strategyBrief?: ContentStrategyBrief;
   clips: LibraryClip[];
 }
 
@@ -144,7 +146,7 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
       }
       const contentType = selectedRun.clips[0]?.contentType || 'general';
       const result = await window.electronAPI.extractCarousel({
-        transcript: txResult.transcript, brandProfile: localBrand, contentType,
+        transcript: txResult.transcript, brandProfile: localBrand, contentType, strategyBrief: selectedRun.strategyBrief,
       });
       if (result.success && result.slides) {
         let finalSlides = result.slides as CarouselSlide[];
@@ -165,6 +167,10 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
       const result = await window.electronAPI.generateCarousel({
         topic, type: 'educational', keyPoints: keyPoints.filter(Boolean),
         brandProfile: localBrand,
+        strategyBrief: (() => {
+          try { return JSON.parse(localStorage.getItem('contentStrategy:lastBrief') || 'null') as ContentStrategyBrief | null; }
+          catch { return null; }
+        })() || undefined,
       });
       if (result.success && result.slides) {
         const mapped: CarouselSlide[] = (result.slides as any[]).map((s: any, i: number) => ({

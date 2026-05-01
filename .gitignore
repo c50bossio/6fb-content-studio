@@ -12,3 +12,4 @@ python/runtime/
 .DS_Store
 certs/
 .env.build
+.omc/
