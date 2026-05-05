@@ -115,6 +115,39 @@ function registerApprovedPaths(paths: Array<string | null | undefined>) {
   for (const filePath of paths) registerApprovedPath(filePath);
 }
 
+function stringValue(value: unknown) {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function registerBrandSnapshotPaths(snapshot: unknown) {
+  if (!snapshot || typeof snapshot !== 'object') return;
+  registerApprovedPath(stringValue((snapshot as Record<string, unknown>).logoPath));
+}
+
+function registerCarouselAssetPaths(data: unknown) {
+  if (!data || typeof data !== 'object') return;
+  const record = data as Record<string, unknown>;
+  registerBrandSnapshotPaths(record.brandSnapshot);
+  if (!Array.isArray(record.slides)) return;
+  for (const slide of record.slides) {
+    if (slide && typeof slide === 'object') {
+      registerApprovedPath(stringValue((slide as Record<string, unknown>).framePath));
+    }
+  }
+}
+
+function registerBlogAssetPaths(data: unknown) {
+  if (!data || typeof data !== 'object') return;
+  const record = data as Record<string, unknown>;
+  registerBrandSnapshotPaths(record.brandSnapshot);
+  if (!Array.isArray(record.sections)) return;
+  for (const section of record.sections) {
+    if (section && typeof section === 'object') {
+      registerApprovedPath(stringValue((section as Record<string, unknown>).imagePath));
+    }
+  }
+}
+
 function isAllowedLocalFilePath(filePath: string) {
   if (!filePath || !isAbsolute(filePath)) return false;
   const resolved = resolve(filePath);
@@ -130,6 +163,17 @@ function isAllowedLocalFilePath(filePath: string) {
   return Array.from(approvedFilePaths).some(approvedPath =>
     resolved === approvedPath || isInsidePath(resolved, approvedPath)
   );
+}
+
+function decodeLocalFileRequestUrl(requestUrl: string) {
+  try {
+    const url = new URL(requestUrl);
+    if (url.protocol !== 'localfile:') return null;
+    const encodedPath = url.hostname ? `${url.hostname}${url.pathname}` : url.pathname;
+    return decodeURIComponent(encodedPath);
+  } catch {
+    return null;
+  }
 }
 
 function pipelineSettings(): PipelineSettings {
@@ -197,7 +241,10 @@ app.whenReady().then(() => {
   // Handle localfile:// protocol with proper byte-range support for video streaming.
   // net.fetch() ignores Range headers so video elements show 0:00 and never load.
   protocol.handle('localfile', (request) => {
-    const filePath = decodeURIComponent(request.url.replace('localfile://', ''));
+    const filePath = decodeLocalFileRequestUrl(request.url);
+    if (!filePath) {
+      return new Response('Malformed local file URL', { status: 400 });
+    }
     if (!isAllowedLocalFilePath(filePath)) {
       return new Response('Forbidden local file path', { status: 403 });
     }
@@ -1226,6 +1273,7 @@ ipcMain.handle('load-carousel', async (_event, id: string) => {
   const filePath = join(carouselsDir(), `${id}.json`);
   try {
     const data = JSON.parse(readFileSync(filePath, 'utf-8'));
+    registerCarouselAssetPaths(data);
     return { success: true, data };
   } catch (err) { return { success: false, error: String(err) }; }
 });
@@ -1399,6 +1447,7 @@ ipcMain.handle('load-blog-post', async (_event, id: string) => {
   const filePath = join(blogsDir(), `${id}.json`);
   try {
     const data = JSON.parse(readFileSync(filePath, 'utf-8'));
+    registerBlogAssetPaths(data);
     return { success: true, data };
   } catch (err) { return { success: false, error: String(err) }; }
 });
