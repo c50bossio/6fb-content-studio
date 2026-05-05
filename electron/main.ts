@@ -5,6 +5,7 @@ import { pathToFileURL } from 'url';
 import { runClipExtractor, checkPythonDeps, cancelActiveExtraction, resolveSystemPython, type ClipExtractorRuntime } from './python-bridge';
 import { autoUpdater } from 'electron-updater';
 import type { ContentStrategyBrief } from '../src/types/content-strategy';
+import type { PublishingPlatform, PublishingQueuePost, PublishingQueueResponse, PublishingStatus } from '../src/types/publishing';
 
 // ── MUST be called before app.whenReady() ──────────────────────────────────
 // Disables GPU hardware acceleration & accelerated video decode.
@@ -1439,44 +1440,244 @@ ipcMain.handle('export-blog-markdown', async (_event, {
 // ─── Post Scheduler ───────────────────────────────────────────────
 const schedulerPath = () => join(app.getPath('userData'), 'scheduled_posts.json');
 
-function loadScheduledPosts(): Record<string, unknown>[] {
+const visiblePublishingStatuses = new Set<PublishingStatus>(['scheduled', 'due', 'published', 'failed']);
+
+function asString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+}
+
+function asStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function normalizePublishingStatus(value: unknown, posted?: unknown): PublishingStatus {
+  const raw = typeof value === 'string' ? value.toLowerCase() : '';
+  if (raw === 'posted' || raw === 'complete' || raw === 'completed' || posted === true) return 'published';
+  if (raw === 'scheduled' || raw === 'due' || raw === 'published' || raw === 'failed' || raw === 'cancelled' || raw === 'studio_queue') {
+    return raw;
+  }
+  return 'scheduled';
+}
+
+function normalizePlatform(value: unknown): PublishingPlatform {
+  const raw = typeof value === 'string' ? value.toLowerCase() : '';
+  if (raw === 'tiktok' || raw === 'youtube' || raw === 'linkedin') return raw;
+  return 'instagram';
+}
+
+function normalizePlatforms(value: unknown, fallback: unknown): PublishingPlatform[] {
+  const platforms = asStringArray(value).map(normalizePlatform);
+  if (platforms.length > 0) return Array.from(new Set(platforms));
+  return [normalizePlatform(fallback)];
+}
+
+function normalizeMediaType(value: unknown): PublishingQueuePost['mediaType'] {
+  const raw = typeof value === 'string' ? value.toLowerCase() : '';
+  if (raw === 'carousel' || raw === 'carousel_album') return 'carousel';
+  if (raw === 'video') return 'video';
+  if (raw === 'image') return 'image';
+  if (raw === 'text') return 'text';
+  if (raw === 'reel') return 'reel';
+  return undefined;
+}
+
+function normalizePublishingPost(post: Record<string, unknown>, origin: 'local' | 'remote'): PublishingQueuePost | null {
+  const id = asString(post.id);
+  if (!id) return null;
+
+  const status = normalizePublishingStatus(post.status, post.posted);
+  const publishedAt = asString(post.publishedAt) ?? asString(post.postedAt) ?? null;
+  const scheduledAt =
+    asString(post.scheduledAt) ??
+    asString(post.scheduledFor) ??
+    publishedAt ??
+    asString(post.updatedAt) ??
+    asString(post.createdAt) ??
+    new Date().toISOString();
+  const mediaUrls = asStringArray(post.mediaUrls);
+  const mediaPath = asString(post.mediaPath) ?? mediaUrls[0] ?? '';
+  const thumbnailUrl = asString(post.thumbnailUrl) ?? null;
+  const thumbnailPath = asString(post.thumbnailPath) ?? thumbnailUrl ?? undefined;
+  const platforms = normalizePlatforms(post.platforms, post.platform);
+
+  return {
+    id,
+    platform: platforms[0],
+    platforms,
+    caption: asString(post.caption) ?? asString(post.title) ?? '',
+    mediaPath,
+    mediaUrls: mediaUrls.length > 0 ? mediaUrls : mediaPath ? [mediaPath] : [],
+    scheduledAt,
+    scheduledFor: asString(post.scheduledFor) ?? scheduledAt,
+    status,
+    createdAt: asString(post.createdAt) ?? scheduledAt,
+    updatedAt: asString(post.updatedAt),
+    publishedAt,
+    postedAt: asString(post.postedAt) ?? publishedAt,
+    thumbnailPath,
+    thumbnailUrl,
+    mediaType: normalizeMediaType(post.mediaType),
+    title: asString(post.title) ?? null,
+    errorMessage: asString(post.errorMessage) ?? asString(post.error) ?? null,
+    source: asString(post.source),
+    origin,
+  };
+}
+
+function getPostSortTime(post: PublishingQueuePost) {
+  return new Date(post.publishedAt || post.postedAt || post.updatedAt || post.scheduledAt).getTime();
+}
+
+function sortPublishingPosts(posts: PublishingQueuePost[]) {
+  return [...posts].sort((a, b) => {
+    const aActive = a.status === 'scheduled' || a.status === 'due';
+    const bActive = b.status === 'scheduled' || b.status === 'due';
+    if (aActive !== bActive) return aActive ? -1 : 1;
+    if (aActive && bActive) return new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime();
+    return getPostSortTime(b) - getPostSortTime(a);
+  });
+}
+
+function mergePublishingPosts(remotePosts: PublishingQueuePost[], localPosts: PublishingQueuePost[]) {
+  const merged = new Map<string, PublishingQueuePost>();
+  for (const post of localPosts) merged.set(post.id, post);
+  for (const post of remotePosts) merged.set(post.id, post);
+  return sortPublishingPosts([...merged.values()]);
+}
+
+function loadLocalPublishingPosts(): PublishingQueuePost[] {
   const p = schedulerPath();
   if (!existsSync(p)) return [];
   try {
     const posts = JSON.parse(readFileSync(p, 'utf-8')) as Record<string, unknown>[];
-    for (const post of posts) {
+    const normalized = posts
+      .map(post => normalizePublishingPost(post, 'local'))
+      .filter((post): post is PublishingQueuePost => !!post && visiblePublishingStatuses.has(post.status));
+    for (const post of normalized) {
       registerApprovedPaths([post.mediaPath as string | undefined, post.thumbnailPath as string | undefined]);
     }
-    return posts;
+    return sortPublishingPosts(normalized);
   } catch { return []; }
 }
 
-function saveSchedulerData(posts: Record<string, unknown>[]) {
-  writeFileSync(schedulerPath(), JSON.stringify(posts, null, 2));
+function saveSchedulerData(posts: PublishingQueuePost[]) {
+  writeFileSync(schedulerPath(), JSON.stringify(sortPublishingPosts(posts), null, 2));
 }
 
-ipcMain.handle('get-scheduled-posts', async () => loadScheduledPosts());
+async function fetchRemotePublishingQueue(): Promise<PublishingQueueResponse | null> {
+  const token = store.get('contentManagerToken') as string | undefined;
+  if (!token) return null;
+
+  const fetchedAt = new Date().toISOString();
+  try {
+    const res = await fetch(`${CONTENT_MANAGER}/api/scheduled-posts`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'X-Client': '6fb-content-studio',
+      },
+    });
+    const data = await res.json() as Record<string, unknown>;
+    if (!res.ok) {
+      return {
+        success: false,
+        posts: [],
+        source: 'remote',
+        fetchedAt,
+        error: asString(data.error) ?? `Publishing queue fetch failed (${res.status})`,
+      };
+    }
+
+    const rawPosts = Array.isArray(data.posts)
+      ? data.posts
+      : Array.isArray(data.items)
+      ? data.items
+      : Array.isArray(data.queue)
+      ? data.queue
+      : [];
+
+    const posts = rawPosts
+      .map(item => normalizePublishingPost(item as Record<string, unknown>, 'remote'))
+      .filter((post): post is PublishingQueuePost => !!post && visiblePublishingStatuses.has(post.status));
+
+    return {
+      success: true,
+      posts: sortPublishingPosts(posts),
+      source: 'remote',
+      fetchedAt,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      posts: [],
+      source: 'remote',
+      fetchedAt,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+async function getPublishingQueueData(): Promise<PublishingQueueResponse> {
+  const localPosts = loadLocalPublishingPosts();
+  const remote = await fetchRemotePublishingQueue();
+  const fetchedAt = new Date().toISOString();
+
+  if (!remote) {
+    return { success: true, posts: localPosts, source: 'local', fetchedAt };
+  }
+
+  if (remote.success) {
+    return {
+      ...remote,
+      posts: mergePublishingPosts(remote.posts, localPosts),
+    };
+  }
+
+  return {
+    success: false,
+    posts: localPosts,
+    source: 'local',
+    fetchedAt,
+    error: remote.error,
+  };
+}
+
+ipcMain.handle('get-publishing-queue', async () => getPublishingQueueData());
+
+ipcMain.handle('get-scheduled-posts', async () => {
+  const result = await getPublishingQueueData();
+  return result.posts;
+});
 
 ipcMain.handle('save-scheduled-post', async (_event, post: Record<string, unknown>) => {
-  const posts = loadScheduledPosts();
-  const idx = posts.findIndex(p => p.id === post.id);
-  if (idx >= 0) posts[idx] = post; else posts.push(post);
-  registerApprovedPaths([post.mediaPath as string | undefined, post.thumbnailPath as string | undefined]);
+  const normalized = normalizePublishingPost(post, 'local');
+  if (!normalized) return { success: false, error: 'Invalid post' };
+  const posts = loadLocalPublishingPosts();
+  const idx = posts.findIndex(p => p.id === normalized.id);
+  if (idx >= 0) posts[idx] = normalized; else posts.push(normalized);
+  registerApprovedPaths([normalized.mediaPath, normalized.thumbnailPath]);
   saveSchedulerData(posts);
-  return { success: true };
+  return { success: true, post: normalized };
 });
 
 ipcMain.handle('delete-scheduled-post', async (_event, id: string) => {
-  saveSchedulerData(loadScheduledPosts().filter(p => p.id !== id));
+  saveSchedulerData(loadLocalPublishingPosts().filter(p => p.id !== id));
   return { success: true };
 });
 
-ipcMain.handle('mark-post-as-posted', async (_event, id: string) => {
-  const posts = loadScheduledPosts();
+async function markLocalPostAsPublished(id: string) {
+  const posts = loadLocalPublishingPosts();
   const idx = posts.findIndex(p => p.id === id);
-  if (idx >= 0) posts[idx] = { ...posts[idx], status: 'posted', postedAt: new Date().toISOString() };
+  if (idx < 0) return { success: false, error: 'Post not found in local publishing queue' };
+  const publishedAt = new Date().toISOString();
+  posts[idx] = { ...posts[idx], status: 'published', publishedAt, postedAt: publishedAt };
   saveSchedulerData(posts);
   return { success: true };
+}
+
+ipcMain.handle('mark-post-as-published', async (_event, id: string) => markLocalPostAsPublished(id));
+
+ipcMain.handle('mark-post-as-posted', async (_event, id: string) => {
+  return markLocalPostAsPublished(id);
 });
 
 ipcMain.handle('post-to-social', async (_event, { platform }: { platform: string; content: Record<string, unknown> }) => {
@@ -1486,6 +1687,7 @@ ipcMain.handle('post-to-social', async (_event, { platform }: { platform: string
     instagram: 'https://www.instagram.com/',
     tiktok: 'https://www.tiktok.com/upload',
     youtube: 'https://studio.youtube.com/',
+    linkedin: 'https://www.linkedin.com/feed/',
   };
   const opened = !!(urls[platform] && shell.openExternal(urls[platform]));
   return { success: true, opened, note: 'Opened platform in browser. No API post was made.' };
@@ -1495,7 +1697,7 @@ ipcMain.handle('post-to-social', async (_event, { platform }: { platform: string
 function startSchedulerDaemon() {
   setInterval(() => {
     if (!mainWindow) return;
-    const posts = loadScheduledPosts();
+    const posts = loadLocalPublishingPosts();
     const now = Date.now();
     let changed = false;
     for (const post of posts) {
@@ -1840,16 +2042,29 @@ ipcMain.handle('get-analytics', async () => {
     totalBlogs = readdirSync(blogsDir).filter(f => f.endsWith('.json')).length;
   } catch {}
 
-  const schedulerPath = join(app.getPath('userData'), 'scheduler.json');
-  let scheduledPosts: unknown[] = [];
+  let publishingQueue: PublishingQueuePost[] = [];
+  let scheduledPosts = 0;
   let postedScheduled = 0;
+  let failedScheduled = 0;
   try {
-    const data = JSON.parse(readFileSync(schedulerPath, 'utf-8')) as unknown[];
-    scheduledPosts = data;
-    postedScheduled = data.filter((p: any) => p.posted).length;
+    const queue = await getPublishingQueueData();
+    publishingQueue = queue.posts;
+    scheduledPosts = publishingQueue.filter(p => p.status === 'scheduled' || p.status === 'due').length;
+    postedScheduled = publishingQueue.filter(p => p.status === 'published').length;
+    failedScheduled = publishingQueue.filter(p => p.status === 'failed').length;
   } catch {}
 
-  const localStats = { totalRuns, totalClips, postedClips, totalCarousels, totalBlogs, totalScheduled: scheduledPosts.length, postedScheduled };
+  const localStats = {
+    totalRuns,
+    totalClips,
+    postedClips,
+    totalCarousels,
+    totalBlogs,
+    totalScheduled: scheduledPosts,
+    totalQueue: publishingQueue.length,
+    postedScheduled,
+    failedScheduled,
+  };
 
   // ── Instagram account + recent media ──
   if (!token || !igUserId) {

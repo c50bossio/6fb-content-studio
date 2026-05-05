@@ -14,6 +14,7 @@ import Analytics from './pages/Analytics';
 import { useStudioStats } from './hooks/useStudioStats';
 import UpdateBanner from './components/UpdateBanner';
 import type { ContentStrategyBrief } from './types/content-strategy';
+import type { PublishingQueueResponse } from './types/publishing';
 
 export interface BrandProfile {
   brandName: string;
@@ -98,10 +99,12 @@ declare global {
       // Progress
       onProgress: (callback: (data: { percent: number; label: string }) => void) => () => void;
       // Scheduler
+      getPublishingQueue: () => Promise<PublishingQueueResponse>;
       getScheduledPosts: () => Promise<unknown[]>;
       saveScheduledPost: (post: unknown) => Promise<{ success: boolean }>;
       deleteScheduledPost: (id: string) => Promise<{ success: boolean }>;
       markPostAsPosted: (id: string) => Promise<{ success: boolean }>;
+      markPostAsPublished: (id: string) => Promise<{ success: boolean }>;
       onPostDue: (callback: () => void) => () => void;
       // 6FB Account
       login6FB: (creds: { email: string; password: string }) => Promise<{ success: boolean; error?: string }>;
@@ -119,7 +122,7 @@ declare global {
       // Analytics
       getAnalytics: () => Promise<{
         success: boolean;
-        localStats: { totalRuns: number; totalClips: number; postedClips: number; totalCarousels: number; totalBlogs: number; totalScheduled: number; postedScheduled: number };
+        localStats: { totalRuns: number; totalClips: number; postedClips: number; totalCarousels: number; totalBlogs: number; totalScheduled: number; totalQueue: number; postedScheduled: number; failedScheduled: number };
         igConnected: boolean;
         account: { username: string; followers_count: number; media_count: number; profile_picture_url?: string } | null;
         media: unknown[];
@@ -199,15 +202,24 @@ export default function App() {
         loadBlogPost: async () => ({ success: false }),
         deleteBlogPost: async () => ({ success: true }),
         exportBlogMarkdown: async () => ({ success: false, error: 'Electron required' }),
+        getPublishingQueue: async () => ({ success: true, posts: [], source: 'local', fetchedAt: new Date().toISOString() }),
         getScheduledPosts: async () => [],
         saveScheduledPost: async () => ({ success: true }),
         deleteScheduledPost: async () => ({ success: true }),
         markPostAsPosted: async () => ({ success: true }),
+        markPostAsPublished: async () => ({ success: true }),
         onPostDue: () => () => {},
         login6FB: async () => ({ success: false, error: 'Electron required' }),
         syncInstagramCredentials: async () => ({ success: false, error: 'Electron required' }),
         get6FBAccount: async () => ({ email: null, igUsername: null, igTokenExpiresAt: null, connected: false }),
         disconnect6FB: async () => ({ success: true }),
+        getAnalytics: async () => ({
+          success: true,
+          localStats: { totalRuns: 0, totalClips: 0, postedClips: 0, totalCarousels: 0, totalBlogs: 0, totalScheduled: 0, totalQueue: 0, postedScheduled: 0, failedScheduled: 0 },
+          igConnected: false,
+          account: null,
+          media: [],
+        }),
       } as unknown as typeof window.electronAPI;
     }
 

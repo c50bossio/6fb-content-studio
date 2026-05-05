@@ -1,19 +1,9 @@
 import { useState, useEffect } from 'react';
 import InstagramPostModal from '../components/InstagramPostModal';
+import type { PublishingPlatform, PublishingQueuePost, PublishingStatus } from '../types/publishing';
 
 // ─── Types ───────────────────────────────────────────────────────────
-interface ScheduledPost {
-  id: string;
-  platform: 'instagram' | 'tiktok' | 'youtube';
-  caption: string;
-  mediaPath: string;
-  scheduledAt: string;
-  status: 'scheduled' | 'due' | 'posted' | 'failed';
-  createdAt: string;
-  postedAt?: string;
-  thumbnailPath?: string;
-  mediaType?: 'reel' | 'carousel';
-}
+type ScheduledPost = PublishingQueuePost;
 
 interface LibraryClip {
   clipId: string;
@@ -34,6 +24,9 @@ const PLATFORMS = [
   { id: 'youtube' as const, name: 'YouTube', abbr: 'YT',
     color: '#FF0000', bg: 'rgba(255,0,0,0.1)', border: 'rgba(255,0,0,0.25)',
     gradient: 'linear-gradient(135deg, #FF0000, #FF4500)' },
+  { id: 'linkedin' as const, name: 'LinkedIn', abbr: 'LI',
+    color: '#0A66C2', bg: 'rgba(10,102,194,0.1)', border: 'rgba(10,102,194,0.25)',
+    gradient: 'linear-gradient(135deg, #0A66C2, #2D8CFF)' },
 ];
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -46,16 +39,47 @@ const isSameDay = (a: Date, b: Date) =>
 const fmt12 = (iso: string) =>
   new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 
+const getPlatformMeta = (platform: PublishingPlatform | string) =>
+  PLATFORMS.find(p => p.id === platform) ?? PLATFORMS[0];
+
+const mediaSrc = (path?: string | null) => {
+  if (!path) return '';
+  if (/^(https?:|data:|blob:)/i.test(path)) return path;
+  return `localfile://${path}`;
+};
+
+const isActivePost = (post: ScheduledPost) => post.status === 'scheduled' || post.status === 'due';
+
+const statusLabel = (status: PublishingStatus) => {
+  switch (status) {
+    case 'published': return 'Published';
+    case 'failed': return 'Failed';
+    case 'due': return 'Due Now';
+    case 'cancelled': return 'Cancelled';
+    case 'studio_queue': return 'Awaiting Slot';
+    default: return 'Scheduled';
+  }
+};
+
+const statusBadgeClass = (status: PublishingStatus) => {
+  switch (status) {
+    case 'published': return 'text-[#00C851] border-[#00C85140]';
+    case 'failed': return 'text-red-400 border-red-400/30';
+    case 'due': return 'text-amber-400 border-amber-400/30 animate-pulse';
+    default: return 'text-[#666] border-[#333]';
+  }
+};
+
 const getStreak = (posts: ScheduledPost[]) => {
   const posted = [...posts]
-    .filter(p => p.status === 'posted' && p.postedAt)
-    .sort((a, b) => new Date(b.postedAt!).getTime() - new Date(a.postedAt!).getTime());
+    .filter(p => p.status === 'published' && (p.publishedAt || p.postedAt))
+    .sort((a, b) => new Date((b.publishedAt || b.postedAt)!).getTime() - new Date((a.publishedAt || a.postedAt)!).getTime());
   if (!posted.length) return 0;
   let streak = 0;
   const today = new Date(); today.setHours(0,0,0,0);
   let check = new Date(today);
   for (let i = 0; i < 365; i++) {
-    const found = posted.some(p => isSameDay(new Date(p.postedAt!), check));
+    const found = posted.some(p => isSameDay(new Date((p.publishedAt || p.postedAt)!), check));
     if (found) { streak++; check.setDate(check.getDate() - 1); }
     else break;
   }
@@ -64,24 +88,27 @@ const getStreak = (posts: ScheduledPost[]) => {
 
 // ─── Post Chip (calendar cell) ────────────────────────────────────────
 function PostChip({ post, onClick }: { post: ScheduledPost; onClick: () => void }) {
-  const pl = PLATFORMS.find(p => p.id === post.platform)!;
+  const pl = getPlatformMeta(post.platform);
   const isDue = post.status === 'due';
-  const isPosted = post.status === 'posted';
+  const isPublished = post.status === 'published';
+  const isFailed = post.status === 'failed';
+  const preview = post.thumbnailPath || post.thumbnailUrl;
   return (
     <button onClick={onClick}
       className="w-full text-left rounded-lg overflow-hidden border transition-all hover:scale-[1.02] active:scale-[0.98]"
-      style={{ borderColor: isPosted ? '#00C85140' : isDue ? '#F59E0B60' : pl.border }}>
+      style={{ borderColor: isPublished ? '#00C85140' : isFailed ? '#EF444460' : isDue ? '#F59E0B60' : pl.border }}>
       <div className="flex items-center gap-1.5 px-1.5 py-1"
-        style={{ background: isPosted ? 'rgba(0,200,81,0.07)' : pl.bg }}>
-        {post.thumbnailPath && (
-          <img src={`localfile://${post.thumbnailPath}`} alt=""
+        style={{ background: isPublished ? 'rgba(0,200,81,0.07)' : isFailed ? 'rgba(239,68,68,0.07)' : pl.bg }}>
+        {preview && (
+          <img src={mediaSrc(preview)} alt=""
             className="w-5 h-7 rounded object-cover shrink-0 border border-white/5" />
         )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1 mb-0.5">
             <span className="text-[8px] font-black" style={{ color: pl.color }}>{pl.abbr}</span>
             {isDue && <span className="text-[7px] text-amber-400 font-bold animate-pulse">DUE</span>}
-            {isPosted && <span className="text-[7px] text-[#00C851] font-bold">✓</span>}
+            {isPublished && <span className="text-[7px] text-[#00C851] font-bold">PUB</span>}
+            {isFailed && <span className="text-[7px] text-red-400 font-bold">FAIL</span>}
           </div>
           <p className="text-[9px] text-white/70 truncate leading-tight">{post.caption}</p>
           <p className="text-[8px] text-white/30 mt-0.5">{fmt12(post.scheduledAt)}</p>
@@ -99,8 +126,9 @@ function PostDetailModal({ post, onClose, onDelete, onMarkPosted, onPostNow }: {
   onMarkPosted: () => void;
   onPostNow: () => void;
 }) {
-  const pl = PLATFORMS.find(p => p.id === post.platform)!;
+  const pl = getPlatformMeta(post.platform);
   const canPost = post.status === 'scheduled' || post.status === 'due';
+  const preview = post.thumbnailPath || post.thumbnailUrl;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md"
@@ -108,8 +136,8 @@ function PostDetailModal({ post, onClose, onDelete, onMarkPosted, onPostNow }: {
       <div className="w-80 bg-[#111] border border-[#222] rounded-2xl overflow-hidden shadow-2xl">
         {/* Thumbnail */}
         <div className="relative h-36 bg-[#0a0a0a]">
-          {post.thumbnailPath ? (
-            <img src={`localfile://${post.thumbnailPath}`} alt=""
+          {preview ? (
+            <img src={mediaSrc(preview)} alt=""
               className="absolute inset-0 w-full h-full object-cover" />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center">
@@ -126,13 +154,9 @@ function PostDetailModal({ post, onClose, onDelete, onMarkPosted, onPostNow }: {
                 {pl.abbr}
               </span>
               <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${
-                post.status === 'posted' ? 'text-[#00C851] border-[#00C85140]' :
-                post.status === 'due' ? 'text-amber-400 border-amber-400/30 animate-pulse' :
-                post.status === 'failed' ? 'text-red-400 border-red-400/30' :
-                'text-[#666] border-[#333]'
+                statusBadgeClass(post.status)
               }`}>
-                {post.status === 'scheduled' ? 'Scheduled' : post.status === 'posted' ? '✓ Posted' :
-                 post.status === 'due' ? '⏰ Due Now' : '✕ Failed'}
+                {statusLabel(post.status)}
               </span>
             </div>
           </div>
@@ -151,6 +175,14 @@ function PostDetailModal({ post, onClose, onDelete, onMarkPosted, onPostNow }: {
               {' · '}{fmt12(post.scheduledAt)}
             </p>
             <p className="text-xs text-[#555] leading-relaxed line-clamp-3">{post.caption}</p>
+            {post.status === 'published' && (post.publishedAt || post.postedAt) && (
+              <p className="text-[10px] text-[#00C851] mt-2">
+                Published {new Date((post.publishedAt || post.postedAt)!).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at {fmt12((post.publishedAt || post.postedAt)!)}
+              </p>
+            )}
+            {post.status === 'failed' && post.errorMessage && (
+              <p className="text-[10px] text-red-400 mt-2 line-clamp-2">{post.errorMessage}</p>
+            )}
           </div>
 
           {canPost && (
@@ -165,7 +197,7 @@ function PostDetailModal({ post, onClose, onDelete, onMarkPosted, onPostNow }: {
               {post.status === 'due' && (
                 <button onClick={onMarkPosted}
                   className="w-full py-2 rounded-xl text-xs font-semibold border border-[#00C851]/30 text-[#00C851] hover:bg-[#00C851]/10 transition-colors">
-                  Mark as Posted
+                  Mark as Published
                 </button>
               )}
             </div>
@@ -186,7 +218,7 @@ function NewPostModal({ onClose, onSave }: {
   onClose: () => void;
   onSave: (post: Omit<ScheduledPost, 'id' | 'createdAt'>) => void;
 }) {
-  const [platform, setPlatform] = useState<'instagram' | 'tiktok' | 'youtube'>('instagram');
+  const [platform, setPlatform] = useState<PublishingPlatform>('instagram');
   const [caption, setCaption] = useState('');
   const [mediaPath, setMediaPath] = useState('');
   const [thumbnailPath, setThumbnailPath] = useState('');
@@ -236,7 +268,7 @@ function NewPostModal({ onClose, onSave }: {
           {/* Platform */}
           <div>
             <p className="text-[10px] font-bold text-[#444] uppercase tracking-wider mb-2">Platform</p>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {PLATFORMS.map(pl => (
                 <button key={pl.id} onClick={() => setPlatform(pl.id)}
                   className="py-2 rounded-xl border text-xs font-bold transition-all"
@@ -358,8 +390,8 @@ export default function Scheduler() {
 
   const loadPosts = async () => {
     try {
-      const r = await window.electronAPI.getScheduledPosts();
-      if (Array.isArray(r)) setPosts(r as ScheduledPost[]);
+      const r = await window.electronAPI.getPublishingQueue();
+      if (r?.posts) setPosts(r.posts as ScheduledPost[]);
     } catch { setPosts([]); }
   };
 
@@ -376,8 +408,20 @@ export default function Scheduler() {
   };
 
   const handleMarkPosted = async (id: string) => {
-    try { await window.electronAPI.markPostAsPosted(id); } catch {}
-    setPosts(prev => prev.map(p => p.id === id ? { ...p, status: 'posted', postedAt: new Date().toISOString() } : p));
+    try {
+      const result = await (window.electronAPI.markPostAsPublished?.(id) ?? window.electronAPI.markPostAsPosted(id));
+      if (!result.success) {
+        await loadPosts();
+        setSelectedPost(null);
+        return;
+      }
+    } catch {
+      await loadPosts();
+      setSelectedPost(null);
+      return;
+    }
+    const publishedAt = new Date().toISOString();
+    setPosts(prev => prev.map(p => p.id === id ? { ...p, status: 'published', publishedAt, postedAt: publishedAt } : p));
     setSelectedPost(null);
   };
 
@@ -387,7 +431,7 @@ export default function Scheduler() {
       setSelectedPost(null);
     } else {
       // Non-IG: open in browser
-      const urls: Record<string, string> = { tiktok: 'https://www.tiktok.com/upload', youtube: 'https://studio.youtube.com/' };
+      const urls: Record<string, string> = { tiktok: 'https://www.tiktok.com/upload', youtube: 'https://studio.youtube.com/', linkedin: 'https://www.linkedin.com/feed/' };
       (window as any).electronAPI.openPath(urls[post.platform] || 'https://www.instagram.com/');
     }
   };
@@ -401,7 +445,9 @@ export default function Scheduler() {
     const end = new Date(start); end.setDate(start.getDate() + 7);
     return d >= start && d < end;
   });
-  const upcoming = posts.filter(p => p.status !== 'posted').length;
+  const scheduledCount = posts.filter(isActivePost).length;
+  const publishedCount = posts.filter(p => p.status === 'published').length;
+  const failedCount = posts.filter(p => p.status === 'failed').length;
   const due = posts.filter(p => p.status === 'due').length;
 
   // ── Month grid ──
@@ -477,13 +523,23 @@ export default function Scheduler() {
             <p className="text-[8px] text-[#444]">this week</p>
           </div>
           <div className="text-center">
-            <p className="text-sm font-bold text-[#00C851]">{upcoming}</p>
-            <p className="text-[8px] text-[#444]">upcoming</p>
+            <p className="text-sm font-bold text-white">{scheduledCount}</p>
+            <p className="text-[8px] text-[#444]">scheduled</p>
+          </div>
+          <div className="text-center">
+            <p className="text-sm font-bold text-[#00C851]">{publishedCount}</p>
+            <p className="text-[8px] text-[#444]">published</p>
           </div>
           {due > 0 && (
             <div className="text-center">
               <p className="text-sm font-bold text-amber-400 animate-pulse">{due}</p>
               <p className="text-[8px] text-[#444]">due now</p>
+            </div>
+          )}
+          {failedCount > 0 && (
+            <div className="text-center">
+              <p className="text-sm font-bold text-red-400">{failedCount}</p>
+              <p className="text-[8px] text-[#444]">failed</p>
             </div>
           )}
         </div>
@@ -627,8 +683,8 @@ export default function Scheduler() {
                   <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/>
                   <line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
                 </svg>
-                <p className="text-sm text-[#444]">No posts scheduled</p>
-                <p className="text-xs text-[#2a2a2a] mt-1">Click "New Post" to get started</p>
+                <p className="text-sm text-[#444]">No publishing queue yet</p>
+                <p className="text-xs text-[#2a2a2a] mt-1">Scheduled, published, and failed posts will appear here</p>
               </div>
             ) : (
               <div className="flex flex-col gap-2 max-w-2xl mx-auto">
@@ -643,12 +699,13 @@ export default function Scheduler() {
                   <div key={dateLabel}>
                     <p className="text-[10px] font-bold text-[#333] uppercase tracking-wider mb-2 mt-4 first:mt-0">{dateLabel}</p>
                     {dayPosts.map(post => {
-                      const pl = PLATFORMS.find(p => p.id === post.platform)!;
+                      const pl = getPlatformMeta(post.platform);
+                      const preview = post.thumbnailPath || post.thumbnailUrl;
                       return (
                         <button key={post.id} onClick={() => setSelectedPost(post)}
                           className="w-full flex items-center gap-3 p-3 rounded-xl border border-[#1a1a1a] bg-[#111] hover:border-[#2a2a2a] transition-colors mb-1.5 text-left">
-                          {post.thumbnailPath ? (
-                            <img src={`localfile://${post.thumbnailPath}`} alt="" className="w-10 h-14 rounded-lg object-cover shrink-0 border border-[#222]" />
+                          {preview ? (
+                            <img src={mediaSrc(preview)} alt="" className="w-10 h-14 rounded-lg object-cover shrink-0 border border-[#222]" />
                           ) : (
                             <div className="w-10 h-14 rounded-lg shrink-0 flex items-center justify-center border border-[#1e1e1e]"
                               style={{ background: pl.bg }}>
@@ -659,14 +716,15 @@ export default function Scheduler() {
                             <div className="flex items-center gap-2 mb-1">
                               <span className="text-[9px] font-bold" style={{ color: pl.color }}>{pl.name}</span>
                               <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded border ${
-                                post.status === 'posted' ? 'text-[#00C851] border-[#00C85140]' :
-                                post.status === 'due' ? 'text-amber-400 border-amber-400/30' :
-                                'text-[#444] border-[#222]'
+                                statusBadgeClass(post.status)
                               }`}>
-                                {post.status === 'due' ? '⏰ Due' : post.status === 'posted' ? '✓ Posted' : fmt12(post.scheduledAt)}
+                                {post.status === 'scheduled' ? fmt12(post.scheduledAt) : statusLabel(post.status)}
                               </span>
                             </div>
                             <p className="text-xs text-[#666] truncate">{post.caption}</p>
+                            {post.status === 'failed' && post.errorMessage && (
+                              <p className="text-[10px] text-red-400/70 truncate mt-0.5">{post.errorMessage}</p>
+                            )}
                           </div>
                           <svg viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth={2} className="w-3 h-3 shrink-0">
                             <polyline points="9 18 15 12 9 6"/>

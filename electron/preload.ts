@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { ContentStrategyBrief } from '../src/types/content-strategy';
+import type { PublishingQueuePost } from '../src/types/publishing';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // API Key Management
@@ -126,14 +127,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
 
   // Scheduler
+  getPublishingQueue: () =>
+    ipcRenderer.invoke('get-publishing-queue'),
   getScheduledPosts: () =>
     ipcRenderer.invoke('get-scheduled-posts'),
-  saveScheduledPost: (post: unknown) =>
+  saveScheduledPost: (post: PublishingQueuePost | unknown) =>
     ipcRenderer.invoke('save-scheduled-post', post),
   deleteScheduledPost: (id: string) =>
     ipcRenderer.invoke('delete-scheduled-post', id),
   markPostAsPosted: (id: string) =>
     ipcRenderer.invoke('mark-post-as-posted', id),
+  markPostAsPublished: (id: string) =>
+    ipcRenderer.invoke('mark-post-as-published', id),
   onPostDue: (callback: () => void) => {
     const handler = () => callback();
     ipcRenderer.on('post-due', handler);

@@ -8,7 +8,9 @@ interface LocalStats {
   totalCarousels: number;
   totalBlogs: number;
   totalScheduled: number;
+  totalQueue: number;
   postedScheduled: number;
+  failedScheduled: number;
 }
 
 interface IgAccount {
@@ -413,7 +415,7 @@ export default function Analytics() {
               icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>}
             />
             <StatCard label="Posts published" value={ls?.postedScheduled ?? 0}
-              sub={`${ls?.totalScheduled ?? 0} scheduled`} color="#F59E0B"
+              sub={`${ls?.totalScheduled ?? 0} scheduled / ${ls?.failedScheduled ?? 0} failed`} color="#F59E0B"
               icon={<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>}
             />
           </div>
