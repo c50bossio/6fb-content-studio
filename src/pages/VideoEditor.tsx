@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { toLocalFileUrl } from '../utils/localFileUrl';
 
 type OutputFormat = '9x16' | '1x1' | '16x9';
 interface Segment { id: string; start: number; end: number; }
@@ -275,7 +276,7 @@ export default function VideoEditor({ initialClipPath, onVideoRendered }: { init
                     <button key={clip.clipId} onClick={() => openClip(clip.filePath!, clip.title)}
                       className={`w-full flex items-center gap-2 px-3 py-1.5 transition-all ${active?'bg-[#00C851]/10 border-l-2 border-[#00C851]':'pl-[13px] border-l-2 border-transparent hover:bg-white/5'}`}>
                       <div className="w-8 h-8 rounded-md overflow-hidden shrink-0 bg-[#141414]">
-                        {clip.thumbnailPath ? <img src={`localfile://${clip.thumbnailPath}`} alt="" className="w-full h-full object-cover"/> :
+                        {clip.thumbnailPath ? <img src={toLocalFileUrl(clip.thumbnailPath)} alt="" className="w-full h-full object-cover"/> :
                           <div className="w-full h-full flex items-center justify-center"><svg viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth={1.5} className="w-3 h-3"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -346,7 +347,7 @@ export default function VideoEditor({ initialClipPath, onVideoRendered }: { init
             </div>
           ) : (
             <div className={`relative ${previewStyle} overflow-hidden rounded-xl bg-black`}>
-              <video ref={videoRef} src={`localfile://${clipPath}`}
+              <video ref={videoRef} src={toLocalFileUrl(clipPath)}
                 className="w-full h-full object-cover"
                 onLoadedMetadata={handleVideoLoaded} onTimeUpdate={handleTimeUpdate} onEnded={()=>setPlaying(false)}/>
               <button onClick={togglePlay}

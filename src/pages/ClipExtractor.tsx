@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import InstagramPostModal from '../components/InstagramPostModal';
 import type { ContentStrategyBrief, PackageVariant } from '../types/content-strategy';
+import { toLocalFileUrl } from '../utils/localFileUrl';
 
 // ─── SVG Icons ────────────────────────────────────────────────────────
 const Icon = {
@@ -208,7 +209,7 @@ function ClipPreviewModal({ clip, onClose, onOpenInEditor }: {
     return () => window.removeEventListener('keydown', h);
   }, [showIgModal]);
 
-  const clipSrc = clip.filePath ? `localfile://${clip.filePath}` : '';
+  const clipSrc = toLocalFileUrl(clip.filePath);
 
   return (
     <div
@@ -412,7 +413,7 @@ function ClipCard({ clip, onDelete, onRename, onPreview }: {
       {/* Thumbnail */}
       <div className="relative bg-[#111] overflow-hidden shrink-0" style={{ aspectRatio: '9/16', maxHeight: '196px' }}>
         {clip.thumbnailPath ? (
-          <img src={`localfile://${clip.thumbnailPath}`} alt={title}
+          <img src={toLocalFileUrl(clip.thumbnailPath)} alt={title}
             className="absolute inset-0 w-full h-full object-cover"
             onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
         ) : (
@@ -547,7 +548,7 @@ function LibraryPanel({ runs, selectedRunId, onSelect, onDeleteRun, onRefresh, o
                   <button onClick={() => onSelect(run)} className="w-full text-left px-3 py-2.5 flex gap-2.5 items-center">
                     <div className="w-8 h-11 rounded-md overflow-hidden bg-[#1a1a1a] shrink-0 border border-[#242424] relative">
                       {thumbClip?.thumbnailPath
-                        ? <img src={`localfile://${thumbClip.thumbnailPath}`} alt="" className="absolute inset-0 w-full h-full object-cover"
+                        ? <img src={toLocalFileUrl(thumbClip.thumbnailPath)} alt="" className="absolute inset-0 w-full h-full object-cover"
                             onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                         : <div className="absolute inset-0 flex items-center justify-center"><div className="w-3.5 h-3.5 text-[#2a2a2a]"><Icon.Film /></div></div>
                       }

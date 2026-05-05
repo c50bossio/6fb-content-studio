@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { BrandProfile } from '../App';
 import useGoogleFonts from '../hooks/useGoogleFonts';
+import { toLocalFileUrl } from '../utils/localFileUrl';
 
 // WCAG relative luminance calculation
 function getLuminance(r: number, g: number, b: number) {
@@ -154,7 +155,7 @@ export default function BrandStudio({ onSave }: Props) {
               <label className="field-label">Logo</label>
               <button onClick={handleSelectLogo} className="field-input text-left flex items-center gap-2 text-[#666] hover:text-white transition-colors">
                 {profile.logoPath
-                  ? <><img src={`localfile://${profile.logoPath}`} alt="logo" className="h-5 w-5 object-contain rounded" /><span className="text-xs text-white truncate">{profile.logoPath.split('/').pop()}</span></>
+                  ? <><img src={toLocalFileUrl(profile.logoPath)} alt="logo" className="h-5 w-5 object-contain rounded" /><span className="text-xs text-white truncate">{profile.logoPath.split('/').pop()}</span></>
                   : <><LogoIcon /><span className="text-xs">Click to upload PNG or SVG</span></>
                 }
               </button>
@@ -216,7 +217,7 @@ export default function BrandStudio({ onSave }: Props) {
             style={{ background: profile.backgroundColor }}
           >
             {profile.logoPath ? (
-              <img src={`localfile://${profile.logoPath}`} alt="" className="w-8 h-8 object-contain drop-shadow-md" />
+              <img src={toLocalFileUrl(profile.logoPath)} alt="" className="w-8 h-8 object-contain drop-shadow-md" />
             ) : (
               <div className="w-8 h-8 rounded-full" style={{ background: profile.primaryColor }} />
             )}

@@ -142,7 +142,7 @@ gh release upload "$TAG" \
   "$YML_PATH" \
   "$ZIP_BLOCKMAP_PATH" \
   --repo "$REPO" \
-  "${UPLOAD_FLAGS[@]}"
+  ${UPLOAD_FLAGS[@]+"${UPLOAD_FLAGS[@]}"}
 
 bash scripts/smoke-mac-release-dmg.sh "$TAG"
 
