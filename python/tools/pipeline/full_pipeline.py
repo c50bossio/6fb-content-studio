@@ -77,6 +77,7 @@ def _dispatch_runtime_check() -> None:
         "yaml": "yaml",
         "cv2": "cv2",
         "mediapipe": "mediapipe",
+        "scipy.interpolate": "scipy.interpolate",
     }
 
     if sys.platform == "win32":
