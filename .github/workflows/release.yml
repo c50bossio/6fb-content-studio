@@ -75,6 +75,11 @@ jobs:
             -S apple-tool:,apple:,codesign: \
             -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
+          # electron-builder 26 may pass the certificate name to nested codesign.
+          # If the p12 contains duplicate Developer ID identities with the same
+          # name, codesign treats that name as ambiguous even inside one keychain.
+          bash scripts/prune-mac-signing-identities.sh "$KEYCHAIN_PATH"
+
           # Add to search list
           security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain
 

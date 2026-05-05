@@ -80,6 +80,7 @@ if [[ -n "${APPLE_CERTIFICATE:-}" || -n "${APPLE_CERTIFICATE_PASSWORD:-}" ]]; th
   security set-key-partition-list \
     -S apple-tool:,apple:,codesign: \
     -s -k "$KEYCHAIN_PASSWORD" "$TEMP_KEYCHAIN_PATH"
+  bash scripts/prune-mac-signing-identities.sh "$TEMP_KEYCHAIN_PATH"
   # shellcheck disable=SC2086
   security list-keychains -d user -s "$TEMP_KEYCHAIN_PATH" $ORIGINAL_KEYCHAINS
   export CSC_KEYCHAIN="$TEMP_KEYCHAIN_PATH"
