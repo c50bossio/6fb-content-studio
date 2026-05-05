@@ -1,5 +1,5 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu } from 'electron';
-import { join } from 'path';
+import { isAbsolute, join, relative, resolve } from 'path';
 import { existsSync, readdirSync, readFileSync, mkdirSync } from 'fs';
 import { pathToFileURL } from 'url';
 import { runClipExtractor, checkPythonDeps, cancelActiveExtraction, resolveSystemPython, type ClipExtractorRuntime } from './python-bridge';
@@ -45,6 +45,7 @@ export interface StoreSchema {
 // StoreSchema above is the authoritative reference for what keys exist.
 const store = new ElectronStore();
 let mainWindow: BrowserWindow | null = null;
+const approvedFilePaths = new Set<string>();
 
 type PipelineSettings = {
   mode?: 'bundled' | 'custom';
@@ -99,6 +100,38 @@ function existingPath(value?: string) {
   return value && existsSync(value) ? value : undefined;
 }
 
+function isInsidePath(childPath: string, parentPath: string) {
+  const child = resolve(childPath);
+  const parent = resolve(parentPath);
+  const rel = relative(parent, child);
+  return rel === '' || (!!rel && !rel.startsWith('..') && !isAbsolute(rel));
+}
+
+function registerApprovedPath(filePath?: string | null) {
+  if (filePath) approvedFilePaths.add(resolve(filePath));
+}
+
+function registerApprovedPaths(paths: Array<string | null | undefined>) {
+  for (const filePath of paths) registerApprovedPath(filePath);
+}
+
+function isAllowedLocalFilePath(filePath: string) {
+  if (!filePath || !isAbsolute(filePath)) return false;
+  const resolved = resolve(filePath);
+  const appOwnedRoots = [
+    app.getPath('userData'),
+    app.getPath('temp'),
+  ];
+  if (appOwnedRoots.some(root => isInsidePath(resolved, root))) return true;
+
+  const brand = store.get('brandProfile') as Record<string, unknown> | undefined;
+  if (typeof brand?.logoPath === 'string' && resolve(brand.logoPath) === resolved) return true;
+
+  return Array.from(approvedFilePaths).some(approvedPath =>
+    resolved === approvedPath || isInsidePath(resolved, approvedPath)
+  );
+}
+
 function pipelineSettings(): PipelineSettings {
   return (store.get('pipeline') as PipelineSettings | undefined) || {};
 }
@@ -138,7 +171,6 @@ function createWindow() {
       preload: join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: false,  // Required: allows file:// URLs in renderer for video/image playback
     },
   });
 
@@ -155,11 +187,10 @@ function createWindow() {
   });
 }
 
-// Register custom protocol for serving local files (thumbnails, etc.)
-// Bypasses Electron's file:// restriction when app is loaded from localhost
+// Register custom protocol for app-owned or explicitly selected local files.
 protocol.registerSchemesAsPrivileged([{
   scheme: 'localfile',
-  privileges: { secure: true, supportFetchAPI: true, bypassCSP: true },
+  privileges: { secure: true, supportFetchAPI: true },
 }]);
 
 app.whenReady().then(() => {
@@ -167,6 +198,9 @@ app.whenReady().then(() => {
   // net.fetch() ignores Range headers so video elements show 0:00 and never load.
   protocol.handle('localfile', (request) => {
     const filePath = decodeURIComponent(request.url.replace('localfile://', ''));
+    if (!isAllowedLocalFilePath(filePath)) {
+      return new Response('Forbidden local file path', { status: 403 });
+    }
 
     // Detect MIME type for video files
     const ext = filePath.split('.').pop()?.toLowerCase() ?? '';
@@ -194,7 +228,13 @@ app.whenReady().then(() => {
         const [startStr, endStr] = rangeHeader.replace('bytes=', '').split('-');
         const start = parseInt(startStr, 10);
         // When end is omitted (bytes=0-), serve to EOF — 1MB cap caused playback to stop after 1 second
-        const end = (endStr && endStr.length > 0) ? parseInt(endStr, 10) : totalSize - 1;
+        const end = Math.min((endStr && endStr.length > 0) ? parseInt(endStr, 10) : totalSize - 1, totalSize - 1);
+        if (!Number.isFinite(start) || start < 0 || start >= totalSize || end < start) {
+          return new Response('Requested range not satisfiable', {
+            status: 416,
+            headers: { 'Content-Range': `bytes */${totalSize}` },
+          });
+        }
         const chunkSize = end - start + 1;
 
         const stream = createReadStream(filePath, { start, end });
@@ -340,6 +380,7 @@ ipcMain.handle('select-video', async () => {
   if (result.canceled || result.filePaths.length === 0) {
     return { cancelled: true };
   }
+  registerApprovedPath(result.filePaths[0]);
   return { cancelled: false, filePath: result.filePaths[0] };
 });
 
@@ -352,6 +393,7 @@ ipcMain.handle('select-output-dir', async () => {
   if (result.canceled || result.filePaths.length === 0) {
     return { cancelled: true };
   }
+  registerApprovedPath(result.filePaths[0]);
   return { cancelled: false, dirPath: result.filePaths[0] };
 });
 
@@ -363,6 +405,7 @@ ipcMain.handle('extract-clips', async (_event, { videoPath, options }: {
 }) => {
   const outputDir = join(app.getPath('userData'), 'clips', Date.now().toString());
   const bp = (store.get('brandProfile') as Record<string, unknown>) || DEFAULT_BRAND;
+  registerApprovedPaths([videoPath, outputDir]);
 
   // Save the full source video path so re-extraction works
   const mkdirSync = require('fs').mkdirSync;
@@ -608,6 +651,7 @@ const DEFAULT_BRAND: Record<string, unknown> = {
 };
 
 ipcMain.handle('save-brand-profile', async (_event, profile: Record<string, unknown>) => {
+  if (typeof profile.logoPath === 'string') registerApprovedPath(profile.logoPath);
   store.set('brandProfile', profile);
   return { success: true };
 });
@@ -625,6 +669,7 @@ ipcMain.handle('select-logo', async () => {
     properties: ['openFile'],
   });
   if (result.canceled || !result.filePaths[0]) return { cancelled: true };
+  registerApprovedPath(result.filePaths[0]);
   return { cancelled: false, filePath: result.filePaths[0] };
 });
 
@@ -636,6 +681,7 @@ ipcMain.handle('select-image-file', async () => {
     properties: ['openFile'],
   });
   if (result.canceled || !result.filePaths[0]) return { cancelled: true };
+  registerApprovedPath(result.filePaths[0]);
   return { cancelled: false, filePath: result.filePaths[0] };
 });
 
@@ -658,6 +704,7 @@ ipcMain.handle('export-carousel-deck', async (_event, { title, images }: { title
       require('fs').writeFileSync(filePath, buffer);
       savedPaths.push(filePath);
     }
+    registerApprovedPaths([folderPath, ...savedPaths]);
     
     return { success: true, folderPath, savedPaths };
   } catch (error) {
@@ -870,11 +917,15 @@ function findFfprobe(): string {
 // Per-clip async thumbnail — never blocks scan
 ipcMain.handle('generate-thumbnail', (_event, { videoPath, thumbPath }: { videoPath: string; thumbPath: string }) => {
   const ffmpeg = findFfmpeg();
+  registerApprovedPaths([videoPath, thumbPath]);
   return new Promise<{ success: boolean; thumbPath?: string }>((resolve) => {
     // -frames:v 1 -update 1 required for newer ffmpeg to write a single JPEG without pattern
     execFile(ffmpeg, ['-y', '-ss', '1', '-i', videoPath, '-frames:v', '1', '-q:v', '3', '-vf', 'scale=540:960', '-update', '1', thumbPath],
       { timeout: 12000 }, (err) => {
-        if (!err && existsSync(thumbPath)) resolve({ success: true, thumbPath });
+        if (!err && existsSync(thumbPath)) {
+          registerApprovedPath(thumbPath);
+          resolve({ success: true, thumbPath });
+        }
         else resolve({ success: false });
       });
   });
@@ -1029,6 +1080,7 @@ ipcMain.handle('render-video', async (_event, payload: RenderVideoProps | { prop
   const outDir = outputDir || app.getPath('downloads');
   if (!existsSync(outDir)) { try { mkdirSync(outDir, { recursive: true }); } catch {} }
   const outFile = join(outDir, `6fb_edit_${Date.now()}.mp4`);
+  registerApprovedPaths([clipPath, music?.path, outDir, outFile]);
   
   // Calculate duration correctly depending on if cuts exist
   let duration = trimEnd - trimStart;
@@ -1130,6 +1182,7 @@ ipcMain.handle('render-video', async (_event, payload: RenderVideoProps | { prop
     child.on('close', (code: number) => {
       if (code === 0) {
         mainWindow?.webContents.send('progress-update', { percent: 100, label: 'Done!' });
+        registerApprovedPath(outFile);
         resolve({ success: true, outputPath: outFile });
       } else {
         resolve({ success: false, error: `ffmpeg exited ${code}: ${stderr.slice(-300)}` });
@@ -1389,7 +1442,13 @@ const schedulerPath = () => join(app.getPath('userData'), 'scheduled_posts.json'
 function loadScheduledPosts(): Record<string, unknown>[] {
   const p = schedulerPath();
   if (!existsSync(p)) return [];
-  try { return JSON.parse(readFileSync(p, 'utf-8')); } catch { return []; }
+  try {
+    const posts = JSON.parse(readFileSync(p, 'utf-8')) as Record<string, unknown>[];
+    for (const post of posts) {
+      registerApprovedPaths([post.mediaPath as string | undefined, post.thumbnailPath as string | undefined]);
+    }
+    return posts;
+  } catch { return []; }
 }
 
 function saveSchedulerData(posts: Record<string, unknown>[]) {
@@ -1402,6 +1461,7 @@ ipcMain.handle('save-scheduled-post', async (_event, post: Record<string, unknow
   const posts = loadScheduledPosts();
   const idx = posts.findIndex(p => p.id === post.id);
   if (idx >= 0) posts[idx] = post; else posts.push(post);
+  registerApprovedPaths([post.mediaPath as string | undefined, post.thumbnailPath as string | undefined]);
   saveSchedulerData(posts);
   return { success: true };
 });

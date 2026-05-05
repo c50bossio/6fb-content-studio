@@ -162,3 +162,8 @@ jobs:
             ${{ env.YML_PATH }}
             ${{ env.ZIP_BLOCKMAP_PATH }}
           token: ${{ secrets.GH_TOKEN }}
+
+      - name: Smoke published macOS DMG
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: bash scripts/smoke-mac-release-dmg.sh "$GITHUB_REF_NAME"
