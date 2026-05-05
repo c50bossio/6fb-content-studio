@@ -9,8 +9,11 @@ if [[ -z "$KEYCHAIN_PATH" ]]; then
   exit 2
 fi
 
-mapfile -t IDENTITY_HASHES < <(
-  security find-identity -v -p codesigning "$KEYCHAIN_PATH" |
+IDENTITY_HASHES=()
+while IFS= read -r hash; do
+  [[ -n "$hash" ]] && IDENTITY_HASHES+=("$hash")
+done < <(
+  security find-identity -v -p codesigning "$KEYCHAIN_PATH" 2>/dev/null |
     awk -v pattern="$IDENTITY_PATTERN" '$0 ~ pattern { print $2 }'
 )
 
