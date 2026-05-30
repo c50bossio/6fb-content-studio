@@ -13,7 +13,7 @@ import Scheduler from './pages/Scheduler';
 import Analytics from './pages/Analytics';
 import { useStudioStats } from './hooks/useStudioStats';
 import UpdateBanner from './components/UpdateBanner';
-import type { ContentStrategyBrief } from './types/content-strategy';
+import type { ContentBrain, ContentStrategyBrief } from './types/content-strategy';
 import type { PublishingQueueResponse } from './types/publishing';
 
 export interface BrandProfile {
@@ -80,6 +80,8 @@ declare global {
       // Brand
       saveBrandProfile: (profile: BrandProfile) => Promise<{ success: boolean }>;
       getBrandProfile: () => Promise<BrandProfile>;
+      saveContentBrain: (brain: ContentBrain) => Promise<{ success: boolean }>;
+      getContentBrain: () => Promise<ContentBrain>;
       // System
       getAppVersion: () => Promise<string>;
       renderVideo: (compositionId: string, props: Record<string, unknown> & { cuts?: {start: number, end: number}[] }) => Promise<{ success: boolean; error?: string }>;
@@ -173,6 +175,18 @@ export default function App() {
           brandName: '6FB Mentorship', primaryColor: '#00C851', accentColor: '#ffffff',
           backgroundColor: '#0f0f0f', fontPreset: 'clean-pro', headlineFont: 'Space Grotesk',
           bodyFont: 'Inter', layoutStyle: 'bold', tone: 'professional', logoPath: null,
+        }),
+        saveContentBrain: async () => ({ success: true }),
+        getContentBrain: async () => ({
+          audience: '',
+          positioning: '',
+          offers: [],
+          contentPillars: [],
+          proofAssets: [],
+          voiceRules: [],
+          preferredPhrases: [],
+          avoidedPhrases: [],
+          exampleHooks: [],
         }),
         renderVideo: async () => ({ success: false, error: 'Electron required' }),
         postToSocial: async () => ({ success: false, error: 'Electron required' }),

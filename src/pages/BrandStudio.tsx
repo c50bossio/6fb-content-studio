@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { BrandProfile } from '../App';
+import type { ContentBrain } from '../types/content-strategy';
 import useGoogleFonts from '../hooks/useGoogleFonts';
 
 // WCAG relative luminance calculation
@@ -70,10 +71,26 @@ const DEFAULT_PROFILE: BrandProfile = {
   logoPath: null,
 };
 
+const DEFAULT_CONTENT_BRAIN: ContentBrain = {
+  audience: '',
+  positioning: '',
+  offers: [],
+  contentPillars: [],
+  proofAssets: [],
+  voiceRules: [],
+  preferredPhrases: [],
+  avoidedPhrases: [],
+  exampleHooks: [],
+};
+
+const listToText = (items: string[]) => items.join('\n');
+const textToList = (text: string) => text.split('\n').map(item => item.trim()).filter(Boolean);
+
 interface Props { onSave?: (profile: BrandProfile) => void; }
 
 export default function BrandStudio({ onSave }: Props) {
   const [profile, setProfile] = useState<BrandProfile>(DEFAULT_PROFILE);
+  const [contentBrain, setContentBrain] = useState<ContentBrain>(DEFAULT_CONTENT_BRAIN);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -87,10 +104,16 @@ export default function BrandStudio({ onSave }: Props) {
 
   useEffect(() => {
     window.electronAPI.getBrandProfile().then(p => setProfile(p)).catch(() => {});
+    window.electronAPI.getContentBrain().then(b => setContentBrain({ ...DEFAULT_CONTENT_BRAIN, ...b })).catch(() => {});
   }, []);
 
   const update = useCallback(<K extends keyof BrandProfile>(key: K, val: BrandProfile[K]) => {
     setProfile(prev => ({ ...prev, [key]: val }));
+    setSaved(false);
+  }, []);
+
+  const updateBrain = useCallback(<K extends keyof ContentBrain>(key: K, val: ContentBrain[K]) => {
+    setContentBrain(prev => ({ ...prev, [key]: val }));
     setSaved(false);
   }, []);
 
@@ -106,7 +129,10 @@ export default function BrandStudio({ onSave }: Props) {
 
   const handleSave = async () => {
     setSaving(true);
-    await window.electronAPI.saveBrandProfile(profile);
+    await Promise.all([
+      window.electronAPI.saveBrandProfile(profile),
+      window.electronAPI.saveContentBrain(contentBrain),
+    ]);
     onSave?.(profile);
     setSaving(false);
     setSaved(true);
@@ -320,11 +346,50 @@ export default function BrandStudio({ onSave }: Props) {
           </div>
         </Section>
 
+        {/* ── Content Brain ── */}
+        <Section title="Content Brain">
+          <div className="space-y-4 rounded-xl border border-[#222] bg-[#111] p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="field-label">Core Audience</label>
+                <textarea
+                  value={contentBrain.audience}
+                  onChange={e => updateBrain('audience', e.target.value)}
+                  placeholder="Who you are really speaking to"
+                  rows={3}
+                  className="field-input resize-none leading-relaxed"
+                />
+              </div>
+              <div>
+                <label className="field-label">Positioning</label>
+                <textarea
+                  value={contentBrain.positioning}
+                  onChange={e => updateBrain('positioning', e.target.value)}
+                  placeholder="What you believe, teach, or stand for"
+                  rows={3}
+                  className="field-input resize-none leading-relaxed"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <BrainListField label="Offers" value={contentBrain.offers} onChange={value => updateBrain('offers', value)} placeholder="Membership, coaching, downloads, services" />
+              <BrainListField label="Content Pillars" value={contentBrain.contentPillars} onChange={value => updateBrain('contentPillars', value)} placeholder="Pricing, retention, marketing, systems" />
+              <BrainListField label="Proof Assets" value={contentBrain.proofAssets} onChange={value => updateBrain('proofAssets', value)} placeholder="Client wins, numbers, stories, before/after proof" />
+              <BrainListField label="Voice Rules" value={contentBrain.voiceRules} onChange={value => updateBrain('voiceRules', value)} placeholder="Direct, no fluff, use concrete examples" />
+              <BrainListField label="Preferred Phrases" value={contentBrain.preferredPhrases} onChange={value => updateBrain('preferredPhrases', value)} placeholder="Phrases the planner should sound like you" />
+              <BrainListField label="Avoided Phrases" value={contentBrain.avoidedPhrases} onChange={value => updateBrain('avoidedPhrases', value)} placeholder="Words or phrases that feel off-brand" />
+            </div>
+
+            <BrainListField label="Example Hooks" value={contentBrain.exampleHooks} onChange={value => updateBrain('exampleHooks', value)} placeholder="Paste hooks that match your style, one per line" rows={4} />
+          </div>
+        </Section>
+
       </div>
 
       {/* Save footer */}
       <div className="mt-10 pt-6 border-t border-[#1e1e1e] flex items-center justify-between">
-        <p className="text-xs text-[#444]">Changes apply to all future carousels you generate.</p>
+        <p className="text-xs text-[#444]">Changes apply to future carousels, blogs, and planner ideas.</p>
         <button
           onClick={handleSave}
           disabled={saving}
@@ -342,6 +407,43 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <div>
       <h2 className="text-[10px] font-bold text-[#444] uppercase tracking-widest mb-4">{title}</h2>
       {children}
+    </div>
+  );
+}
+
+function BrainListField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  rows = 3,
+}: {
+  label: string;
+  value: string[];
+  onChange: (value: string[]) => void;
+  placeholder: string;
+  rows?: number;
+}) {
+  const valueText = listToText(value);
+  const [draft, setDraft] = useState(valueText);
+
+  useEffect(() => {
+    setDraft(valueText);
+  }, [valueText]);
+
+  return (
+    <div>
+      <label className="field-label">{label}</label>
+      <textarea
+        value={draft}
+        onChange={e => {
+          setDraft(e.target.value);
+          onChange(textToList(e.target.value));
+        }}
+        placeholder={placeholder}
+        rows={rows}
+        className="field-input resize-none leading-relaxed"
+      />
     </div>
   );
 }

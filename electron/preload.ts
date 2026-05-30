@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { ContentStrategyBrief } from '../src/types/content-strategy';
+import type { ContentBrain, ContentStrategyBrief } from '../src/types/content-strategy';
 import type { PublishingQueuePost } from '../src/types/publishing';
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -84,6 +84,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('save-brand-profile', profile),
   getBrandProfile: () =>
     ipcRenderer.invoke('get-brand-profile'),
+  saveContentBrain: (brain: ContentBrain) =>
+    ipcRenderer.invoke('save-content-brain', brain),
+  getContentBrain: () =>
+    ipcRenderer.invoke('get-content-brain'),
 
   // Video Rendering (Remotion)
   renderVideo: (compositionId: string, props: Record<string, unknown>) =>

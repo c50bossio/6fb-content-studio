@@ -4,7 +4,7 @@ import { existsSync, readdirSync, readFileSync, mkdirSync } from 'fs';
 import { pathToFileURL } from 'url';
 import { runClipExtractor, checkPythonDeps, cancelActiveExtraction, resolveSystemPython, type ClipExtractorRuntime } from './python-bridge';
 import { autoUpdater } from 'electron-updater';
-import type { ContentStrategyBrief } from '../src/types/content-strategy';
+import type { ContentBrain, ContentStrategyBrief } from '../src/types/content-strategy';
 import type { PublishingPlatform, PublishingQueuePost, PublishingQueueResponse, PublishingStatus } from '../src/types/publishing';
 
 // ── MUST be called before app.whenReady() ──────────────────────────────────
@@ -34,6 +34,7 @@ export interface StoreSchema {
   };
   setupComplete?: boolean;
   brandProfile?: Record<string, unknown>;
+  contentBrain?: ContentBrain;
   contentManagerToken?: string;
   contentManagerEmail?: string;
   igAccessToken?: string;
@@ -651,6 +652,18 @@ const DEFAULT_BRAND: Record<string, unknown> = {
   logoPath: null,
 };
 
+const DEFAULT_CONTENT_BRAIN: ContentBrain = {
+  audience: '',
+  positioning: '',
+  offers: [],
+  contentPillars: [],
+  proofAssets: [],
+  voiceRules: [],
+  preferredPhrases: [],
+  avoidedPhrases: [],
+  exampleHooks: [],
+};
+
 ipcMain.handle('save-brand-profile', async (_event, profile: Record<string, unknown>) => {
   if (typeof profile.logoPath === 'string') registerApprovedPath(profile.logoPath);
   store.set('brandProfile', profile);
@@ -660,6 +673,16 @@ ipcMain.handle('save-brand-profile', async (_event, profile: Record<string, unkn
 ipcMain.handle('get-brand-profile', async () => {
   const saved = store.get('brandProfile') as Record<string, unknown> | undefined;
   return saved ?? DEFAULT_BRAND;
+});
+
+ipcMain.handle('save-content-brain', async (_event, brain: ContentBrain) => {
+  store.set('contentBrain', { ...DEFAULT_CONTENT_BRAIN, ...brain, updatedAt: new Date().toISOString() });
+  return { success: true };
+});
+
+ipcMain.handle('get-content-brain', async () => {
+  const saved = store.get('contentBrain') as ContentBrain | undefined;
+  return { ...DEFAULT_CONTENT_BRAIN, ...(saved ?? {}) };
 });
 
 ipcMain.handle('select-logo', async () => {
