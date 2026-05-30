@@ -36,6 +36,19 @@ export interface ContentStrategyBrief {
   source?: 'planner' | 'playbook' | 'clip-run' | 'manual';
 }
 
+export interface ContentBrain {
+  audience: string;
+  positioning: string;
+  offers: string[];
+  contentPillars: string[];
+  proofAssets: string[];
+  voiceRules: string[];
+  preferredPhrases: string[];
+  avoidedPhrases: string[];
+  exampleHooks: string[];
+  updatedAt?: string;
+}
+
 export interface ClipStrategyMeta {
   label: 'Strong Hook' | 'Proof Moment' | 'Payoff' | 'Needs Context' | 'Best Package Fit' | string;
   rationale?: string;

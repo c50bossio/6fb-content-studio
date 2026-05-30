@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { ContentIntent, ContentStrategyBrief, PackageVariant, StrategyScoreBreakdown } from '../types/content-strategy';
+import type { ContentBrain, ContentIntent, ContentStrategyBrief, PackageVariant, StrategyScoreBreakdown } from '../types/content-strategy';
 
 // ── Copy hook ─────────────────────────────────────────────────────────────
 function useCopy() {
@@ -107,6 +107,29 @@ const fallbackPackage = (topic: string, promise: string, viewerOutcome: string):
 
 const jsonForPrompt = (value: unknown) => JSON.stringify(value, null, 2).replace(/</g, '\\u003c');
 
+function contentBrainPromptBlock(contentBrain?: ContentBrain | null) {
+  if (!contentBrain) return '';
+  const sections = [
+    contentBrain.audience.trim() && `Core audience: ${contentBrain.audience.trim()}`,
+    contentBrain.positioning.trim() && `Positioning: ${contentBrain.positioning.trim()}`,
+    contentBrain.offers.length && `Offers to naturally support: ${contentBrain.offers.join('; ')}`,
+    contentBrain.contentPillars.length && `Content pillars: ${contentBrain.contentPillars.join('; ')}`,
+    contentBrain.proofAssets.length && `Proof assets to prefer: ${contentBrain.proofAssets.join('; ')}`,
+    contentBrain.voiceRules.length && `Voice rules: ${contentBrain.voiceRules.join('; ')}`,
+    contentBrain.preferredPhrases.length && `Preferred phrases: ${contentBrain.preferredPhrases.join('; ')}`,
+    contentBrain.avoidedPhrases.length && `Avoided phrases: ${contentBrain.avoidedPhrases.join('; ')}`,
+    contentBrain.exampleHooks.length && `Example hooks in the user's style: ${contentBrain.exampleHooks.join(' | ')}`,
+  ].filter(Boolean);
+
+  if (!sections.length) return '';
+
+  return `
+Brand Brain context:
+${sections.map(section => `- ${section}`).join('\n')}
+
+Use this context to make the plan specific to the user's actual business. Do not force an offer or phrase if it does not fit the topic.`;
+}
+
 function buildStrategyBrief(input: {
   topic: string;
   intent: ContentIntent;
@@ -148,7 +171,7 @@ function buildStrategyBrief(input: {
 
 // ── Claude prompt ──────────────────────────────────────────────────────────
 
-function buildPrompt(topic: string, perspective: string, videoType: string, targetLength: string, strategyBrief: ContentStrategyBrief) {
+function buildPrompt(topic: string, perspective: string, videoType: string, targetLength: string, strategyBrief: ContentStrategyBrief, contentBrain?: ContentBrain | null) {
   const lengthMeta = TARGET_LENGTHS.find(l => l.value === targetLength) ?? TARGET_LENGTHS[1];
   const perspLabel = PERSPECTIVES.find(p => p.value === perspective)?.label ?? perspective;
   const typeLabel  = VIDEO_TYPES.find(t => t.value === videoType)?.label ?? videoType;
@@ -198,6 +221,7 @@ Strategy brief:
 - Proof asset: ${strategyBrief.proofAsset}
 - Payoff: ${strategyBrief.payoff}
 - Positioning: ${strategyBrief.positioning}
+${contentBrainPromptBlock(contentBrain)}
 
 Package the idea BEFORE the script. Generate title and thumbnail directions first, then build the timeline around that promise.
 
@@ -346,9 +370,13 @@ export default function VideoPlanner() {
   const [showTrending, setShowTrending]         = useState(false);
   const [briefData, setBriefData]               = useState<{ today: { topic: string; hookIdea?: string } | null; week: { day: string; topic: string | null; status: string }[] } | null>(null);
   const [expandedBody, setExpandedBody]         = useState<number | null>(null);
+  const [contentBrain, setContentBrain]         = useState<ContentBrain | null>(null);
   const { copy: copyAll, copied: copiedAll }    = useCopy();
 
-  useEffect(() => { loadSavedPlans(); }, []);
+  useEffect(() => {
+    loadSavedPlans();
+    (window.electronAPI as any).getContentBrain?.().then((brain: ContentBrain) => setContentBrain(brain)).catch(() => {});
+  }, []);
 
   async function loadSavedPlans() {
     try {
@@ -398,7 +426,7 @@ export default function VideoPlanner() {
         payoff,
         positioning,
       });
-      const prompt = buildPrompt(topic, perspective, videoType, targetLength, strategyDraft);
+      const prompt = buildPrompt(topic, perspective, videoType, targetLength, strategyDraft, contentBrain);
       const response = await (window.electronAPI as any).generateVideoPlan?.({ prompt });
       const raw: Omit<VideoPlan, 'id' | 'topic' | 'perspective' | 'videoType' | 'targetLength' | 'createdAt'> & { strategyBrief?: Partial<ContentStrategyBrief> } =
         (response?.success && response.plan) ? response.plan : buildFallbackPlan(topic, perspective, videoType, targetLength);
