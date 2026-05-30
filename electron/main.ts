@@ -109,12 +109,61 @@ function isInsidePath(childPath: string, parentPath: string) {
   return rel === '' || (!!rel && !rel.startsWith('..') && !isAbsolute(rel));
 }
 
+function localFilePathFromValue(value?: string | null) {
+  if (!value || /^(https?:|data:|blob:)/i.test(value)) return undefined;
+  const localfilePrefix = 'localfile://';
+  const filePath = value.startsWith(localfilePrefix)
+    ? decodeURIComponent(value.slice(localfilePrefix.length))
+    : value;
+  return isAbsolute(filePath) ? filePath : undefined;
+}
+
 function registerApprovedPath(filePath?: string | null) {
-  if (filePath) approvedFilePaths.add(resolve(filePath));
+  const localFilePath = localFilePathFromValue(filePath);
+  if (localFilePath) approvedFilePaths.add(resolve(localFilePath));
 }
 
 function registerApprovedPaths(paths: Array<string | null | undefined>) {
   for (const filePath of paths) registerApprovedPath(filePath);
+}
+
+function objectValue(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' ? value as Record<string, unknown> : undefined;
+}
+
+function stringField(value: unknown, key: string) {
+  const record = objectValue(value);
+  const field = record?.[key];
+  return typeof field === 'string' ? field : undefined;
+}
+
+function registerBrandSnapshotAssetPaths(value: unknown) {
+  registerApprovedPath(stringField(value, 'logoPath'));
+}
+
+function registerCarouselAssetPaths(value: unknown) {
+  const data = objectValue(value);
+  if (!data) return;
+
+  if (Array.isArray(data.slides)) {
+    for (const slide of data.slides) registerApprovedPath(stringField(slide, 'framePath'));
+  }
+  registerBrandSnapshotAssetPaths(data.brandSnapshot);
+}
+
+function registerBlogAssetPaths(value: unknown) {
+  const data = objectValue(value);
+  if (!data) return;
+
+  if (Array.isArray(data.sections)) {
+    for (const section of data.sections) registerApprovedPath(stringField(section, 'imagePath'));
+  }
+  registerBrandSnapshotAssetPaths(data.brandSnapshot);
+}
+
+function registerPublishingPostAssetPaths(post: Pick<PublishingQueuePost, 'mediaPath' | 'mediaUrls' | 'thumbnailPath'>) {
+  registerApprovedPaths([post.mediaPath, post.thumbnailPath]);
+  registerApprovedPaths(Array.isArray(post.mediaUrls) ? post.mediaUrls : []);
 }
 
 function isAllowedLocalFilePath(filePath: string) {
@@ -173,6 +222,7 @@ function createWindow() {
       preload: join(__dirname, '../preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
+      webSecurity: true,
     },
   });
 
@@ -1227,7 +1277,9 @@ ipcMain.handle('save-carousel', async (_event, { title, slides, brandSnapshot }:
   if (!existsSync(dir)) { const { mkdirSync } = await import('fs'); mkdirSync(dir, { recursive: true }); }
   const id = Date.now().toString();
   const filePath = join(dir, `${id}.json`);
-  writeFileSync(filePath, JSON.stringify({ id, title, slides, brandSnapshot, createdAt: new Date().toISOString() }, null, 2));
+  const data = { id, title, slides, brandSnapshot, createdAt: new Date().toISOString() };
+  registerCarouselAssetPaths(data);
+  writeFileSync(filePath, JSON.stringify(data, null, 2));
   return { success: true, id };
 });
 
@@ -1250,6 +1302,7 @@ ipcMain.handle('load-carousel', async (_event, id: string) => {
   const filePath = join(carouselsDir(), `${id}.json`);
   try {
     const data = JSON.parse(readFileSync(filePath, 'utf-8'));
+    registerCarouselAssetPaths(data);
     return { success: true, data };
   } catch (err) { return { success: false, error: String(err) }; }
 });
@@ -1400,7 +1453,9 @@ ipcMain.handle('save-blog-post', async (_event, { title, metaDescription, sectio
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
   const id = Date.now().toString();
   const filePath = join(dir, `${id}.json`);
-  require('fs').writeFileSync(filePath, JSON.stringify({ id, title, metaDescription, sections, brandSnapshot, createdAt: new Date().toISOString() }, null, 2));
+  const data = { id, title, metaDescription, sections, brandSnapshot, createdAt: new Date().toISOString() };
+  registerBlogAssetPaths(data);
+  require('fs').writeFileSync(filePath, JSON.stringify(data, null, 2));
   return { success: true, id };
 });
 
@@ -1423,6 +1478,7 @@ ipcMain.handle('load-blog-post', async (_event, id: string) => {
   const filePath = join(blogsDir(), `${id}.json`);
   try {
     const data = JSON.parse(readFileSync(filePath, 'utf-8'));
+    registerBlogAssetPaths(data);
     return { success: true, data };
   } catch (err) { return { success: false, error: String(err) }; }
 });
@@ -1576,9 +1632,7 @@ function loadLocalPublishingPosts(): PublishingQueuePost[] {
     const normalized = posts
       .map(post => normalizePublishingPost(post, 'local'))
       .filter((post): post is PublishingQueuePost => !!post && visiblePublishingStatuses.has(post.status));
-    for (const post of normalized) {
-      registerApprovedPaths([post.mediaPath as string | undefined, post.thumbnailPath as string | undefined]);
-    }
+    for (const post of normalized) registerPublishingPostAssetPaths(post);
     return sortPublishingPosts(normalized);
   } catch { return []; }
 }
@@ -1677,7 +1731,7 @@ ipcMain.handle('save-scheduled-post', async (_event, post: Record<string, unknow
   const posts = loadLocalPublishingPosts();
   const idx = posts.findIndex(p => p.id === normalized.id);
   if (idx >= 0) posts[idx] = normalized; else posts.push(normalized);
-  registerApprovedPaths([normalized.mediaPath, normalized.thumbnailPath]);
+  registerPublishingPostAssetPaths(normalized);
   saveSchedulerData(posts);
   return { success: true, post: normalized };
 });
