@@ -130,6 +130,10 @@ declare global {
         media: unknown[];
         error?: string;
       }>;
+      // Video Planner
+      generateVideoPlan: (data: { prompt: string }) => Promise<{ success: boolean; plan?: unknown; error?: string }>;
+      saveVideoPlan: (plan: object) => Promise<{ success: boolean; id?: string; error?: string }>;
+      listVideoPlans: () => Promise<{ plans: unknown[]; error?: string }>;
     };
   }
 }
@@ -151,11 +155,64 @@ export default function App() {
 
   useEffect(() => {
     if (!window.electronAPI) {
+      const localJson = <T extends object>(key: string, fallback: T): T => {
+        try {
+          const value = localStorage.getItem(key);
+          return value ? { ...fallback, ...JSON.parse(value) } : fallback;
+        } catch {
+          return fallback;
+        }
+      };
+      const localList = <T,>(key: string): T[] => {
+        try {
+          const value = localStorage.getItem(key);
+          const parsed = value ? JSON.parse(value) : [];
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      };
+      const mockBrandProfile: BrandProfile = {
+        brandName: '6FB Mentorship',
+        primaryColor: '#00C851',
+        accentColor: '#ffffff',
+        backgroundColor: '#0f0f0f',
+        fontPreset: 'clean-pro',
+        headlineFont: 'Space Grotesk',
+        bodyFont: 'Inter',
+        layoutStyle: 'bold',
+        tone: 'professional',
+        logoPath: null,
+      };
+      const mockContentBrain: ContentBrain = {
+        audience: '',
+        positioning: '',
+        offers: [],
+        contentPillars: [],
+        proofAssets: [],
+        voiceRules: [],
+        preferredPhrases: [],
+        avoidedPhrases: [],
+        exampleHooks: [],
+      };
       (window as unknown as { electronAPI: typeof window.electronAPI }).electronAPI = {
-        saveApiKey: async () => ({ success: true }),
-        getApiKey: async () => ({ hasKey: false, hint: null }),
-        getAllSettings: async () => ({ apiKeys: { claude: false, openai: false }, setupComplete: false }),
-        completeSetup: async () => ({ success: true }),
+        saveApiKey: async (provider) => {
+          if (provider === 'claude') localStorage.setItem('contentStudio:hasClaudeKey', 'true');
+          return { success: true };
+        },
+        getApiKey: async (provider) => ({
+          hasKey: provider === 'claude' && localStorage.getItem('contentStudio:hasClaudeKey') === 'true',
+          hint: null,
+        }),
+        getAllSettings: async () => ({
+          apiKeys: { claude: localStorage.getItem('contentStudio:hasClaudeKey') === 'true', openai: false },
+          contentPlannerToken: false,
+          setupComplete: localStorage.getItem('contentStudio:setupComplete') === 'true',
+        }),
+        completeSetup: async () => {
+          localStorage.setItem('contentStudio:setupComplete', 'true');
+          return { success: true };
+        },
         selectVideo: async () => ({ cancelled: true }),
         selectOutputDir: async () => ({ cancelled: true }),
         selectLogo: async () => ({ cancelled: true }),
@@ -170,24 +227,16 @@ export default function App() {
         extractCarousel: async () => ({ success: false, error: 'Electron required' }),
         readTranscript: async () => ({ success: false, error: 'Electron required' }),
         autoMatchCarouselFrames: async () => ({ success: false, error: 'Electron required' }),
-        saveBrandProfile: async () => ({ success: true }),
-        getBrandProfile: async () => ({
-          brandName: '6FB Mentorship', primaryColor: '#00C851', accentColor: '#ffffff',
-          backgroundColor: '#0f0f0f', fontPreset: 'clean-pro', headlineFont: 'Space Grotesk',
-          bodyFont: 'Inter', layoutStyle: 'bold', tone: 'professional', logoPath: null,
-        }),
-        saveContentBrain: async () => ({ success: true }),
-        getContentBrain: async () => ({
-          audience: '',
-          positioning: '',
-          offers: [],
-          contentPillars: [],
-          proofAssets: [],
-          voiceRules: [],
-          preferredPhrases: [],
-          avoidedPhrases: [],
-          exampleHooks: [],
-        }),
+        saveBrandProfile: async (profile) => {
+          localStorage.setItem('contentStudio:brandProfile', JSON.stringify(profile));
+          return { success: true };
+        },
+        getBrandProfile: async () => localJson('contentStudio:brandProfile', mockBrandProfile),
+        saveContentBrain: async (brain) => {
+          localStorage.setItem('contentStudio:contentBrain', JSON.stringify(brain));
+          return { success: true };
+        },
+        getContentBrain: async () => localJson('contentStudio:contentBrain', mockContentBrain),
         renderVideo: async () => ({ success: false, error: 'Electron required' }),
         postToSocial: async () => ({ success: false, error: 'Electron required' }),
         onProgress: () => () => {},
@@ -233,6 +282,17 @@ export default function App() {
           igConnected: false,
           account: null,
           media: [],
+        }),
+        generateVideoPlan: async () => ({ success: false, error: 'Electron required' }),
+        saveVideoPlan: async (plan) => {
+          const plans = localList<object>('contentStudio:videoPlans');
+          const planWithId = { id: Date.now().toString(), ...plan };
+          localStorage.setItem('contentStudio:videoPlans', JSON.stringify([planWithId, ...plans]));
+          return { success: true, id: (planWithId as { id: string }).id };
+        },
+        listVideoPlans: async () => ({
+          plans: localList<Record<string, unknown>>('contentStudio:videoPlans')
+            .sort((a, b) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? ''))),
         }),
       } as unknown as typeof window.electronAPI;
     }
