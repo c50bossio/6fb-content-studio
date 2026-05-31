@@ -1,5 +1,13 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import type { ContentBrain, ContentIntent, ContentStrategyBrief, PackageVariant, StrategyScoreBreakdown } from '../types/content-strategy';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import type {
+  ContentBrain,
+  ContentIntent,
+  ContentStrategyBrief,
+  PackageVariant,
+  StrategyContextSnapshot,
+  StrategyInsights,
+  StrategyScoreBreakdown,
+} from '../types/content-strategy';
 
 // ── Copy hook ─────────────────────────────────────────────────────────────
 function useCopy() {
@@ -83,6 +91,217 @@ const INTENT_OPTIONS: { value: ContentIntent; label: string }[] = [
   { value: 'hybrid', label: 'Hybrid' },
 ];
 
+const DEFAULT_AUDIENCE = 'Barbers and barbershop owners';
+const DEFAULT_POSITIONING = 'Practical, direct, barber-specific advice';
+
+type BriefField = 'audience' | 'viewerOutcome' | 'promise' | 'curiosityGap' | 'proofAsset' | 'payoff' | 'positioning';
+type BriefValues = Record<BriefField, string>;
+type BriefTouchedState = Record<BriefField, boolean>;
+type BriefSuggestions = Partial<Record<BriefField, string>>;
+
+const BRIEF_FIELDS: BriefField[] = ['audience', 'viewerOutcome', 'promise', 'curiosityGap', 'proofAsset', 'payoff', 'positioning'];
+
+const BRIEF_FIELD_LABELS: Record<BriefField, string> = {
+  audience: 'Audience',
+  viewerOutcome: 'Viewer outcome',
+  promise: 'Promise',
+  curiosityGap: 'Curiosity gap',
+  proofAsset: 'Proof asset',
+  payoff: 'Payoff',
+  positioning: 'Positioning',
+};
+
+const EMPTY_TOUCHED_STATE: BriefTouchedState = {
+  audience: false,
+  viewerOutcome: false,
+  promise: false,
+  curiosityGap: false,
+  proofAsset: false,
+  payoff: false,
+  positioning: false,
+};
+
+const TOPIC_STOPWORDS = new Set([
+  'the', 'and', 'for', 'with', 'that', 'this', 'your', 'you', 'how', 'why', 'what', 'when', 'from', 'into', 'about',
+  'most', 'barber', 'barbers', 'barbershop', 'shop', 'their', 'they', 'them',
+]);
+
+const safeTrim = (value?: string | null) => (value ?? '').trim();
+const cleanList = (items?: string[] | null) => (items ?? []).map(item => item.trim()).filter(Boolean);
+
+function topicTokens(text: string) {
+  return new Set(
+    text.toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .map(token => token.trim())
+      .filter(token => token.length > 2 && !TOPIC_STOPWORDS.has(token))
+  );
+}
+
+function selectContextItems(items: string[] | undefined, topic: string, limit = 2) {
+  const cleaned = cleanList(items);
+  const tokens = topicTokens(topic);
+
+  return cleaned
+    .map((item, index) => {
+      const lower = item.toLowerCase();
+      let score = 0;
+      tokens.forEach(token => {
+        if (lower.includes(token)) score += 2;
+      });
+      return { item, index, score };
+    })
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, limit)
+    .map(result => result.item);
+}
+
+function hasContentBrainContext(contentBrain?: ContentBrain | null) {
+  if (!contentBrain) return false;
+  return Boolean(
+    safeTrim(contentBrain.audience) ||
+    safeTrim(contentBrain.positioning) ||
+    cleanList(contentBrain.offers).length ||
+    cleanList(contentBrain.contentPillars).length ||
+    cleanList(contentBrain.proofAssets).length ||
+    cleanList(contentBrain.voiceRules).length ||
+    cleanList(contentBrain.preferredPhrases).length ||
+    cleanList(contentBrain.avoidedPhrases).length ||
+    cleanList(contentBrain.exampleHooks).length
+  );
+}
+
+function buildContextSnapshot(contentBrain: ContentBrain | null, topic: string): StrategyContextSnapshot {
+  if (!contentBrain) {
+    return { selectedPillars: [], selectedProofAssets: [], selectedOffers: [] };
+  }
+
+  return {
+    selectedPillars: selectContextItems(contentBrain.contentPillars, topic, 2),
+    selectedProofAssets: selectContextItems(contentBrain.proofAssets, topic, 2),
+    selectedOffers: selectContextItems(contentBrain.offers, topic, 2),
+    brainUpdatedAt: contentBrain.updatedAt,
+  };
+}
+
+function isWeakBriefValue(field: BriefField, value: string) {
+  const trimmed = safeTrim(value);
+  if (!trimmed) return true;
+  if (field === 'audience') return trimmed === DEFAULT_AUDIENCE;
+  if (field === 'positioning') return trimmed === DEFAULT_POSITIONING;
+  return false;
+}
+
+function buildBriefSuggestions(input: {
+  topic: string;
+  contentBrain: ContentBrain | null;
+  contextSnapshot: StrategyContextSnapshot;
+}): BriefSuggestions {
+  const topicText = safeTrim(input.topic);
+  const topPillar = input.contextSnapshot.selectedPillars[0];
+  const topProof = input.contextSnapshot.selectedProofAssets[0];
+  const suggestions: BriefSuggestions = {
+    audience: safeTrim(input.contentBrain?.audience) || undefined,
+    viewerOutcome: topicText ? `Know what to do next about ${topicText}` : undefined,
+    promise: topicText || undefined,
+    curiosityGap: topPillar
+      ? `The ${topPillar.toLowerCase()} mistake most barbers overlook`
+      : topicText
+        ? `The part most barbers overlook before they act on ${topicText}`
+        : undefined,
+    proofAsset: topProof || undefined,
+    payoff: topicText ? 'One clear next step viewers can use after watching' : undefined,
+    positioning: safeTrim(input.contentBrain?.positioning) || undefined,
+  };
+
+  return Object.fromEntries(
+    Object.entries(suggestions).filter(([, value]) => safeTrim(value).length > 0)
+  ) as BriefSuggestions;
+}
+
+function getApplicableSuggestions(suggestions: BriefSuggestions, values: BriefValues, touched: BriefTouchedState) {
+  return BRIEF_FIELDS.reduce<BriefSuggestions>((acc, field) => {
+    const suggestion = suggestions[field];
+    if (!suggestion || touched[field]) return acc;
+    if (!isWeakBriefValue(field, values[field])) return acc;
+    if (safeTrim(values[field]) === safeTrim(suggestion)) return acc;
+    acc[field] = suggestion;
+    return acc;
+  }, {});
+}
+
+function mergeSuggestedBriefValues(values: BriefValues, suggestions: BriefSuggestions, touched: BriefTouchedState): BriefValues {
+  return BRIEF_FIELDS.reduce<BriefValues>((acc, field) => {
+    const suggestion = suggestions[field];
+    acc[field] = !touched[field] && suggestion && isWeakBriefValue(field, values[field]) ? suggestion : values[field];
+    return acc;
+  }, { ...values });
+}
+
+function buildStrategyInsights(input: {
+  topic: string;
+  values: BriefValues;
+  contextSnapshot: StrategyContextSnapshot;
+  hasBrainContext: boolean;
+}): StrategyInsights {
+  const topicText = safeTrim(input.topic);
+  const values = input.values;
+  const gaps: string[] = [];
+  const proof = safeTrim(values.proofAsset) || input.contextSnapshot.selectedProofAssets[0];
+
+  if (!topicText) gaps.push('Add a focused video topic.');
+  if (isWeakBriefValue('audience', values.audience)) {
+    gaps.push(input.hasBrainContext ? 'Apply or refine the Brand Brain audience.' : 'Narrow the audience beyond the default.');
+  }
+  if (!safeTrim(values.viewerOutcome)) gaps.push('Define the viewer outcome.');
+  if (!safeTrim(values.promise)) gaps.push('Write the promise before generating.');
+  if (!safeTrim(values.curiosityGap)) gaps.push('Add a curiosity gap.');
+  if (!proof) gaps.push('Add a proof asset or specific example.');
+  if (!safeTrim(values.payoff)) gaps.push('Define the closing payoff.');
+
+  const readiness = !topicText || gaps.length >= 4
+    ? 'draft'
+    : gaps.length === 0 && Boolean(proof)
+      ? 'strong'
+      : 'ready';
+
+  const audience = safeTrim(values.audience) || DEFAULT_AUDIENCE;
+  const topPillar = input.contextSnapshot.selectedPillars[0];
+  const topOffer = input.contextSnapshot.selectedOffers[0];
+  const whyShootThis = topicText
+    ? `This is worth shooting because it gives ${audience} a specific next step on ${topicText}${proof ? ` backed by ${proof}` : ''}.`
+    : undefined;
+  const recommendedAngle = topicText
+    ? [
+        `Lead with ${topPillar || safeTrim(values.viewerOutcome) || 'the viewer outcome'}`,
+        `prove it with ${proof || 'one real example'}`,
+        topOffer ? `mention ${topOffer} only if it naturally fits` : '',
+      ].filter(Boolean).join('; ') + '.'
+    : undefined;
+
+  return { readiness, gaps, whyShootThis, recommendedAngle };
+}
+
+function scoreFromInsights(insights: StrategyInsights, contextSnapshot: StrategyContextSnapshot): StrategyScoreBreakdown {
+  const contextBonus = Math.min(
+    12,
+    (contextSnapshot.selectedPillars.length + contextSnapshot.selectedProofAssets.length + contextSnapshot.selectedOffers.length) * 3
+  );
+  const gapPenalty = insights.gaps.length * 7;
+  const total = Math.max(35, Math.min(92, 68 + contextBonus - gapPenalty + (insights.readiness === 'strong' ? 8 : 0)));
+
+  return {
+    audienceClarity: Math.max(45, Math.min(90, total + (insights.gaps.some(gap => gap.includes('audience')) ? -8 : 4))),
+    outcomeValue: Math.max(45, Math.min(90, total + (insights.gaps.some(gap => gap.includes('outcome')) ? -8 : 3))),
+    novelty: Math.max(40, Math.min(85, total - 4 + contextBonus)),
+    emotionalTrigger: Math.max(40, Math.min(85, total - (insights.gaps.some(gap => gap.includes('curiosity')) ? 10 : 2))),
+    packagingStrength: Math.max(45, Math.min(92, total + (insights.gaps.some(gap => gap.includes('promise')) ? -10 : 5))),
+    retentionPath: Math.max(45, Math.min(90, total + (insights.gaps.some(gap => gap.includes('payoff')) ? -8 : 2))),
+    total,
+    rationale: insights.whyShootThis || 'Local planner readiness score before generation.',
+  };
+}
+
 const emptyScore = (rationale = 'Starter score until AI generation finishes.'): StrategyScoreBreakdown => ({
   audienceClarity: 70,
   outcomeValue: 70,
@@ -107,18 +326,21 @@ const fallbackPackage = (topic: string, promise: string, viewerOutcome: string):
 
 const jsonForPrompt = (value: unknown) => JSON.stringify(value, null, 2).replace(/</g, '\\u003c');
 
-function contentBrainPromptBlock(contentBrain?: ContentBrain | null) {
-  if (!contentBrain) return '';
+function contentBrainPromptBlock(contentBrain?: ContentBrain | null, contextSnapshot?: StrategyContextSnapshot) {
+  if (!contentBrain && !contextSnapshot) return '';
+  const selectedPillars = contextSnapshot?.selectedPillars ?? [];
+  const selectedProofAssets = contextSnapshot?.selectedProofAssets ?? [];
+  const selectedOffers = contextSnapshot?.selectedOffers ?? [];
   const sections = [
-    contentBrain.audience.trim() && `Core audience: ${contentBrain.audience.trim()}`,
-    contentBrain.positioning.trim() && `Positioning: ${contentBrain.positioning.trim()}`,
-    contentBrain.offers.length && `Offers to naturally support: ${contentBrain.offers.join('; ')}`,
-    contentBrain.contentPillars.length && `Content pillars: ${contentBrain.contentPillars.join('; ')}`,
-    contentBrain.proofAssets.length && `Proof assets to prefer: ${contentBrain.proofAssets.join('; ')}`,
-    contentBrain.voiceRules.length && `Voice rules: ${contentBrain.voiceRules.join('; ')}`,
-    contentBrain.preferredPhrases.length && `Preferred phrases: ${contentBrain.preferredPhrases.join('; ')}`,
-    contentBrain.avoidedPhrases.length && `Avoided phrases: ${contentBrain.avoidedPhrases.join('; ')}`,
-    contentBrain.exampleHooks.length && `Example hooks in the user's style: ${contentBrain.exampleHooks.join(' | ')}`,
+    safeTrim(contentBrain?.audience) && `Core audience: ${safeTrim(contentBrain?.audience)}`,
+    safeTrim(contentBrain?.positioning) && `Positioning: ${safeTrim(contentBrain?.positioning)}`,
+    selectedPillars.length && `Selected content pillars for this plan: ${selectedPillars.join('; ')}`,
+    selectedProofAssets.length && `Selected proof assets to prefer: ${selectedProofAssets.join('; ')}`,
+    selectedOffers.length && `Offers that may naturally support the plan: ${selectedOffers.join('; ')}`,
+    cleanList(contentBrain?.voiceRules).length && `Voice rules: ${cleanList(contentBrain?.voiceRules).join('; ')}`,
+    cleanList(contentBrain?.preferredPhrases).length && `Preferred phrases: ${cleanList(contentBrain?.preferredPhrases).join('; ')}`,
+    cleanList(contentBrain?.avoidedPhrases).length && `Avoided phrases: ${cleanList(contentBrain?.avoidedPhrases).join('; ')}`,
+    cleanList(contentBrain?.exampleHooks).length && `Example hooks in the user's style: ${cleanList(contentBrain?.exampleHooks).join(' | ')}`,
   ].filter(Boolean);
 
   if (!sections.length) return '';
@@ -127,7 +349,7 @@ function contentBrainPromptBlock(contentBrain?: ContentBrain | null) {
 Brand Brain context:
 ${sections.map(section => `- ${section}`).join('\n')}
 
-Use this context to make the plan specific to the user's actual business. Do not force an offer or phrase if it does not fit the topic.`;
+Use this context to make the plan specific to the user's actual business. Do not force an offer or phrase if it does not fit the topic. Respect avoided phrases.`;
 }
 
 function buildStrategyBrief(input: {
@@ -142,14 +364,16 @@ function buildStrategyBrief(input: {
   positioning: string;
   packageVariants?: PackageVariant[];
   scoreBreakdown?: StrategyScoreBreakdown;
+  contextSnapshot?: StrategyContextSnapshot;
+  strategyInsights?: StrategyInsights;
 }): ContentStrategyBrief {
-  const normalizedAudience = input.audience.trim() || 'Barbers and barbershop owners';
+  const normalizedAudience = input.audience.trim() || DEFAULT_AUDIENCE;
   const normalizedViewerOutcome = input.viewerOutcome.trim() || `Understand ${input.topic} well enough to take action`;
   const normalizedPromise = input.promise.trim() || input.topic;
   const normalizedCuriosityGap = input.curiosityGap.trim() || 'What most people miss before they record';
   const normalizedProofAsset = input.proofAsset.trim() || 'Specific example, number, client story, or before/after';
   const normalizedPayoff = input.payoff.trim() || 'One memorable takeaway viewers can repeat';
-  const normalizedPositioning = input.positioning.trim() || 'Practical, direct, barber-specific advice';
+  const normalizedPositioning = input.positioning.trim() || DEFAULT_POSITIONING;
   return {
     id: `strategy-${Date.now()}`,
     intent: input.intent,
@@ -166,6 +390,8 @@ function buildStrategyBrief(input: {
     scoreBreakdown: input.scoreBreakdown || emptyScore(),
     createdAt: new Date().toISOString(),
     source: 'planner',
+    contextSnapshot: input.contextSnapshot,
+    strategyInsights: input.strategyInsights,
   };
 }
 
@@ -204,6 +430,13 @@ function buildPrompt(topic: string, perspective: string, videoType: string, targ
       total: 0,
       rationale: 'Why this idea should or should not be shot',
     },
+    contextSnapshot: strategyBrief.contextSnapshot,
+    strategyInsights: {
+      readiness: 'draft | ready | strong',
+      gaps: ['Specific missing strategy detail, or empty array when strong'],
+      whyShootThis: 'One sentence explaining why this is worth recording',
+      recommendedAngle: 'One sentence describing the best angle for the shoot',
+    },
   };
 
   return `You are a YouTube/Instagram content strategist specializing in the barber & barbershop niche.
@@ -221,9 +454,10 @@ Strategy brief:
 - Proof asset: ${strategyBrief.proofAsset}
 - Payoff: ${strategyBrief.payoff}
 - Positioning: ${strategyBrief.positioning}
-${contentBrainPromptBlock(contentBrain)}
+${contentBrainPromptBlock(contentBrain, strategyBrief.contextSnapshot)}
 
 Package the idea BEFORE the script. Generate title and thumbnail directions first, then build the timeline around that promise.
+Before the timeline, evaluate whether the idea is worth shooting. Use the selected Brand Brain proof assets when relevant. Keep offers optional and natural, never forced.
 
 The plan must be a TIMELINE — a mix of "dropzone" events and "body" events.
 - DROP ZONEs are short (5-10 sec) high-impact moments: HOOK, MID-HOOK, PAYOFF. These are the exact words to say on camera that will score highest in clip extraction.
@@ -259,6 +493,8 @@ Return ONLY valid JSON, no markdown fences:
 }
 
 Rules:
+- Fill strategyBrief.strategyInsights with readiness, gaps, whyShootThis, and recommendedAngle
+- Preserve strategyBrief.contextSnapshot unless you add a strictly better selected item from the provided Brand Brain context
 - Scripts for drop zones must be EXACT words — punchy, quotable, standalone sentences
 - MID-HOOKs should tease what's coming next ("Here's where most people get it wrong...")
 - PAYOFF is the closing takeaway — a single memorable line they'll screenshot
@@ -268,12 +504,12 @@ Rules:
 
 // ── Fallback plan builder ──────────────────────────────────────────────────
 
-function buildFallbackPlan(topic: string, perspective: string, videoType: string, targetLength: string): VideoPlan {
+function buildFallbackPlan(topic: string, perspective: string, videoType: string, targetLength: string, strategyBriefOverride?: ContentStrategyBrief): VideoPlan {
   const lengthMeta = TARGET_LENGTHS.find(l => l.value === targetLength) ?? TARGET_LENGTHS[1];
-  const strategyBrief = buildStrategyBrief({
+  const strategyBrief = strategyBriefOverride ?? buildStrategyBrief({
     topic,
     intent: 'hybrid',
-    audience: 'Barbers and barbershop owners',
+    audience: DEFAULT_AUDIENCE,
     viewerOutcome: `Know what to do next about ${topic}`,
     promise: topic,
     curiosityGap: 'The part most barbers overlook before they record',
@@ -353,13 +589,14 @@ export default function VideoPlanner() {
   const [videoType, setVideoType]       = useState('talking-head');
   const [targetLength, setTargetLength] = useState('15-20');
   const [intent, setIntent]             = useState<ContentIntent>('hybrid');
-  const [audience, setAudience]         = useState('Barbers and barbershop owners');
+  const [audience, setAudience]         = useState(DEFAULT_AUDIENCE);
   const [viewerOutcome, setViewerOutcome] = useState('');
   const [promise, setPromise]           = useState('');
   const [curiosityGap, setCuriosityGap] = useState('');
   const [proofAsset, setProofAsset]     = useState('');
   const [payoff, setPayoff]             = useState('');
-  const [positioning, setPositioning]   = useState('Practical, direct, barber-specific advice');
+  const [positioning, setPositioning]   = useState(DEFAULT_POSITIONING);
+  const [briefTouched, setBriefTouched] = useState<BriefTouchedState>(EMPTY_TOUCHED_STATE);
   const [generating, setGenerating]     = useState(false);
   const [plan, setPlan]                 = useState<VideoPlan | null>(null);
   const [savedPlans, setSavedPlans]     = useState<VideoPlan[]>([]);
@@ -373,10 +610,66 @@ export default function VideoPlanner() {
   const [contentBrain, setContentBrain]         = useState<ContentBrain | null>(null);
   const { copy: copyAll, copied: copiedAll }    = useCopy();
 
+  const briefValues = useMemo<BriefValues>(() => ({
+    audience,
+    viewerOutcome,
+    promise,
+    curiosityGap,
+    proofAsset,
+    payoff,
+    positioning,
+  }), [audience, viewerOutcome, promise, curiosityGap, proofAsset, payoff, positioning]);
+
+  const contextSnapshot = useMemo(
+    () => buildContextSnapshot(contentBrain, topic),
+    [contentBrain, topic]
+  );
+
+  const hasBrainContext = useMemo(
+    () => hasContentBrainContext(contentBrain),
+    [contentBrain]
+  );
+
+  const suggestedBriefValues = useMemo(
+    () => buildBriefSuggestions({ topic, contentBrain, contextSnapshot }),
+    [topic, contentBrain, contextSnapshot]
+  );
+
+  const applicableSuggestions = useMemo(
+    () => getApplicableSuggestions(suggestedBriefValues, briefValues, briefTouched),
+    [suggestedBriefValues, briefValues, briefTouched]
+  );
+
+  const previewBriefValues = useMemo(
+    () => mergeSuggestedBriefValues(briefValues, suggestedBriefValues, briefTouched),
+    [briefValues, suggestedBriefValues, briefTouched]
+  );
+
+  const strategyInsights = useMemo(
+    () => buildStrategyInsights({ topic, values: previewBriefValues, contextSnapshot, hasBrainContext }),
+    [topic, previewBriefValues, contextSnapshot, hasBrainContext]
+  );
+
+  const suggestionCount = Object.keys(applicableSuggestions).length;
+
   useEffect(() => {
     loadSavedPlans();
     (window.electronAPI as any).getContentBrain?.().then((brain: ContentBrain) => setContentBrain(brain)).catch(() => {});
   }, []);
+
+  function markBriefTouched(field: BriefField) {
+    setBriefTouched(prev => ({ ...prev, [field]: true }));
+  }
+
+  function applyStrategySuggestions() {
+    if (applicableSuggestions.audience) setAudience(applicableSuggestions.audience);
+    if (applicableSuggestions.viewerOutcome) setViewerOutcome(applicableSuggestions.viewerOutcome);
+    if (applicableSuggestions.promise) setPromise(applicableSuggestions.promise);
+    if (applicableSuggestions.curiosityGap) setCuriosityGap(applicableSuggestions.curiosityGap);
+    if (applicableSuggestions.proofAsset) setProofAsset(applicableSuggestions.proofAsset);
+    if (applicableSuggestions.payoff) setPayoff(applicableSuggestions.payoff);
+    if (applicableSuggestions.positioning) setPositioning(applicableSuggestions.positioning);
+  }
 
   async function loadSavedPlans() {
     try {
@@ -414,28 +707,46 @@ export default function VideoPlanner() {
     if (!topic.trim()) return;
     setGenerating(true);
     setPlan(null);
+    const generationValues = mergeSuggestedBriefValues(briefValues, applicableSuggestions, briefTouched);
+    const generationInsights = buildStrategyInsights({
+      topic,
+      values: generationValues,
+      contextSnapshot,
+      hasBrainContext,
+    });
+    const strategyDraft = buildStrategyBrief({
+      topic,
+      intent,
+      audience: generationValues.audience,
+      viewerOutcome: generationValues.viewerOutcome,
+      promise: generationValues.promise,
+      curiosityGap: generationValues.curiosityGap,
+      proofAsset: generationValues.proofAsset,
+      payoff: generationValues.payoff,
+      positioning: generationValues.positioning,
+      contextSnapshot,
+      strategyInsights: generationInsights,
+      scoreBreakdown: scoreFromInsights(generationInsights, contextSnapshot),
+    });
     try {
-      const strategyDraft = buildStrategyBrief({
-        topic,
-        intent,
-        audience,
-        viewerOutcome,
-        promise,
-        curiosityGap,
-        proofAsset,
-        payoff,
-        positioning,
-      });
       const prompt = buildPrompt(topic, perspective, videoType, targetLength, strategyDraft, contentBrain);
       const response = await (window.electronAPI as any).generateVideoPlan?.({ prompt });
       const raw: Omit<VideoPlan, 'id' | 'topic' | 'perspective' | 'videoType' | 'targetLength' | 'createdAt'> & { strategyBrief?: Partial<ContentStrategyBrief> } =
-        (response?.success && response.plan) ? response.plan : buildFallbackPlan(topic, perspective, videoType, targetLength);
-      const generatedBrief = {
+        (response?.success && response.plan) ? response.plan : buildFallbackPlan(topic, perspective, videoType, targetLength, strategyDraft);
+      const generatedInsights: StrategyInsights = {
+        ...strategyDraft.strategyInsights!,
+        ...raw.strategyBrief?.strategyInsights,
+        readiness: raw.strategyBrief?.strategyInsights?.readiness || strategyDraft.strategyInsights!.readiness,
+        gaps: raw.strategyBrief?.strategyInsights?.gaps || strategyDraft.strategyInsights!.gaps,
+      };
+      const generatedBrief: ContentStrategyBrief = {
         ...strategyDraft,
         ...raw.strategyBrief,
         id: strategyDraft.id,
         createdAt: strategyDraft.createdAt,
         source: 'planner' as const,
+        contextSnapshot: raw.strategyBrief?.contextSnapshot || strategyDraft.contextSnapshot,
+        strategyInsights: generatedInsights,
         packageVariants: raw.strategyBrief?.packageVariants?.length
           ? raw.strategyBrief.packageVariants
           : strategyDraft.packageVariants,
@@ -445,7 +756,7 @@ export default function VideoPlanner() {
       setPlan(nextPlan);
       localStorage.setItem('contentStrategy:lastBrief', JSON.stringify(generatedBrief));
     } catch {
-      const fallback = buildFallbackPlan(topic, perspective, videoType, targetLength);
+      const fallback = buildFallbackPlan(topic, perspective, videoType, targetLength, strategyDraft);
       setPlan(fallback);
       if (fallback.strategyBrief) localStorage.setItem('contentStrategy:lastBrief', JSON.stringify(fallback.strategyBrief));
     }
@@ -583,6 +894,15 @@ export default function VideoPlanner() {
               </div>
             </div>
 
+            <StrategyCoachPanel
+              hasBrainContext={hasBrainContext}
+              contextSnapshot={contextSnapshot}
+              insights={strategyInsights}
+              applicableSuggestions={applicableSuggestions}
+              suggestionCount={suggestionCount}
+              onApplySuggestions={applyStrategySuggestions}
+            />
+
             {/* Strategy Brief */}
             <div className="bg-6fb-card border border-6fb-border rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between gap-3">
@@ -596,20 +916,20 @@ export default function VideoPlanner() {
                 </select>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <input value={audience} onChange={e => setAudience(e.target.value)} placeholder="Target audience"
+                <input value={audience} onChange={e => { markBriefTouched('audience'); setAudience(e.target.value); }} placeholder="Target audience"
                   className="bg-[#0f0f0f] border border-6fb-border rounded-lg px-3 py-2 text-xs text-white placeholder:text-6fb-text-muted focus:outline-none focus:border-6fb-green/50" />
-                <input value={viewerOutcome} onChange={e => setViewerOutcome(e.target.value)} placeholder="Viewer outcome"
+                <input value={viewerOutcome} onChange={e => { markBriefTouched('viewerOutcome'); setViewerOutcome(e.target.value); }} placeholder="Viewer outcome"
                   className="bg-[#0f0f0f] border border-6fb-border rounded-lg px-3 py-2 text-xs text-white placeholder:text-6fb-text-muted focus:outline-none focus:border-6fb-green/50" />
-                <input value={promise} onChange={e => setPromise(e.target.value)} placeholder="Promise"
+                <input value={promise} onChange={e => { markBriefTouched('promise'); setPromise(e.target.value); }} placeholder="Promise"
                   className="bg-[#0f0f0f] border border-6fb-border rounded-lg px-3 py-2 text-xs text-white placeholder:text-6fb-text-muted focus:outline-none focus:border-6fb-green/50" />
-                <input value={curiosityGap} onChange={e => setCuriosityGap(e.target.value)} placeholder="Curiosity gap"
+                <input value={curiosityGap} onChange={e => { markBriefTouched('curiosityGap'); setCuriosityGap(e.target.value); }} placeholder="Curiosity gap"
                   className="bg-[#0f0f0f] border border-6fb-border rounded-lg px-3 py-2 text-xs text-white placeholder:text-6fb-text-muted focus:outline-none focus:border-6fb-green/50" />
-                <input value={proofAsset} onChange={e => setProofAsset(e.target.value)} placeholder="Proof asset"
+                <input value={proofAsset} onChange={e => { markBriefTouched('proofAsset'); setProofAsset(e.target.value); }} placeholder="Proof asset"
                   className="bg-[#0f0f0f] border border-6fb-border rounded-lg px-3 py-2 text-xs text-white placeholder:text-6fb-text-muted focus:outline-none focus:border-6fb-green/50" />
-                <input value={payoff} onChange={e => setPayoff(e.target.value)} placeholder="Payoff"
+                <input value={payoff} onChange={e => { markBriefTouched('payoff'); setPayoff(e.target.value); }} placeholder="Payoff"
                   className="bg-[#0f0f0f] border border-6fb-border rounded-lg px-3 py-2 text-xs text-white placeholder:text-6fb-text-muted focus:outline-none focus:border-6fb-green/50" />
               </div>
-              <input value={positioning} onChange={e => setPositioning(e.target.value)} placeholder="Positioning"
+              <input value={positioning} onChange={e => { markBriefTouched('positioning'); setPositioning(e.target.value); }} placeholder="Positioning"
                 className="w-full bg-[#0f0f0f] border border-6fb-border rounded-lg px-3 py-2 text-xs text-white placeholder:text-6fb-text-muted focus:outline-none focus:border-6fb-green/50" />
             </div>
 
@@ -700,11 +1020,137 @@ export default function VideoPlanner() {
   );
 }
 
+// ── Strategy Coach Panel ──────────────────────────────────────────────────
+
+function StrategyCoachPanel({
+  hasBrainContext,
+  contextSnapshot,
+  insights,
+  applicableSuggestions,
+  suggestionCount,
+  onApplySuggestions,
+}: {
+  hasBrainContext: boolean;
+  contextSnapshot: StrategyContextSnapshot;
+  insights: StrategyInsights;
+  applicableSuggestions: BriefSuggestions;
+  suggestionCount: number;
+  onApplySuggestions: () => void;
+}) {
+  const contextCount =
+    contextSnapshot.selectedPillars.length +
+    contextSnapshot.selectedProofAssets.length +
+    contextSnapshot.selectedOffers.length;
+  const suggestionLabels = BRIEF_FIELDS
+    .filter(field => applicableSuggestions[field])
+    .map(field => BRIEF_FIELD_LABELS[field]);
+  const readinessClass = insights.readiness === 'strong'
+    ? 'border-6fb-green/40 bg-6fb-green/10 text-6fb-green'
+    : insights.readiness === 'ready'
+      ? 'border-blue-400/30 bg-blue-500/10 text-blue-300'
+      : 'border-amber-400/30 bg-amber-500/10 text-amber-300';
+
+  return (
+    <div className="bg-6fb-card border border-6fb-border rounded-xl p-4 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <p className="text-xs font-semibold text-white">Strategy Coach</p>
+            <span className={`text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${readinessClass}`}>
+              {insights.readiness}
+            </span>
+          </div>
+          <p className="text-[10px] text-6fb-text-muted mt-0.5">
+            {hasBrainContext ? 'Using Brand Brain context for this plan.' : 'No Brand Brain context saved yet.'}
+          </p>
+        </div>
+        <div className="text-right shrink-0">
+          <p className="text-sm font-bold text-white">{Math.max(0, 6 - insights.gaps.length)}/6</p>
+          <p className="text-[9px] text-6fb-text-muted uppercase tracking-wider">ready</p>
+        </div>
+      </div>
+
+      {insights.whyShootThis && (
+        <div className="rounded-lg border border-white/5 bg-black/20 px-3 py-2">
+          <p className="text-[10px] font-bold text-6fb-text-secondary uppercase tracking-wider mb-1">Why shoot this</p>
+          <p className="text-xs text-white leading-relaxed">{insights.whyShootThis}</p>
+          {insights.recommendedAngle && (
+            <p className="text-[11px] text-6fb-text-muted leading-relaxed mt-1">{insights.recommendedAngle}</p>
+          )}
+        </div>
+      )}
+
+      {contextCount > 0 && (
+        <div className="grid gap-2">
+          <StrategyContextGroup label="Pillars" items={contextSnapshot.selectedPillars} />
+          <StrategyContextGroup label="Proof" items={contextSnapshot.selectedProofAssets} />
+          <StrategyContextGroup label="Offers" items={contextSnapshot.selectedOffers} />
+        </div>
+      )}
+
+      {insights.gaps.length > 0 && (
+        <div className="rounded-lg border border-amber-500/10 bg-amber-500/[0.04] px-3 py-2">
+          <p className="text-[10px] font-bold text-amber-300 uppercase tracking-wider mb-1">Readiness gaps</p>
+          <div className="flex flex-wrap gap-1.5">
+            {insights.gaps.slice(0, 4).map(gap => (
+              <span key={gap} className="text-[10px] text-amber-100/80 bg-black/20 border border-amber-500/10 rounded-full px-2 py-1">
+                {gap}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between gap-3 pt-1">
+        <p className="text-[10px] text-6fb-text-muted leading-relaxed">
+          {suggestionCount > 0
+            ? `Can fill: ${suggestionLabels.join(', ')}`
+            : 'Blank-field suggestions are up to date.'}
+        </p>
+        <button
+          onClick={onApplySuggestions}
+          disabled={suggestionCount === 0}
+          className="shrink-0 px-3 py-1.5 rounded-lg border border-6fb-green/30 bg-6fb-green/10 text-[11px] font-semibold text-6fb-green hover:bg-6fb-green/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+        >
+          Apply suggestions
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function StrategyContextGroup({ label, items }: { label: string; items: string[] }) {
+  if (!items.length) return null;
+  return (
+    <div>
+      <p className="text-[9px] font-bold text-6fb-text-muted uppercase tracking-wider mb-1">{label}</p>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map(item => (
+          <span key={`${label}-${item}`} className="text-[10px] text-6fb-text-secondary bg-white/[0.04] border border-white/[0.06] rounded-full px-2 py-1">
+            {item}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Strategy Package Panel ─────────────────────────────────────────────────
 
 function StrategyPackagePanel({ brief }: { brief: ContentStrategyBrief }) {
   const score = brief.scoreBreakdown?.total ?? 0;
   const variants = brief.packageVariants?.slice(0, 3) ?? [];
+  const insights = brief.strategyInsights;
+  const insightGaps = insights?.gaps ?? [];
+  const snapshot = brief.contextSnapshot;
+  const selectedProofAssets = snapshot?.selectedProofAssets ?? [];
+  const selectedPillars = snapshot?.selectedPillars ?? [];
+  const readinessClass = insights?.readiness === 'strong'
+    ? 'border-6fb-green/40 bg-6fb-green/10 text-6fb-green'
+    : insights?.readiness === 'ready'
+      ? 'border-blue-400/30 bg-blue-500/10 text-blue-300'
+      : 'border-amber-400/30 bg-amber-500/10 text-amber-300';
+
   return (
     <div className="mb-4 rounded-xl border border-6fb-green/20 bg-6fb-green/[0.03] p-4">
       <div className="flex items-start justify-between gap-4 mb-3">
@@ -716,8 +1162,46 @@ function StrategyPackagePanel({ brief }: { brief: ContentStrategyBrief }) {
         <div className="text-right shrink-0">
           <p className="text-2xl font-bold text-white">{Math.round(score)}</p>
           <p className="text-[10px] text-6fb-text-muted">Idea score</p>
+          {insights?.readiness && (
+            <span className={`inline-block mt-1 text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${readinessClass}`}>
+              {insights.readiness}
+            </span>
+          )}
         </div>
       </div>
+      {insights && (insights.whyShootThis || insights.recommendedAngle || insightGaps.length > 0) && (
+        <div className="mb-3 rounded-lg border border-white/5 bg-black/20 p-3">
+          {insights.whyShootThis && (
+            <p className="text-xs text-white leading-relaxed">{insights.whyShootThis}</p>
+          )}
+          {insights.recommendedAngle && (
+            <p className="text-[11px] text-6fb-text-muted leading-relaxed mt-1">{insights.recommendedAngle}</p>
+          )}
+          {insightGaps.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {insightGaps.slice(0, 4).map(gap => (
+                <span key={gap} className="text-[9px] text-amber-100/80 bg-amber-500/10 border border-amber-500/10 rounded-full px-2 py-0.5">
+                  {gap}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+      {(selectedPillars.length > 0 || selectedProofAssets.length > 0) && (
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          {selectedPillars.map(item => (
+            <span key={`pillar-${item}`} className="text-[9px] text-6fb-text-secondary bg-white/[0.04] border border-white/[0.06] rounded-full px-2 py-1">
+              Pillar: {item}
+            </span>
+          ))}
+          {selectedProofAssets.map(item => (
+            <span key={`proof-${item}`} className="text-[9px] text-6fb-green bg-6fb-green/10 border border-6fb-green/20 rounded-full px-2 py-1">
+              Proof: {item}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="grid gap-2">
         {variants.map((variant, i) => (
           <div key={i} className="rounded-lg border border-white/5 bg-black/20 p-3">

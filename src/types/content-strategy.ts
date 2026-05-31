@@ -20,6 +20,22 @@ export interface StrategyScoreBreakdown {
   rationale?: string;
 }
 
+export type StrategyReadiness = 'draft' | 'ready' | 'strong';
+
+export interface StrategyContextSnapshot {
+  selectedPillars: string[];
+  selectedProofAssets: string[];
+  selectedOffers: string[];
+  brainUpdatedAt?: string;
+}
+
+export interface StrategyInsights {
+  readiness: StrategyReadiness;
+  gaps: string[];
+  whyShootThis?: string;
+  recommendedAngle?: string;
+}
+
 export interface ContentStrategyBrief {
   id: string;
   intent: ContentIntent;
@@ -34,6 +50,8 @@ export interface ContentStrategyBrief {
   scoreBreakdown: StrategyScoreBreakdown;
   createdAt: string;
   source?: 'planner' | 'playbook' | 'clip-run' | 'manual';
+  contextSnapshot?: StrategyContextSnapshot;
+  strategyInsights?: StrategyInsights;
 }
 
 export interface ContentBrain {
