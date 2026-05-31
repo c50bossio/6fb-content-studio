@@ -21,12 +21,20 @@ FFMPEG_STATIC="$(node -p "require('ffmpeg-static')")"
 FFPROBE_STATIC="$(node -p "require('ffprobe-static').path")"
 
 if [[ ! -x "$FFMPEG_STATIC" ]]; then
-  echo "ffmpeg-static binary not found. Run npm install first." >&2
+  FFMPEG_STATIC="$(command -v ffmpeg || true)"
+fi
+
+if [[ ! -x "$FFPROBE_STATIC" ]]; then
+  FFPROBE_STATIC="$(command -v ffprobe || true)"
+fi
+
+if [[ ! -x "$FFMPEG_STATIC" ]]; then
+  echo "ffmpeg binary not found. Install ffmpeg or run npm install with a compatible ffmpeg-static package." >&2
   exit 1
 fi
 
 if [[ ! -x "$FFPROBE_STATIC" ]]; then
-  echo "ffprobe-static binary not found. Run npm install first." >&2
+  echo "ffprobe binary not found. Install ffmpeg or run npm install with a compatible ffprobe-static package." >&2
   exit 1
 fi
 
@@ -34,6 +42,23 @@ fi
 "$VENV_DIR/bin/python" -m pip install --upgrade pip setuptools wheel
 "$VENV_DIR/bin/python" -m pip install pyinstaller
 "$VENV_DIR/bin/python" -m pip install -r "$TOOLS_DIR/clip_extractor/requirements.txt"
+
+MLX_METALLIB="$("$VENV_DIR/bin/python" - <<'PY'
+import importlib.util
+from pathlib import Path
+
+spec = importlib.util.find_spec("mlx")
+if spec and spec.submodule_search_locations:
+    candidate = Path(next(iter(spec.submodule_search_locations))) / "lib" / "mlx.metallib"
+    if candidate.exists():
+        print(candidate)
+PY
+)"
+
+MLX_DATA_ARGS=()
+if [[ -n "$MLX_METALLIB" ]]; then
+  MLX_DATA_ARGS+=(--add-data "$MLX_METALLIB:mlx/lib")
+fi
 
 rm -rf "$BUILD_DIR" "$DIST_DIR" "$RUNTIME_DIR"
 mkdir -p "$RUNTIME_DIR/bin" "$RUNTIME_DIR/pipeline"
@@ -59,6 +84,7 @@ mkdir -p "$RUNTIME_DIR/bin" "$RUNTIME_DIR/pipeline"
   --collect-all mlx_whisper \
   --collect-all tiktoken \
   --collect-all huggingface_hub \
+  "${MLX_DATA_ARGS[@]}" \
   --add-data "$TOOLS_DIR/clip_extractor/config.yaml:clip_extractor" \
   --add-data "$TOOLS_DIR/clip_extractor/models:clip_extractor/models" \
   "$TOOLS_DIR/pipeline/full_pipeline.py"

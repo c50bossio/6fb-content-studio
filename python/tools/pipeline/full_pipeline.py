@@ -172,10 +172,10 @@ def transcribe(video_path: str, output_dir: str, method: str = "auto") -> str:
             print(f"[pipeline] Transcription complete in {elapsed:.1f}s ({speed:.1f}x realtime): {srt_path}")
             return str(srt_path)
 
-        except ImportError:
+        except Exception as exc:
             if method == "mlx":
-                raise RuntimeError("mlx-whisper not installed. Run: pip install mlx-whisper")
-            print("[pipeline] mlx-whisper not available, falling back to whisper CLI...")
+                raise RuntimeError(f"mlx-whisper failed: {exc}") from exc
+            print(f"[pipeline] mlx-whisper unavailable ({exc}); falling back...")
 
     # Cross-platform fallback for packaged Windows builds.
     if method in ("auto", "faster-whisper", "faster_whisper"):
@@ -223,10 +223,10 @@ def transcribe(video_path: str, output_dir: str, method: str = "auto") -> str:
             print(f"[pipeline] Transcription complete in {elapsed:.1f}s ({speed:.1f}x realtime): {srt_path}")
             return str(srt_path)
 
-        except ImportError:
+        except Exception as exc:
             if method in ("faster-whisper", "faster_whisper"):
-                raise RuntimeError("faster-whisper not installed. Rebuild the packaged runtime.")
-            print("[pipeline] faster-whisper not available, falling back to whisper CLI...")
+                raise RuntimeError(f"faster-whisper failed: {exc}") from exc
+            print(f"[pipeline] faster-whisper unavailable ({exc}); falling back to whisper CLI...")
 
     # Fallback: whisper CLI
     if method in ("auto", "whisper"):
