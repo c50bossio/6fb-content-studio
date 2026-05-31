@@ -73,7 +73,7 @@ const NavIcons: Record<string, () => React.ReactElement> = {
 };
 
 const GLOBAL_ITEMS: { page: Page; label: string; ready: boolean }[] = [
-  { page: 'brand',     label: 'Brand Studio',   ready: true  },
+  { page: 'brand',     label: 'Brand & Brain',  ready: true  },
   { page: 'analytics', label: 'Analytics',      ready: true  },
   { page: 'schedule',  label: 'Scheduler',      ready: true  },
 ];

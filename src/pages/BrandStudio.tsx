@@ -88,9 +88,12 @@ const textToList = (text: string) => text.split('\n').map(item => item.trim()).f
 
 interface Props { onSave?: (profile: BrandProfile) => void; }
 
+type BrandStudioTab = 'brain' | 'visual';
+
 export default function BrandStudio({ onSave }: Props) {
   const [profile, setProfile] = useState<BrandProfile>(DEFAULT_PROFILE);
   const [contentBrain, setContentBrain] = useState<ContentBrain>(DEFAULT_CONTENT_BRAIN);
+  const [activeTab, setActiveTab] = useState<BrandStudioTab>('brain');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -146,8 +149,8 @@ export default function BrandStudio({ onSave }: Props) {
       {/* Header */}
       <div className="mb-8 flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-white">Brand Studio</h1>
-          <p className="text-sm text-[#555] mt-1">Define your visual identity. Every carousel you generate will match.</p>
+          <h1 className="text-2xl font-bold text-white">Brand & Brain</h1>
+          <p className="text-sm text-[#555] mt-1">Shape what the planner knows, then match the look of every asset.</p>
         </div>
         <button
           onClick={handleSave}
@@ -162,6 +165,22 @@ export default function BrandStudio({ onSave }: Props) {
         </button>
       </div>
 
+      <div className="mb-8 grid grid-cols-2 gap-2 rounded-xl border border-[#222] bg-[#111] p-1">
+        <BrandTabButton
+          active={activeTab === 'brain'}
+          label="Content Brain"
+          note="Audience, offers, proof, voice"
+          onClick={() => setActiveTab('brain')}
+        />
+        <BrandTabButton
+          active={activeTab === 'visual'}
+          label="Visual Identity"
+          note="Logo, colors, fonts, layouts"
+          onClick={() => setActiveTab('visual')}
+        />
+      </div>
+
+      {activeTab === 'visual' ? (
       <div className="space-y-8">
 
         {/* ── Identity ── */}
@@ -323,6 +342,10 @@ export default function BrandStudio({ onSave }: Props) {
           </div>
         </Section>
 
+      </div>
+      ) : (
+      <div className="space-y-8">
+
         {/* ── Tone of Voice ── */}
         <Section title="Tone of Voice">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -386,6 +409,7 @@ export default function BrandStudio({ onSave }: Props) {
         </Section>
 
       </div>
+      )}
 
       {/* Save footer */}
       <div className="mt-10 pt-6 border-t border-[#1e1e1e] flex items-center justify-between">
@@ -408,6 +432,33 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h2 className="text-[10px] font-bold text-[#444] uppercase tracking-widest mb-4">{title}</h2>
       {children}
     </div>
+  );
+}
+
+function BrandTabButton({
+  active,
+  label,
+  note,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  note: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-lg px-4 py-3 text-left transition-all ${
+        active
+          ? 'bg-[#1b1b1b] text-white shadow-sm'
+          : 'text-[#666] hover:bg-white/[0.03] hover:text-white'
+      }`}
+    >
+      <span className="block text-sm font-bold">{label}</span>
+      <span className="mt-0.5 block text-[10px] text-[#555]">{note}</span>
+    </button>
   );
 }
 

@@ -102,8 +102,8 @@ const TOOLS: {
   {
     page: 'brand',
     Icon: Icons.Brand,
-    title: 'Brand Studio',
-    description: 'Define your visual identity. Colors, fonts, logo, and tone of voice.',
+    title: 'Brand & Brain',
+    description: 'Define your audience, offers, proof, voice, logo, colors, and fonts.',
     color: '#F59E0B',
     ready: true,
   },
@@ -178,7 +178,7 @@ export default function Dashboard({ onNavigate, stats, hasBrandProfile }: Dashbo
 
   const hasAnyOutput = stats.clipsCreated > 0 || stats.carouselsMade > 0 || stats.blogPostsWritten > 0 || stats.videosRendered > 0;
   const firstRunSteps = [
-    { step: '1', title: 'Brand', body: hasBrandProfile === false ? 'Add your colors, logo, and tone.' : 'Brand profile is ready.', page: 'brand' as Page, done: hasBrandProfile !== false },
+    { step: '1', title: 'Brand Brain', body: hasBrandProfile === false ? 'Add your audience, voice, colors, and logo.' : 'Brand profile is ready.', page: 'brand' as Page, done: hasBrandProfile !== false },
     { step: '2', title: 'Source Video', body: 'Choose a 3-20 minute talking-head or shop video.', page: 'clips' as Page, done: false },
     { step: '3', title: 'Publish Path', body: 'Preview the best clip, then schedule or export it.', page: 'schedule' as Page, done: false },
   ];
@@ -196,9 +196,9 @@ export default function Dashboard({ onNavigate, stats, hasBrandProfile }: Dashbo
             <Icons.Brand />
           </div>
           <div className="flex-1">
-            <h3 className="text-sm font-bold text-white mb-0.5">Action Required: Set up your Brand Profile</h3>
+            <h3 className="text-sm font-bold text-white mb-0.5">Action Required: Set up your Brand & Brain</h3>
             <p className="text-xs text-6fb-text-secondary">
-              Configure your colors, fonts, and logo so the AI can automatically style your clips and carousels.
+              Add your audience, voice, offers, colors, fonts, and logo so the planner and generators match your business.
             </p>
           </div>
           <div className="text-[#F59E0B] opacity-0 group-hover:opacity-100 transition-opacity">
