@@ -132,10 +132,12 @@ export default function BrandStudio({ onSave }: Props) {
 
   const handleSave = async () => {
     setSaving(true);
+    const brainToSave: ContentBrain = { ...contentBrain, updatedAt: new Date().toISOString() };
     await Promise.all([
       window.electronAPI.saveBrandProfile(profile),
-      window.electronAPI.saveContentBrain(contentBrain),
+      window.electronAPI.saveContentBrain(brainToSave),
     ]);
+    setContentBrain(brainToSave);
     onSave?.(profile);
     setSaving(false);
     setSaved(true);

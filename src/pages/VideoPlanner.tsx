@@ -326,6 +326,18 @@ const fallbackPackage = (topic: string, promise: string, viewerOutcome: string):
 
 const jsonForPrompt = (value: unknown) => JSON.stringify(value, null, 2).replace(/</g, '\\u003c');
 
+function formatBrainUpdatedAt(value?: string) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
+}
+
 function contentBrainPromptBlock(contentBrain?: ContentBrain | null, contextSnapshot?: StrategyContextSnapshot) {
   if (!contentBrain && !contextSnapshot) return '';
   const selectedPillars = contextSnapshot?.selectedPillars ?? [];
@@ -560,11 +572,15 @@ function buildFallbackPlan(topic: string, perspective: string, videoType: string
 // ── Copy plan as text ──────────────────────────────────────────────────────
 
 function planToText(plan: VideoPlan): string {
+  const strategyLines = plan.strategyBrief
+    ? strategyBriefToText(plan.strategyBrief)
+    : [];
   const lines = [
     `VIDEO PLAN: ${plan.topic}`,
     `${VIDEO_TYPES.find(t => t.value === plan.videoType)?.label} — ${TARGET_LENGTHS.find(l => l.value === plan.targetLength)?.label}`,
     `Perspective: ${PERSPECTIVES.find(p => p.value === plan.perspective)?.label}`,
     '',
+    ...strategyLines,
     ...plan.timeline.flatMap(e => {
       if (e.type === 'dropzone') {
         return [`[${e.label} — ${e.timestamp}-${e.endTimestamp}, ${e.duration}]`, `"${e.script}"`, ''];
@@ -579,6 +595,28 @@ function planToText(plan: VideoPlan): string {
     ...(plan.recordingTips?.length ? ['RECORDING TIPS:', ...plan.recordingTips.map(t => `→ ${t}`)] : []),
   ];
   return lines.join('\n');
+}
+
+function strategyBriefToText(brief: ContentStrategyBrief): string[] {
+  const insights = brief.strategyInsights;
+  const snapshot = brief.contextSnapshot;
+  const lines = [
+    'STRATEGY BRIEF:',
+    insights?.readiness ? `Readiness: ${insights.readiness}` : '',
+    insights?.whyShootThis ? `Why shoot this: ${insights.whyShootThis}` : '',
+    insights?.recommendedAngle ? `Recommended angle: ${insights.recommendedAngle}` : '',
+    brief.audience ? `Audience: ${brief.audience}` : '',
+    brief.viewerOutcome ? `Viewer outcome: ${brief.viewerOutcome}` : '',
+    brief.promise ? `Promise: ${brief.promise}` : '',
+    brief.proofAsset ? `Proof: ${brief.proofAsset}` : '',
+    brief.payoff ? `Payoff: ${brief.payoff}` : '',
+    snapshot?.selectedPillars?.length ? `Selected pillars: ${snapshot.selectedPillars.join('; ')}` : '',
+    snapshot?.selectedProofAssets?.length ? `Selected proof assets: ${snapshot.selectedProofAssets.join('; ')}` : '',
+    snapshot?.selectedOffers?.length ? `Selected offers: ${snapshot.selectedOffers.join('; ')} (use only if natural)` : '',
+    insights?.gaps?.length ? `Readiness gaps: ${insights.gaps.join('; ')}` : '',
+  ].filter(line => line !== '');
+
+  return [...lines, ''];
 }
 
 // ── Main Component ─────────────────────────────────────────────────────────
@@ -1049,6 +1087,7 @@ function StrategyCoachPanel({
     : insights.readiness === 'ready'
       ? 'border-blue-400/30 bg-blue-500/10 text-blue-300'
       : 'border-amber-400/30 bg-amber-500/10 text-amber-300';
+  const brainUpdatedLabel = formatBrainUpdatedAt(contextSnapshot.brainUpdatedAt);
 
   return (
     <div className="bg-6fb-card border border-6fb-border rounded-xl p-4 space-y-3">
@@ -1061,7 +1100,9 @@ function StrategyCoachPanel({
             </span>
           </div>
           <p className="text-[10px] text-6fb-text-muted mt-0.5">
-            {hasBrainContext ? 'Using Brand Brain context for this plan.' : 'No Brand Brain context saved yet.'}
+            {hasBrainContext
+              ? `Using Brand Brain context${brainUpdatedLabel ? ` updated ${brainUpdatedLabel}` : ''}.`
+              : 'No Brand Brain context saved yet.'}
           </p>
         </div>
         <div className="text-right shrink-0">
