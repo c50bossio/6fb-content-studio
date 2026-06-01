@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import InstagramPostModal from '../components/InstagramPostModal';
 import type { ContentStrategyBrief, PackageVariant } from '../types/content-strategy';
 
@@ -68,10 +68,10 @@ interface LibraryRun {
 }
 
 interface VideoPlanSummary {
-  id: string;
+  id: string | number;
   topic: string;
   targetLength: string;
-  timeline: { type: string; label: string; timestamp: string; endTimestamp: string }[];
+  timeline?: { type: string; label: string; timestamp: string; endTimestamp: string }[];
   createdAt: string;
   strategyBrief?: ContentStrategyBrief;
 }
@@ -104,6 +104,17 @@ const STATUS: Record<string, { label: string; color: string }> = {
   compose_failed: { label: 'Failed',  color: '#EF4444' },
   pending:        { label: 'Pending', color: '#F59E0B' },
 };
+
+const READINESS_STYLE: Record<string, string> = {
+  strong: 'border-[#00C851]/30 bg-[#00C851]/10 text-[#00C851]',
+  ready: 'border-blue-400/30 bg-blue-500/10 text-blue-300',
+  draft: 'border-amber-400/30 bg-amber-500/10 text-amber-300',
+};
+
+const planDropZones = (plan?: VideoPlanSummary | null) =>
+  (plan?.timeline ?? [])
+    .filter(e => e.type === 'dropzone')
+    .map(e => ({ label: e.label, timestamp: e.timestamp, endTimestamp: e.endTimestamp }));
 
 const PROGRESS_COPY = [
   { max: 15, title: 'Reading the video', detail: 'Extracting audio and preparing the transcript.' },
@@ -580,6 +591,81 @@ function LibraryPanel({ runs, selectedRunId, onSelect, onDeleteRun, onRefresh, o
   );
 }
 
+function LinkedPlanPreview({ plan, dropZones }: { plan: VideoPlanSummary | null; dropZones: ReturnType<typeof planDropZones> }) {
+  if (!plan) return null;
+
+  const brief = plan.strategyBrief;
+  const insights = brief?.strategyInsights;
+  const readiness = insights?.readiness ?? 'draft';
+  const readinessClass = READINESS_STYLE[readiness] ?? READINESS_STYLE.draft;
+  const proofAssets = brief?.contextSnapshot?.selectedProofAssets ?? [];
+  const pillars = brief?.contextSnapshot?.selectedPillars ?? [];
+  const offers = brief?.contextSnapshot?.selectedOffers ?? [];
+  const gaps = insights?.gaps ?? [];
+
+  return (
+    <div className="mt-2 rounded-xl border border-[#222] bg-[#101510] px-3 py-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[10px] font-bold text-[#00C851] uppercase tracking-wider">Strategy linked</span>
+            <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full border ${readinessClass}`}>
+              {readiness}
+            </span>
+            <span className="text-[9px] text-[#777]">{dropZones.length} Drop Zone{dropZones.length !== 1 ? 's' : ''}</span>
+          </div>
+          <p className="text-xs font-semibold text-white mt-1 truncate">{plan.topic}</p>
+        </div>
+        {brief?.scoreBreakdown?.total ? (
+          <div className="text-right shrink-0">
+            <p className="text-sm font-bold text-white">{Math.round(brief.scoreBreakdown.total)}</p>
+            <p className="text-[8px] text-[#666] uppercase tracking-wider">score</p>
+          </div>
+        ) : null}
+      </div>
+
+      {brief ? (
+        <div className="mt-2 space-y-2">
+          {insights?.whyShootThis && (
+            <p className="text-[11px] text-[#ddd] leading-relaxed">{insights.whyShootThis}</p>
+          )}
+          {insights?.recommendedAngle && (
+            <p className="text-[10px] text-[#888] leading-relaxed">{insights.recommendedAngle}</p>
+          )}
+          {(proofAssets.length > 0 || pillars.length > 0 || offers.length > 0) && (
+            <div className="flex flex-wrap gap-1.5">
+              {pillars.slice(0, 2).map(item => (
+                <span key={`pillar-${item}`} className="text-[9px] text-[#aaa] bg-white/[0.04] border border-white/[0.06] rounded-full px-2 py-0.5">
+                  Pillar: {item}
+                </span>
+              ))}
+              {proofAssets.slice(0, 2).map(item => (
+                <span key={`proof-${item}`} className="text-[9px] text-[#00C851] bg-[#00C851]/10 border border-[#00C851]/20 rounded-full px-2 py-0.5">
+                  Proof: {item}
+                </span>
+              ))}
+              {offers.slice(0, 1).map(item => (
+                <span key={`offer-${item}`} className="text-[9px] text-blue-300 bg-blue-500/10 border border-blue-400/20 rounded-full px-2 py-0.5">
+                  Offer optional: {item}
+                </span>
+              ))}
+            </div>
+          )}
+          {gaps.length > 0 && (
+            <p className="text-[10px] text-amber-200/80">
+              Gaps: {gaps.slice(0, 3).join('; ')}
+            </p>
+          )}
+        </div>
+      ) : (
+        <p className="text-[10px] text-[#777] leading-relaxed mt-2">
+          This plan has Drop Zones but no Growth Brief. Extraction will use timeline context only.
+        </p>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────
 export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { onClipCreated?: () => void; onNavigateToEditor?: (clip: Clip) => void } = {}) {
   const [videoPath, setVideoPath]         = useState<string | null>(() => localStorage.getItem('clipex:videoPath'));
@@ -655,6 +741,12 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
 
   const [savedPlans, setSavedPlans] = useState<VideoPlanSummary[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
+  const selectedPlan = useMemo(
+    () => savedPlans.find(p => String(p.id) === selectedPlanId) ?? null,
+    [savedPlans, selectedPlanId]
+  );
+  const selectedDropZones = useMemo(() => planDropZones(selectedPlan), [selectedPlan]);
+  const selectedStrategyBrief = selectedPlan?.strategyBrief;
 
   useEffect(() => {
     (window.electronAPI as any).listVideoPlans?.().then((r: any) => {
@@ -704,21 +796,14 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
     setError('');
     setProgress({ percent: 0, label: 'Starting…' });
 
-    // Build Drop Zone context from selected plan
-    const selectedPlan = savedPlans.find(p => p.id === selectedPlanId);
-    const strategyBrief = selectedPlan?.strategyBrief;
-    const dropZones = selectedPlan?.timeline
-      .filter(e => e.type === 'dropzone')
-      .map(e => ({ label: e.label, timestamp: e.timestamp, endTimestamp: e.endTimestamp })) ?? [];
-
     try {
       const result = await window.electronAPI.extractClips(videoPath, {
         outputFormat: '9x16',
         contentType: 'vlog',
         numClips: 5,
         autoTrack: true,
-        ...(dropZones.length > 0 ? { planContext: { topic: selectedPlan!.topic, dropZones } } : {}),
-        ...(strategyBrief ? { strategyBrief } : {}),
+        ...(selectedPlan && selectedDropZones.length > 0 ? { planContext: { topic: selectedPlan.topic, dropZones: selectedDropZones } } : {}),
+        ...(selectedStrategyBrief ? { strategyBrief: selectedStrategyBrief } : {}),
       });
 
       if (result.success) {
@@ -745,7 +830,7 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
         const runId = (result as any).runId || String(Date.now());
         setSelectedRunId(runId);
         localStorage.setItem('clipex:runId', runId);
-        if (strategyBrief) localStorage.setItem(`contentStrategy:run:${runId}`, JSON.stringify(strategyBrief));
+        if (selectedStrategyBrief) localStorage.setItem(`contentStrategy:run:${runId}`, JSON.stringify(selectedStrategyBrief));
         setTimeout(loadLibrary, 3000);
       } else {
         setError(result.error || 'Extraction failed');
@@ -881,16 +966,14 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
                 >
                   <option value="">No Video Plan linked (standard extraction)</option>
                   {savedPlans.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.topic} - {p.timeline.filter(e => e.type === 'dropzone').length} Drop Zones
+                    <option key={String(p.id)} value={String(p.id)}>
+                      {p.topic} - {planDropZones(p).length} Drop Zones
                     </option>
                   ))}
                 </select>
               </div>
               {selectedPlanId && (
-                <p className="text-[10px] text-[#00C851]/70 mt-1 px-1">
-                  Drop Zone timestamps and the Growth Brief will guide clip scoring, packaging labels, and caption angles.
-                </p>
+                <LinkedPlanPreview plan={selectedPlan} dropZones={selectedDropZones} />
               )}
             </div>
           )}
