@@ -32,6 +32,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('select-logo'),
   selectImageFile: () =>
     ipcRenderer.invoke('select-image-file'),
+  checkMediaFile: (filePath: string) =>
+    ipcRenderer.invoke('check-media-file', filePath),
 
   // Clip Extraction (Python bridge)
   extractClips: (videoPath: string, options: Record<string, unknown> & { strategyBrief?: ContentStrategyBrief }) =>
@@ -133,6 +135,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Scheduler
   getPublishingQueue: () =>
     ipcRenderer.invoke('get-publishing-queue'),
+  getLocalPublishingQueue: () =>
+    ipcRenderer.invoke('get-local-publishing-queue'),
   getScheduledPosts: () =>
     ipcRenderer.invoke('get-scheduled-posts'),
   saveScheduledPost: (post: PublishingQueuePost | unknown) =>

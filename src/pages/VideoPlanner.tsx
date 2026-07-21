@@ -621,7 +621,11 @@ function strategyBriefToText(brief: ContentStrategyBrief): string[] {
 
 // ── Main Component ─────────────────────────────────────────────────────────
 
-export default function VideoPlanner() {
+export default function VideoPlanner({
+  onCreateFromPlan,
+}: {
+  onCreateFromPlan?: (planId: string) => void;
+} = {}) {
   const [topic, setTopic]               = useState('');
   const [perspective, setPerspective]   = useState('barber');
   const [videoType, setVideoType]       = useState('talking-head');
@@ -801,16 +805,30 @@ export default function VideoPlanner() {
     setGenerating(false);
   }
 
-  async function handleSave() {
-    if (!plan) return;
+  async function handleSave(): Promise<string | null> {
+    if (!plan) return null;
     setSaving(true);
     try {
-      await (window.electronAPI as any).saveVideoPlan?.(plan);
+      const result = await (window.electronAPI as any).saveVideoPlan?.(plan);
+      if (!result?.success) return null;
+      const savedPlanId = String(result.id ?? plan.id);
+      if (savedPlanId !== plan.id) {
+        setPlan(current => current ? { ...current, id: savedPlanId } : current);
+      }
       if (plan.strategyBrief) localStorage.setItem('contentStrategy:lastBrief', JSON.stringify(plan.strategyBrief));
       setSaved(true); setTimeout(() => setSaved(false), 2000);
-      loadSavedPlans();
-    } catch { /* no-op */ }
-    setSaving(false);
+      await loadSavedPlans();
+      return savedPlanId;
+    } catch {
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCreateFromPlan() {
+    const savedPlanId = await handleSave();
+    if (savedPlanId) onCreateFromPlan?.(savedPlanId);
   }
 
   return (
@@ -1018,6 +1036,12 @@ export default function VideoPlanner() {
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${saved ? 'bg-6fb-green/10 text-6fb-green border-6fb-green/30' : 'bg-6fb-card border-6fb-border text-6fb-text-secondary hover:text-white hover:border-6fb-green/30'}`}>
                   {saved ? '✓ Saved' : saving ? 'Saving...' : 'Save'}
                 </button>
+                {onCreateFromPlan && (
+                  <button onClick={handleCreateFromPlan} disabled={saving}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-6fb-green text-black hover:bg-6fb-green/90 disabled:opacity-50 transition-all">
+                    {saving ? 'Saving...' : 'Create from this plan'}
+                  </button>
+                )}
                 <button onClick={() => { setPlan(null); setExpandedBody(null); }}
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold text-6fb-text-secondary hover:text-white bg-6fb-card border border-6fb-border transition-all">
                   New Plan

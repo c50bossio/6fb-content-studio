@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import InstagramPostModal from '../components/InstagramPostModal';
 import type { ContentStrategyBrief, PackageVariant } from '../types/content-strategy';
+import type { ScheduleDraft } from '../types/creation-handoff';
 
 // ─── SVG Icons ────────────────────────────────────────────────────────
 const Icon = {
@@ -143,10 +144,11 @@ function ScoreBar({ label, value, color, icon }: { label: string; value: number;
 }
 
 // ─── Preview Modal ────────────────────────────────────────────────────
-function ClipPreviewModal({ clip, onClose, onOpenInEditor }: {
+function ClipPreviewModal({ clip, onClose, onOpenInEditor, onSchedule }: {
   clip: Clip;
   onClose: () => void;
   onOpenInEditor?: (clip: Clip) => void;
+  onSchedule?: (draft: ScheduleDraft) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
@@ -345,6 +347,23 @@ function ClipPreviewModal({ clip, onClose, onOpenInEditor }: {
                 <path d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
               </svg>
               Edit in Video Editor
+            </button>
+          )}
+
+          {clip.filePath && onSchedule && (
+            <button
+              onClick={() => {
+                onClose();
+                onSchedule({
+                  source: 'clip',
+                  mediaPath: clip.filePath!,
+                  thumbnailPath: clip.thumbnailPath ?? null,
+                  caption: clip.title || 'New clip',
+                });
+              }}
+              className="flex items-center justify-center gap-1.5 py-2 rounded-lg border border-[#00C851]/30 text-[11px] text-[#00C851] hover:bg-[#00C851]/10 transition-colors"
+            >
+              Schedule this clip
             </button>
           )}
 
@@ -667,7 +686,19 @@ function LinkedPlanPreview({ plan, dropZones }: { plan: VideoPlanSummary | null;
 }
 
 // ─── Main Page ────────────────────────────────────────────────────────
-export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { onClipCreated?: () => void; onNavigateToEditor?: (clip: Clip) => void } = {}) {
+export default function ClipExtractor({
+  initialPlanId,
+  onPlanHandoffConsumed,
+  onClipCreated,
+  onNavigateToEditor,
+  onScheduleClip,
+}: {
+  initialPlanId?: string | null;
+  onPlanHandoffConsumed?: () => void;
+  onClipCreated?: () => void;
+  onNavigateToEditor?: (clip: Clip) => void;
+  onScheduleClip?: (draft: ScheduleDraft) => void;
+} = {}) {
   const [videoPath, setVideoPath]         = useState<string | null>(() => localStorage.getItem('clipex:videoPath'));
   const [processing, setProcessing]       = useState(false);
   const [progress, setProgress]           = useState({ percent: 0, label: '' });
@@ -741,6 +772,8 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
 
   const [savedPlans, setSavedPlans] = useState<VideoPlanSummary[]>([]);
   const [selectedPlanId, setSelectedPlanId] = useState<string>('');
+  const [plansLoaded, setPlansLoaded] = useState(false);
+  const [planHandoffError, setPlanHandoffError] = useState('');
   const selectedPlan = useMemo(
     () => savedPlans.find(p => String(p.id) === selectedPlanId) ?? null,
     [savedPlans, selectedPlanId]
@@ -751,8 +784,21 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
   useEffect(() => {
     (window.electronAPI as any).listVideoPlans?.().then((r: any) => {
       if (r?.plans) setSavedPlans(r.plans);
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setPlansLoaded(true));
   }, []);
+
+  useEffect(() => {
+    if (!initialPlanId || !plansLoaded) return;
+    const matchingPlan = savedPlans.find(plan => String(plan.id) === initialPlanId);
+    if (matchingPlan) {
+      setSelectedPlanId(String(matchingPlan.id));
+      setPlanHandoffError('');
+    } else {
+      setSelectedPlanId('');
+      setPlanHandoffError('The selected video plan is no longer available. Choose another plan or continue without one.');
+    }
+    onPlanHandoffConsumed?.();
+  }, [initialPlanId, plansLoaded, savedPlans, onPlanHandoffConsumed]);
 
   // Load history on mount so existing clips show without needing an extraction first
   useEffect(() => { loadLibrary(); }, [loadLibrary]);
@@ -890,6 +936,7 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
           clip={previewClip}
           onClose={() => setPreviewClip(null)}
           onOpenInEditor={(clip) => { setPreviewClip(null); onNavigateToEditor?.(clip); }}
+          onSchedule={onScheduleClip}
         />
       )}
 
@@ -952,7 +999,7 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
         </div>
 
 
-          {videoPath && savedPlans.length > 0 && (
+          {savedPlans.length > 0 && (
             <div className="mb-3 px-1">
               <div className="flex items-center gap-2 bg-[#0f0f0f] border border-[#222] rounded-xl px-3 py-2.5">
                 <svg className="w-3.5 h-3.5 text-[#00C851] shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
@@ -961,7 +1008,7 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
                 </svg>
                 <select
                   value={selectedPlanId}
-                  onChange={e => setSelectedPlanId(e.target.value)}
+                  onChange={e => { setSelectedPlanId(e.target.value); setPlanHandoffError(''); }}
                   className="flex-1 bg-transparent text-xs text-[#888] focus:outline-none cursor-pointer appearance-none"
                 >
                   <option value="">No Video Plan linked (standard extraction)</option>
@@ -972,8 +1019,18 @@ export default function ClipExtractor({ onClipCreated, onNavigateToEditor }: { o
                   ))}
                 </select>
               </div>
+              {planHandoffError && (
+                <p className="mt-2 text-[10px] text-amber-300">{planHandoffError}</p>
+              )}
               {selectedPlanId && (
-                <LinkedPlanPreview plan={selectedPlan} dropZones={selectedDropZones} />
+                <div>
+                  <div className="flex justify-end mt-1">
+                    <button onClick={() => { setSelectedPlanId(''); setPlanHandoffError(''); }} className="text-[10px] text-[#666] hover:text-white transition-colors">
+                      Clear plan
+                    </button>
+                  </div>
+                  <LinkedPlanPreview plan={selectedPlan} dropZones={selectedDropZones} />
+                </div>
               )}
             </div>
           )}

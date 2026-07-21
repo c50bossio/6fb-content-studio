@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import InstagramPostModal from '../components/InstagramPostModal';
 import type { PublishingPlatform, PublishingQueuePost, PublishingStatus } from '../types/publishing';
+import type { ScheduleDraft } from '../types/creation-handoff';
 
 // ─── Types ───────────────────────────────────────────────────────────
 type ScheduledPost = PublishingQueuePost;
@@ -214,18 +215,22 @@ function PostDetailModal({ post, onClose, onDelete, onMarkPosted, onPostNow }: {
 }
 
 // ─── New Post Modal ───────────────────────────────────────────────────
-function NewPostModal({ onClose, onSave }: {
+function NewPostModal({ draft, onClose, onSave }: {
+  draft?: ScheduleDraft | null;
   onClose: () => void;
-  onSave: (post: Omit<ScheduledPost, 'id' | 'createdAt'>) => void;
+  onSave: (post: Omit<ScheduledPost, 'id' | 'createdAt'>) => Promise<boolean> | boolean;
 }) {
   const [platform, setPlatform] = useState<PublishingPlatform>('instagram');
-  const [caption, setCaption] = useState('');
-  const [mediaPath, setMediaPath] = useState('');
-  const [thumbnailPath, setThumbnailPath] = useState('');
+  const [caption, setCaption] = useState(draft?.caption ?? '');
+  const [mediaPath, setMediaPath] = useState(draft?.mediaPath ?? '');
+  const [thumbnailPath, setThumbnailPath] = useState(draft?.thumbnailPath ?? '');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [time, setTime] = useState('12:00');
   const [clips, setClips] = useState<LibraryClip[]>([]);
   const [showPicker, setShowPicker] = useState(false);
+  const [mediaStatus, setMediaStatus] = useState<'idle' | 'checking' | 'available' | 'missing'>(draft?.mediaPath ? 'checking' : 'idle');
+  const [mediaError, setMediaError] = useState('');
+  const requiresMedia = Boolean(draft?.mediaPath);
 
   useEffect(() => {
     (async () => {
@@ -238,17 +243,46 @@ function NewPostModal({ onClose, onSave }: {
 
   const pickFile = async () => {
     const r = await window.electronAPI.selectVideo();
-    if (!r.cancelled && r.filePath) setMediaPath(r.filePath);
+    if (!r.cancelled && r.filePath) {
+      setMediaPath(r.filePath);
+      setThumbnailPath('');
+    }
   };
 
-  const handleSave = () => {
-    if (!caption.trim() || !date) return;
-    onSave({
+  useEffect(() => {
+    let active = true;
+    if (!mediaPath) {
+      setMediaStatus(requiresMedia ? 'missing' : 'idle');
+      setMediaError(requiresMedia ? 'Choose a replacement video before scheduling.' : '');
+      return () => { active = false; };
+    }
+    setMediaStatus('checking');
+    setMediaError('');
+    window.electronAPI.checkMediaFile(mediaPath).then(result => {
+      if (!active) return;
+      if (result.success && result.exists) {
+        setMediaStatus('available');
+      } else {
+        setMediaStatus('missing');
+        setMediaError(result.error || 'Media is no longer available. Choose another file.');
+      }
+    }).catch(() => {
+      if (!active) return;
+      setMediaStatus('missing');
+      setMediaError('Media could not be checked. Choose another file.');
+    });
+    return () => { active = false; };
+  }, [mediaPath, requiresMedia]);
+
+  const handleSave = async () => {
+    const mediaReady = !requiresMedia || (Boolean(mediaPath) && mediaStatus === 'available');
+    if (!caption.trim() || !date || !mediaReady) return;
+    const saved = await onSave({
       platform, caption, mediaPath, thumbnailPath,
       scheduledAt: new Date(`${date}T${time}`).toISOString(),
       status: 'scheduled',
     });
-    onClose();
+    if (saved !== false) onClose();
   };
 
   return (
@@ -256,7 +290,10 @@ function NewPostModal({ onClose, onSave }: {
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="w-[440px] bg-[#111] border border-[#222] rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#1c1c1c]">
-          <h2 className="text-sm font-bold text-white">Schedule Post</h2>
+          <div>
+            <h2 className="text-sm font-bold text-white">Schedule Post</h2>
+            {draft && <p className="mt-0.5 text-[10px] text-[#00C851]">From {draft.source === 'editor-export' ? 'Video Editor export' : 'Clip Extractor'}</p>}
+          </div>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center text-[#444] hover:text-white transition-colors">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -305,7 +342,7 @@ function NewPostModal({ onClose, onSave }: {
               <div className="mb-3 border border-[#1e1e1e] rounded-xl p-3 bg-black/30">
                 <div className="grid grid-cols-4 gap-1.5 max-h-36 overflow-y-auto">
                   {clips.map((clip, i) => (
-                    <button key={i} onClick={() => { setMediaPath(clip.filePath!); if (clip.thumbnailPath) setThumbnailPath(clip.thumbnailPath); setShowPicker(false); }}
+                    <button key={i} onClick={() => { setMediaPath(clip.filePath!); setThumbnailPath(clip.thumbnailPath || ''); setShowPicker(false); }}
                       className={`rounded-lg overflow-hidden border transition-all ${mediaPath === clip.filePath ? 'border-[#00C851]' : 'border-[#1e1e1e] hover:border-[#333]'}`}>
                       {clip.thumbnailPath ? (
                         <img src={`localfile://${clip.thumbnailPath}`} alt="" className="w-full aspect-square object-cover" />
@@ -323,14 +360,19 @@ function NewPostModal({ onClose, onSave }: {
             )}
 
             {mediaPath ? (
-              <div className="flex items-center gap-2 bg-black border border-[#2a2a2a] rounded-xl px-3 py-2">
-                {thumbnailPath && <img src={`localfile://${thumbnailPath}`} alt="" className="w-8 h-10 rounded object-cover shrink-0" />}
-                <p className="text-xs text-white flex-1 truncate">{mediaPath.split('/').pop()}</p>
-                <button onClick={() => { setMediaPath(''); setThumbnailPath(''); }} className="text-[#444] hover:text-red-400 transition-colors">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
-                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                  </svg>
-                </button>
+              <div className="flex flex-col gap-1.5">
+                <div className="flex items-center gap-2 bg-black border border-[#2a2a2a] rounded-xl px-3 py-2">
+                  {thumbnailPath && <img src={`localfile://${thumbnailPath}`} alt="" className="w-8 h-10 rounded object-cover shrink-0" />}
+                  <p className="text-xs text-white flex-1 truncate">{mediaPath.split('/').pop()}</p>
+                  <button onClick={() => { setMediaPath(''); setThumbnailPath(''); }} className="text-[#444] hover:text-red-400 transition-colors">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+                      <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                    </svg>
+                  </button>
+                </div>
+                {requiresMedia && mediaStatus === 'checking' && <p className="text-[10px] text-[#777]">Checking media availability…</p>}
+                {requiresMedia && mediaStatus === 'available' && <p className="text-[10px] text-[#00C851]">Media is available</p>}
+                {mediaError && <p className="text-[10px] text-amber-300">{mediaError}</p>}
               </div>
             ) : (
               <button onClick={pickFile}
@@ -360,7 +402,7 @@ function NewPostModal({ onClose, onSave }: {
               className="flex-1 py-2.5 rounded-xl border border-[#222] text-xs text-[#555] hover:text-white hover:border-[#333] transition-colors">
               Cancel
             </button>
-            <button onClick={handleSave} disabled={!caption.trim() || !date}
+            <button onClick={handleSave} disabled={!caption.trim() || !date || (requiresMedia && mediaStatus !== 'available')}
               className="flex-1 py-2.5 rounded-xl text-xs font-bold text-black disabled:opacity-40 transition-colors"
               style={{ background: '#00C851' }}>
               Schedule
@@ -373,32 +415,65 @@ function NewPostModal({ onClose, onSave }: {
 }
 
 // ─── Main Scheduler Page ──────────────────────────────────────────────
-export default function Scheduler() {
+export default function Scheduler({
+  initialDraft,
+}: {
+  initialDraft?: ScheduleDraft | null;
+} = {}) {
   const [posts, setPosts] = useState<ScheduledPost[]>([]);
   const [view, setView] = useState<'month' | 'week' | 'queue'>('month');
   const [monthOffset, setMonthOffset] = useState(0);
   const [weekOffset, setWeekOffset] = useState(0);
   const [showNewModal, setShowNewModal] = useState(false);
+  const [newPostDraft, setNewPostDraft] = useState<ScheduleDraft | null>(null);
   const [selectedPost, setSelectedPost] = useState<ScheduledPost | null>(null);
   const [igPostTarget, setIgPostTarget] = useState<ScheduledPost | null>(null);
 
   useEffect(() => {
-    loadPosts();
+    loadPosts(Boolean(initialDraft));
     const cleanup = window.electronAPI.onPostDue?.(() => loadPosts());
     return () => { cleanup?.(); };
   }, []);
 
-  const loadPosts = async () => {
+  useEffect(() => {
+    if (!initialDraft) {
+      setNewPostDraft(null);
+      setShowNewModal(false);
+      return;
+    }
+    setNewPostDraft(initialDraft);
+    setShowNewModal(true);
+  }, [initialDraft]);
+
+  const openBlankPost = () => {
+    setNewPostDraft(null);
+    setShowNewModal(true);
+  };
+
+  const closeNewPost = () => {
+    setNewPostDraft(null);
+    setShowNewModal(false);
+  };
+
+  const loadPosts = async (localOnly = false) => {
     try {
-      const r = await window.electronAPI.getPublishingQueue();
+      const r = await (localOnly
+        ? window.electronAPI.getLocalPublishingQueue()
+        : window.electronAPI.getPublishingQueue());
       if (r?.posts) setPosts(r.posts as ScheduledPost[]);
     } catch { setPosts([]); }
   };
 
   const handleSavePost = async (data: Omit<ScheduledPost, 'id' | 'createdAt'>) => {
     const post: ScheduledPost = { ...data, id: Date.now().toString(), createdAt: new Date().toISOString() };
-    try { await window.electronAPI.saveScheduledPost({ ...post }); } catch {}
+    try {
+      const result = await window.electronAPI.saveScheduledPost({ ...post });
+      if (!result.success) return false;
+    } catch {
+      return false;
+    }
     setPosts(prev => [...prev, post].sort((a, b) => new Date(a.scheduledAt).getTime() - new Date(b.scheduledAt).getTime()));
+    return true;
   };
 
   const handleDelete = async (id: string) => {
@@ -487,7 +562,7 @@ export default function Scheduler() {
       )}
 
       {/* New post modal */}
-      {showNewModal && <NewPostModal onClose={() => setShowNewModal(false)} onSave={handleSavePost} />}
+      {showNewModal && <NewPostModal draft={newPostDraft} onClose={closeNewPost} onSave={handleSavePost} />}
 
       {/* Post detail modal */}
       {selectedPost && (
@@ -544,7 +619,7 @@ export default function Scheduler() {
           )}
         </div>
 
-        <button onClick={() => setShowNewModal(true)}
+        <button onClick={openBlankPost}
           className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl text-black"
           style={{ background: '#00C851' }}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" className="w-3 h-3">
@@ -662,7 +737,7 @@ export default function Scheduler() {
                       <PostChip key={post.id} post={post} onClick={() => setSelectedPost(post)} />
                     ))}
                     {dayPosts.length === 0 && (
-                      <button onClick={() => setShowNewModal(true)}
+                      <button onClick={openBlankPost}
                         className="flex-1 flex items-center justify-center text-[10px] text-[#222] hover:text-[#444] transition-colors rounded-lg border border-dashed border-[#1a1a1a] hover:border-[#2a2a2a]">
                         +
                       </button>
