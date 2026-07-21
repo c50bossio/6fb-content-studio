@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { BrandProfile } from '../App';
 import useGoogleFonts from '../hooks/useGoogleFonts';
 import type { ContentStrategyBrief } from '../types/content-strategy';
+import { toLocalFileUrl } from '../utils/localFileUrl';
 
 interface BlogSection {
   id: string;
@@ -332,7 +333,7 @@ export default function BlogWriter({ brandProfile, onBlogCreated, hasClaudeKey }
                     {section.heading}
                   </h2>
                   {section.imagePath && (
-                    <img src={`localfile://${section.imagePath}`} alt={section.heading}
+                    <img src={toLocalFileUrl(section.imagePath)} alt={section.heading}
                       className="w-full rounded-xl mb-4 border border-[#222]" />
                   )}
                   <div className="text-sm text-[#ccc] leading-relaxed whitespace-pre-wrap" style={{ fontFamily: `'${brand.bodyFont}', sans-serif` }}>
@@ -390,7 +391,7 @@ export default function BlogWriter({ brandProfile, onBlogCreated, hasClaudeKey }
                     <label className="text-[10px] text-[#555] uppercase tracking-widest font-bold mb-1.5 block">Section Image</label>
                     {sections[activeSection].imagePath ? (
                       <div className="relative group">
-                        <img src={`localfile://${sections[activeSection].imagePath}`} alt=""
+                      <img src={toLocalFileUrl(sections[activeSection].imagePath)} alt=""
                           className="w-full h-40 object-cover rounded-xl border border-[#222]" />
                         <div className="absolute bottom-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                           <button onClick={() => handleSwapImage(activeSection)}
