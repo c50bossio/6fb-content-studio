@@ -4,12 +4,15 @@ out/
 release/
 .env
 .env.local
+.env.*
+!.env.example
 python/.build-venv/
 python/build/
 python/dist/
 python/runtime/
 *.log
 .DS_Store
+Thumbs.db
 certs/
 .env.build
 .omc/

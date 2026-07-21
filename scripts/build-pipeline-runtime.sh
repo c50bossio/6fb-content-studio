@@ -55,9 +55,10 @@ if spec and spec.submodule_search_locations:
 PY
 )"
 
-MLX_DATA_ARGS=()
-if [[ -n "$MLX_METALLIB" ]]; then
-  MLX_DATA_ARGS+=(--add-data "$MLX_METALLIB:mlx/lib")
+if [[ -z "$MLX_METALLIB" ]]; then
+  echo "mlx.metallib was not found in the macOS runtime environment." >&2
+  echo "Refusing to build a pipeline runtime without MLX Metal support." >&2
+  exit 1
 fi
 
 rm -rf "$BUILD_DIR" "$DIST_DIR" "$RUNTIME_DIR"
@@ -84,7 +85,7 @@ mkdir -p "$RUNTIME_DIR/bin" "$RUNTIME_DIR/pipeline"
   --collect-all mlx_whisper \
   --collect-all tiktoken \
   --collect-all huggingface_hub \
-  "${MLX_DATA_ARGS[@]}" \
+  --add-data "$MLX_METALLIB:mlx/lib" \
   --add-data "$TOOLS_DIR/clip_extractor/config.yaml:clip_extractor" \
   --add-data "$TOOLS_DIR/clip_extractor/models:clip_extractor/models" \
   "$TOOLS_DIR/pipeline/full_pipeline.py"
@@ -103,5 +104,7 @@ cat > "$RUNTIME_DIR/runtime.json" <<JSON
   "builtAt": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 }
 JSON
+
+(cd "$ROOT_DIR" && node scripts/assert-packaged-runtime.cjs "$RUNTIME_ID")
 
 echo "Pipeline runtime built at $RUNTIME_DIR"
