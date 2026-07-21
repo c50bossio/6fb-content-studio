@@ -10,19 +10,20 @@ Last updated: 2026-07-21
 The folder-app operating layer is complete and validated around the existing
 application. The focused production dependency remediation is complete; no
 runtime source paths were moved or renamed. The development-tooling dependency
-repair is also complete and the full npm audit is clean.
+repair is also complete and the full npm audit is clean. The macOS MLX runtime
+blocker is resolved and the runtime build now verifies its own output.
 
 ## Last session (2026-07-21)
 
 - Completed: added the three-workspace operating layer; passed normal, strict,
   and portable folder-app validation; remediated the production dependency audit;
   remediated all remaining development-tooling advisories; passed a clean
-  `npm ci`, full `npm audit`, `npm run build`, and bounded Electron development launch.
+  `npm ci`, full `npm audit`, `npm run build`, and bounded Electron development
+  launch; rebuilt and verified the macOS arm64 pipeline runtime with MLX Metal support.
 - In progress: nothing.
-- Blocked: the macOS packaged-runtime assertion fails because `mlx_whisper`
-  cannot load its default Metal library; this was not caused by the JavaScript repair.
-- Next: investigate and repair the bundled macOS Python/Metal runtime, then rerun
-  the packaged-runtime assertion before a macOS packaging or release gate.
+- Blocked: nothing in the current local build and runtime verification scope.
+- Next: produce and smoke-test a local unsigned macOS app bundle before asking
+  for approval to sign, notarize, tag, or publish a release.
 
 ## Decisions made
 
@@ -33,8 +34,10 @@ repair is also complete and the full npm audit is clean.
   updated lockfile with a clean production audit and successful build.
 - Applied the supported development-tooling repair within existing manifest
   ranges; kept the change to `package-lock.json` and verification records.
+- Made the macOS runtime builder fail fast when `mlx.metallib` is unavailable
+  and run the packaged-runtime assertion before reporting a successful build.
 
 ## Open questions
 
-- Which macOS bundled-runtime packaging change will make `mlx_whisper` load its
-  required Metal library consistently in the packaged runtime?
+- Has the locally packaged unsigned macOS app bundle passed an install/launch
+  smoke test with the rebuilt pipeline runtime embedded?

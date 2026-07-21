@@ -13,9 +13,6 @@
 
 - There is no dedicated test script in `package.json`; feature verification must
   currently combine build checks with targeted smoke or manual flows.
-- The macOS packaged-runtime assertion currently fails because `mlx_whisper`
-  cannot load its default Metal library. This is separate from the JavaScript
-  dependency repair and needs a focused bundled-Python/runtime investigation.
 
 ## Recent decisions
 
@@ -26,3 +23,6 @@
 - Applied the supported development-tooling audit repair within declared package
   ranges. The full audit is clean, the Electron production build passes, and a
   bounded development launch reached the renderer server and started the app.
+- Rebuilt the stale macOS arm64 pipeline runtime so it includes MLX's
+  `mlx.metallib`, and made `runtime:mac` fail if that library is unavailable or
+  the completed runtime does not pass its packaged-runtime check.
