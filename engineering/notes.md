@@ -1,5 +1,7 @@
 # Engineering notes
 
+Last updated: 2026-07-21
+
 ## Confirmed facts
 
 - The renderer uses React 19 with Electron Vite and TypeScript.
@@ -8,6 +10,9 @@
 - `python/tools/clip_extractor/` and `python/tools/pipeline/` contain pipeline source.
 - `npm run build` is the base TypeScript/Electron build gate.
 - Runtime packaging has separate macOS and Windows build and assertion scripts.
+- The dependency and macOS MLX runtime remediations shipped in public release
+  `v1.5.43` from merge commit
+  `9b792a1e9aac312c5599dbff7220e62103e432f5`.
 
 ## Open questions
 
