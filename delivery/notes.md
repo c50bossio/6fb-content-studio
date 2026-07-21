@@ -18,12 +18,13 @@
 
 ## Open questions
 
-- The proposed next version is `v1.5.43`. The tested source stack is five
-  commits ahead of `origin/main`, and the readiness record adds one docs-only
-  commit. Pull request #18 is ready for human review. Its initial CodeRabbit
-  review completed, and all three findings were addressed in `395d36e`; the
-  post-fix review is temporarily rate limited. The pull request has not been
-  merged, tagged, or published.
+- The proposed next version is `v1.5.43`. Pull request #18 was nine commits
+  ahead of `origin/main` at reviewed head `c4d2240`; this adversarial-review
+  record adds one documentation-only commit. Its initial CodeRabbit review
+  completed, all three findings were addressed in `395d36e`, and both inline
+  threads are resolved. The owner explicitly skipped the quota-limited post-fix
+  CodeRabbit wait. The adversarial merge-readiness review passed, but the pull
+  request has not been merged, tagged, or published.
 - Fresh `v1.5.43` updater and external availability cannot be verified until
   the explicitly approved tag workflows complete.
 
@@ -35,3 +36,5 @@
   externally published release claims.
 - Keep the local signed-but-unnotarized proof separate from official
   notarization and Gatekeeper acceptance.
+- Treat CodeRabbit's post-fix quota failure as an optional external-capacity
+  limit, not a code failure; do not weaken local or post-merge verification.

@@ -17,8 +17,10 @@ smoke tests, and its embedded pipeline has passed a disposable offline
 end-to-end clip-extraction smoke. Local Developer ID signing readiness has now
 also passed without notarizing or publishing an artifact. The verified branch
 is pushed and pull request #18 is ready for human review. Its three CodeRabbit
-findings are fixed; the post-fix automated review is temporarily rate limited.
-No merge, release tag, notarization, or publication has occurred.
+findings are fixed, both inline threads are resolved, and the owner explicitly
+skipped the quota-limited post-fix CodeRabbit wait. The adversarial
+merge-readiness review passed. No merge, release tag, notarization, or
+publication has occurred.
 
 ## Last session (2026-07-21)
 
@@ -31,14 +33,15 @@ No merge, release tag, notarization, or publication has occurred.
   a packaged-binary clip extraction from transcript parsing through 1080x1920
   H.264/AAC output and visually inspected frames across the rendered clip;
   audited current release state; completed a local signed-candidate proof;
-  opened pull request #18; and addressed all three CodeRabbit findings.
+  opened pull request #18; addressed all three CodeRabbit findings; and passed
+  an exact-head adversarial merge-readiness review.
 - In progress: nothing.
 - Blocked: nothing in the current local build and runtime verification scope.
-- Next: confirm a fresh post-fix automated review when the CodeRabbit rate limit
-  resets and complete the recommended GPT-5.6 Sol adversarial review, then
-  explicitly approve merging pull request #18. Creating the proposed `v1.5.43`
-  tag remains a separate gate that will trigger signing, notarization, macOS and
-  Windows packaging, upload, and publishing.
+- Next: explicitly approve merging pull request #18, then verify and rerun the
+  audit, build, runtime, and packaged-runtime gates on the exact merged
+  `origin/main` commit. Creating the proposed `v1.5.43` tag remains a separate
+  gate that will trigger signing, notarization, macOS and Windows packaging,
+  upload, and publishing.
 
 ## Decisions made
 
