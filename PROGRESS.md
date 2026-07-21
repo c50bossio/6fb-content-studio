@@ -18,12 +18,9 @@ and Windows release workflows completed successfully and all eight expected
 public assets are available. A fresh macOS arm64 download matched the published
 SHA-256, passed DMG stapling and strict code-signature verification, and launched
 from an isolated profile as version `1.5.44`. The visible Plan-to-Clips handoff
-also passed without content-generation or social-posting calls.
-
-There is no release blocker. The only incomplete optional acceptance detail is
-selecting a test video through macOS's native picker; this machine has not
-granted the automation process Apple Events access, so that interaction was not
-bypassed.
+and the native-picker-to-Scheduler local draft flow also passed without
+content-generation or social-posting calls. There is no active release or
+real-Mac acceptance blocker.
 
 ## Last session (2026-07-21)
 
@@ -42,13 +39,11 @@ bypassed.
   downloaded, checksum-verified, mounted read-only, notarization-validated,
   signature-verified, and launched as an isolated `1.5.44` instance.
 - Completed: visible local-fallback Plan-to-Clips acceptance in the published
-  app and an isolated local scheduler queue save/delete round trip. No social
-  post, browser-open fallback, or content-generation API call was made.
-- Blocked: only the optional native-file-picker portion of the real-Mac flow,
-  pending Apple Events permission for the automation process.
-- Next: if fuller device acceptance is needed, grant that permission and select
-  a disposable video through the v1.5.44 native picker; otherwise collect direct
-  barber feedback for the next product cycle.
+  app, followed by native video selection and a far-future local Scheduler draft
+  saved through the released UI and removed after verification. No social post,
+  browser-open fallback, remote queue, or content-generation API call was made.
+- Blocked: nothing.
+- Next: collect direct barber feedback for the next product cycle.
 
 ## Decisions made
 
