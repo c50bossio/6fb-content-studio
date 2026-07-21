@@ -20,8 +20,10 @@
 
 - The proposed next version is `v1.5.43`. The tested source stack is five
   commits ahead of `origin/main`, and the readiness record adds one docs-only
-  commit. The branch is pushed and draft pull request #18 is open; it has not
-  been reviewed, merged, tagged, or published.
+  commit. Pull request #18 is ready for human review. Its initial CodeRabbit
+  review completed, and all three findings were addressed in `395d36e`; the
+  post-fix review is temporarily rate limited. The pull request has not been
+  merged, tagged, or published.
 - Fresh `v1.5.43` updater and external availability cannot be verified until
   the explicitly approved tag workflows complete.
 

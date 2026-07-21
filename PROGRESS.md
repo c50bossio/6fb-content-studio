@@ -16,8 +16,9 @@ unsigned macOS arm64 app bundle has also passed local artifact and launch
 smoke tests, and its embedded pipeline has passed a disposable offline
 end-to-end clip-extraction smoke. Local Developer ID signing readiness has now
 also passed without notarizing or publishing an artifact. The verified branch
-is pushed and draft pull request #18 is open for review; no merge, release tag,
-notarization, or publication has occurred.
+is pushed and pull request #18 is ready for human review. Its three CodeRabbit
+findings are fixed; the post-fix automated review is temporarily rate limited.
+No merge, release tag, notarization, or publication has occurred.
 
 ## Last session (2026-07-21)
 
@@ -29,12 +30,15 @@ notarization, or publication has occurred.
   support; built and smoke-tested an unsigned local macOS app bundle; completed
   a packaged-binary clip extraction from transcript parsing through 1080x1920
   H.264/AAC output and visually inspected frames across the rendered clip;
-  audited current release state and completed a local signed-candidate proof.
+  audited current release state; completed a local signed-candidate proof;
+  opened pull request #18; and addressed all three CodeRabbit findings.
 - In progress: nothing.
 - Blocked: nothing in the current local build and runtime verification scope.
-- Next: review draft pull request #18 and its checks, then explicitly approve
-  merging it and creating the proposed `v1.5.43` tag. That tag will trigger
-  signing, notarization, macOS and Windows packaging, upload, and publishing.
+- Next: confirm a fresh post-fix automated review when the CodeRabbit rate limit
+  resets and complete the recommended GPT-5.6 Sol adversarial review, then
+  explicitly approve merging pull request #18. Creating the proposed `v1.5.43`
+  tag remains a separate gate that will trigger signing, notarization, macOS and
+  Windows packaging, upload, and publishing.
 
 ## Decisions made
 
@@ -58,5 +62,5 @@ notarization, or publication has occurred.
 
 ## Open questions
 
-- Should draft pull request #18 be approved and merged to `main`, then released
-  through the existing tag workflows as `v1.5.43`?
+- Should ready pull request #18 be merged to `main` after its post-fix reviews,
+  then released through the existing tag workflows as `v1.5.43`?
