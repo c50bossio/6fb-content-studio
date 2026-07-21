@@ -13,6 +13,8 @@ Last updated: 2026-07-21
 - The dependency and macOS MLX runtime remediations shipped in public release
   `v1.5.43` from merge commit
   `9b792a1e9aac312c5599dbff7220e62103e432f5`.
+- Guided Plan-to-Post shipped in `v1.5.44` from merge commit
+  `1949b06bb9f140210b2c94a93d2de899fe73e10f`.
 
 ## Open questions
 
@@ -38,3 +40,8 @@ Last updated: 2026-07-21
 - The next approved product scope is Guided Plan-to-Post. Its implementation
   plan keeps plan, clip, editor, and Scheduler handoffs local and requires
   explicit scheduling or posting confirmation.
+- The published macOS `v1.5.44` bundle passed isolated launch, bundled-runtime
+  health, and the visible Plan-to-Clips handoff using a forced local planner
+  fallback. The app's local queue save/delete IPC round trip also passed in the
+  disposable profile; a direct media path correctly failed validation because it
+  had not been approved through the native picker.
