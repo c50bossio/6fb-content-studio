@@ -15,6 +15,7 @@ import { useStudioStats } from './hooks/useStudioStats';
 import UpdateBanner from './components/UpdateBanner';
 import type { ContentBrain, ContentStrategyBrief } from './types/content-strategy';
 import type { PublishingQueueResponse } from './types/publishing';
+import type { ScheduleDraft } from './types/creation-handoff';
 
 export interface BrandProfile {
   brandName: string;
@@ -53,7 +54,8 @@ declare global {
       selectVideo: () => Promise<{ cancelled: boolean; filePath?: string }>;
       selectOutputDir: () => Promise<{ cancelled: boolean; dirPath?: string }>;
       selectLogo: () => Promise<{ cancelled: boolean; filePath?: string }>;
-    selectImageFile: () => Promise<{ cancelled: boolean; filePath?: string }>;
+      selectImageFile: () => Promise<{ cancelled: boolean; filePath?: string }>;
+      checkMediaFile: (filePath: string) => Promise<{ success: boolean; exists: boolean; error?: string }>;
       // Clips
       extractClips: (videoPath: string, options: Record<string, unknown> & { strategyBrief?: ContentStrategyBrief }) => Promise<{ success: boolean; data?: unknown; error?: string }>;
       cancelExtraction: () => Promise<{ success: boolean }>;
@@ -102,6 +104,7 @@ declare global {
       onProgress: (callback: (data: { percent: number; label: string }) => void) => () => void;
       // Scheduler
       getPublishingQueue: () => Promise<PublishingQueueResponse>;
+      getLocalPublishingQueue: () => Promise<PublishingQueueResponse>;
       getScheduledPosts: () => Promise<unknown[]>;
       saveScheduledPost: (post: unknown) => Promise<{ success: boolean }>;
       deleteScheduledPost: (id: string) => Promise<{ success: boolean }>;
@@ -146,12 +149,42 @@ export default function App() {
   const [hasClaudeKey, setHasClaudeKey] = useState<boolean>(false);
   const [brandProfile, setBrandProfile] = useState<BrandProfile | null>(null);
   const [editorClipPath, setEditorClipPath] = useState<string | null>(null);
+  const [clipPlanHandoffId, setClipPlanHandoffId] = useState<string | null>(null);
+  const [scheduleDraft, setScheduleDraft] = useState<ScheduleDraft | null>(null);
   const { stats, increment } = useStudioStats();
 
   const onClipCreated = useCallback(() => increment('clipsCreated'), [increment]);
   const onCarouselCreated = useCallback(() => increment('carouselsMade'), [increment]);
   const onBlogCreated = useCallback(() => increment('blogPostsWritten'), [increment]);
   const onVideoRendered = useCallback(() => increment('videosRendered'), [increment]);
+
+  const navigate = useCallback((page: Page) => {
+    setCurrentPage(page);
+    setEditorClipPath(null);
+    setClipPlanHandoffId(null);
+    setScheduleDraft(null);
+  }, []);
+
+  const openClipsFromPlan = useCallback((planId: string) => {
+    setClipPlanHandoffId(planId);
+    setEditorClipPath(null);
+    setScheduleDraft(null);
+    setCurrentPage('clips');
+  }, []);
+
+  const openEditorForClip = useCallback((clip: { filePath?: string | null }) => {
+    setEditorClipPath(clip.filePath || null);
+    setClipPlanHandoffId(null);
+    setScheduleDraft(null);
+    setCurrentPage('editor');
+  }, []);
+
+  const openSchedulerDraft = useCallback((draft: ScheduleDraft) => {
+    setScheduleDraft(draft);
+    setClipPlanHandoffId(null);
+    setEditorClipPath(null);
+    setCurrentPage('schedule');
+  }, []);
 
   useEffect(() => {
     if (!window.electronAPI) {
@@ -217,6 +250,7 @@ export default function App() {
         selectOutputDir: async () => ({ cancelled: true }),
         selectLogo: async () => ({ cancelled: true }),
         selectImageFile: async () => ({ cancelled: true }),
+        checkMediaFile: async () => ({ success: false, exists: false, error: 'Electron required' }),
         extractClips: async () => ({ success: false, error: 'Electron required' }),
         cancelExtraction: async () => ({ success: true }),
         readClipTranscript: async () => null,
@@ -266,6 +300,7 @@ export default function App() {
         deleteBlogPost: async () => ({ success: true }),
         exportBlogMarkdown: async () => ({ success: false, error: 'Electron required' }),
         getPublishingQueue: async () => ({ success: true, posts: [], source: 'local', fetchedAt: new Date().toISOString() }),
+        getLocalPublishingQueue: async () => ({ success: true, posts: [], source: 'local', fetchedAt: new Date().toISOString() }),
         getScheduledPosts: async () => [],
         saveScheduledPost: async () => ({ success: true }),
         deleteScheduledPost: async () => ({ success: true }),
@@ -318,16 +353,16 @@ export default function App() {
 
   return (
     <div className="h-screen bg-6fb-bg flex overflow-hidden">
-      <Sidebar currentPage={currentPage} onNavigate={setCurrentPage} />
+      <Sidebar currentPage={currentPage} onNavigate={navigate} />
       <main className="flex-1 overflow-y-auto">
-        {currentPage === 'dashboard'  && <Dashboard onNavigate={setCurrentPage} stats={stats} hasBrandProfile={!!brandProfile} />}
-        {currentPage === 'planner'   && <VideoPlanner />}
-        {currentPage === 'clips'      && <ClipExtractor onClipCreated={onClipCreated} onNavigateToEditor={(clip) => { setEditorClipPath(clip.filePath || null); setCurrentPage('editor'); }} />}
-        {currentPage === 'carousel'   && <CarouselStudio brandProfile={brandProfile} onNavigateToBrand={() => setCurrentPage('brand')} onCarouselCreated={onCarouselCreated} hasClaudeKey={hasClaudeKey} />}
+        {currentPage === 'dashboard'  && <Dashboard onNavigate={navigate} stats={stats} hasBrandProfile={!!brandProfile} />}
+        {currentPage === 'planner'   && <VideoPlanner onCreateFromPlan={openClipsFromPlan} />}
+        {currentPage === 'clips'      && <ClipExtractor initialPlanId={clipPlanHandoffId} onPlanHandoffConsumed={() => setClipPlanHandoffId(null)} onClipCreated={onClipCreated} onNavigateToEditor={openEditorForClip} onScheduleClip={openSchedulerDraft} />}
+        {currentPage === 'carousel'   && <CarouselStudio brandProfile={brandProfile} onNavigateToBrand={() => navigate('brand')} onCarouselCreated={onCarouselCreated} hasClaudeKey={hasClaudeKey} />}
         {currentPage === 'brand'      && <BrandStudio onSave={setBrandProfile} />}
         {currentPage === 'blog'       && <BlogWriter brandProfile={brandProfile} onBlogCreated={onBlogCreated} hasClaudeKey={hasClaudeKey} />}
-        {currentPage === 'editor'     && <VideoEditor initialClipPath={editorClipPath} onVideoRendered={onVideoRendered} />}
-        {currentPage === 'schedule'   && <Scheduler />}
+        {currentPage === 'editor'     && <VideoEditor initialClipPath={editorClipPath} onVideoRendered={onVideoRendered} onScheduleExport={openSchedulerDraft} />}
+        {currentPage === 'schedule'   && <Scheduler initialDraft={scheduleDraft} />}
         {currentPage === 'analytics'  && <Analytics />}
         {currentPage === 'settings'   && <Settings />}
       </main>

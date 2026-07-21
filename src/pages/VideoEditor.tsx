@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import type { ScheduleDraft } from '../types/creation-handoff';
 
 type OutputFormat = '9x16' | '1x1' | '16x9';
 interface Segment { id: string; start: number; end: number; }
@@ -100,7 +101,15 @@ function Timeline({ segments, duration, currentTime, selectedId, onSeek, onSelec
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────
-export default function VideoEditor({ initialClipPath, onVideoRendered }: { initialClipPath?: string | null; onVideoRendered?: () => void } = {}) {
+export default function VideoEditor({
+  initialClipPath,
+  onVideoRendered,
+  onScheduleExport,
+}: {
+  initialClipPath?: string | null;
+  onVideoRendered?: () => void;
+  onScheduleExport?: (draft: ScheduleDraft) => void;
+} = {}) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const segRef = useRef<Segment[]>([]);
 
@@ -442,8 +451,22 @@ export default function VideoEditor({ initialClipPath, onVideoRendered }: { init
                 <p className="font-semibold">{exportResult.success?'✓ Exported':'✕ Failed'}</p>
                 <p className="mt-0.5 opacity-80 truncate">{exportResult.message}</p>
                 {exportResult.success && exportResult.outputPath && (
-                  <button onClick={()=>(window.electronAPI as any).showInFinder?.(exportResult.outputPath!)}
-                    className="mt-1 text-[9px] underline opacity-70 hover:opacity-100">Show in Finder</button>
+                  <div className="mt-1 flex items-center gap-3">
+                    <button onClick={()=>(window.electronAPI as any).showInFinder?.(exportResult.outputPath!)}
+                      className="text-[9px] underline opacity-70 hover:opacity-100">Show in Finder</button>
+                    {onScheduleExport && (
+                      <button
+                        onClick={() => onScheduleExport({
+                          source: 'editor-export',
+                          mediaPath: exportResult.outputPath!,
+                          caption: clipTitle || exportResult.message || 'Edited video',
+                        })}
+                        className="text-[9px] font-semibold underline opacity-90 hover:opacity-100"
+                      >
+                        Schedule exported video
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             )}

@@ -1,6 +1,6 @@
 # Guided Plan-to-Post implementation plan
 
-Status: ready for implementation
+Status: implemented; packaged end-to-end acceptance passed
 
 Last updated: 2026-07-21
 
@@ -88,6 +88,11 @@ Run these after implementation:
    - open direct navigation routes and confirm there is no stale handoff.
 4. If a packaged build is produced, repeat the targeted smoke against the
    packaged application; renderer-only proof is not enough for file handoffs.
+
+Completed on 2026-07-21: the packaged app processed a disposable local source
+through the bundled offline-resume pipeline, opened its real generated clip in
+Video Editor, created a real editor export, and saved exactly one isolated
+local schedule from the visible handoff modal. No social-posting action ran.
 
 ## Risks and controls
 

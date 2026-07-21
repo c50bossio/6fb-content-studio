@@ -436,6 +436,17 @@ ipcMain.handle('select-video', async () => {
   return { cancelled: false, filePath: result.filePaths[0] };
 });
 
+ipcMain.handle('check-media-file', async (_event, filePath: string) => {
+  const localFilePath = localFilePathFromValue(filePath);
+  if (!localFilePath || !isAllowedLocalFilePath(localFilePath)) {
+    return { success: false, exists: false, error: 'This media file is no longer available. Choose another file.' };
+  }
+  if (!existsSync(localFilePath)) {
+    return { success: false, exists: false, error: 'This media file was moved or deleted. Choose another file.' };
+  }
+  return { success: true, exists: true };
+});
+
 ipcMain.handle('select-output-dir', async () => {
   if (!mainWindow) return { cancelled: true };
   const result = await dialog.showOpenDialog(mainWindow, {
@@ -1720,6 +1731,13 @@ async function getPublishingQueueData(): Promise<PublishingQueueResponse> {
 
 ipcMain.handle('get-publishing-queue', async () => getPublishingQueueData());
 
+ipcMain.handle('get-local-publishing-queue', async () => ({
+  success: true,
+  posts: loadLocalPublishingPosts(),
+  source: 'local' as const,
+  fetchedAt: new Date().toISOString(),
+}));
+
 ipcMain.handle('get-scheduled-posts', async () => {
   const result = await getPublishingQueueData();
   return result.posts;
@@ -1846,8 +1864,7 @@ function buildAppMenu() {
 }
 
 function initAutoUpdater() {
-
-  if (process.env.NODE_ENV === 'development') return;
+  if (process.env.NODE_ENV === 'development' || process.env.SIXFB_DISABLE_AUTO_UPDATES === '1') return;
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;

@@ -16,7 +16,10 @@ Release `v1.5.43` is published from that exact commit. Both macOS and Windows
 release workflows completed successfully, all eight expected public assets are
 available, and the downloaded macOS artifact passed independent checksum,
 updater-metadata, notarization, Gatekeeper, embedded-runtime, and tool checks.
-There is no active engineering or release blocker.
+There is no active release blocker. Guided Plan-to-Post is implemented locally
+and has passed build, workspace validation, renderer smoke, and the complete
+packaged source-video-to-local-schedule acceptance path. It is ready for a
+review/merge decision; release remains a separate gate.
 
 ## Last session (2026-07-21)
 
@@ -25,11 +28,14 @@ There is no active engineering or release blocker.
   annotated tag `v1.5.43`; completed both release workflows; verified the eight
   public assets and updater metadata; independently downloaded and certified
   the macOS release; and recorded the release evidence under `/delivery`.
-- In progress: nothing.
+- Completed: Guided Plan-to-Post implementation on
+  `codex/guided-plan-to-post-implementation`. Renderer handoffs, local media
+  validation, local-only handoff queue loading, no-stale-navigation reset, and
+  the packaged pipeline → editor export → exactly-one-local-schedule path are
+  verified.
 - Blocked: nothing.
-- Next: implement the approved Guided Plan-to-Post brief through the existing
-  renderer and Electron boundaries, then run targeted desktop handoff proof
-  before proposing a release.
+- Next: review and merge the Guided Plan-to-Post pull request when approved,
+  then decide separately whether a release is warranted.
 
 ## Decisions made
 
