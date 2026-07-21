@@ -9,12 +9,20 @@
 - An unsigned, unpacked macOS arm64 app bundle for version `1.5.39` was built
   locally from commit `4e87bec` with signing, notarization, and publishing disabled.
   Its embedded pipeline runtime and production dashboard launch smoke passed.
+- The current published release is `v1.5.42` at `0e20878`; its macOS workflow
+  succeeded and the installed app verifies as notarized under Team ID
+  `22X9VG6NUE`.
+- A Developer ID-signed, unpacked local candidate from `a7ee13d` passed strict
+  signature, hardened-runtime, embedded-runtime, and bounded launch checks.
+  Notarization and publishing were disabled, so it is not distributable.
 
 ## Open questions
 
-- Current external release and updater availability have not been verified in this organization pass.
-- The packaged clip-extraction flow has not yet been exercised end to end with
-  a disposable local video fixture.
+- The proposed next version is `v1.5.43`. The tested source stack is five
+  commits ahead of `origin/main`, and the readiness record adds one docs-only
+  commit; the branch has not been pushed, reviewed, merged, tagged, or published.
+- Fresh `v1.5.43` updater and external availability cannot be verified until
+  the explicitly approved tag workflows complete.
 
 ## Recent decisions
 
@@ -22,3 +30,5 @@
 - Treat tagging and publishing as explicit human approval gates.
 - Keep unsigned local bundle verification separate from signed, notarized, and
   externally published release claims.
+- Keep the local signed-but-unnotarized proof separate from official
+  notarization and Gatekeeper acceptance.

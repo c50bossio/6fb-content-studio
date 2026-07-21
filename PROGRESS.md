@@ -14,7 +14,8 @@ repair is also complete and the full npm audit is clean. The macOS MLX runtime
 blocker is resolved and the runtime build now verifies its own output. An
 unsigned macOS arm64 app bundle has also passed local artifact and launch
 smoke tests, and its embedded pipeline has passed a disposable offline
-end-to-end clip-extraction smoke.
+end-to-end clip-extraction smoke. Local Developer ID signing readiness has now
+also passed without notarizing or publishing an artifact.
 
 ## Last session (2026-07-21)
 
@@ -25,12 +26,15 @@ end-to-end clip-extraction smoke.
   launch; rebuilt and verified the macOS arm64 pipeline runtime with MLX Metal
   support; built and smoke-tested an unsigned local macOS app bundle; completed
   a packaged-binary clip extraction from transcript parsing through 1080x1920
-  H.264/AAC output and visually inspected frames across the rendered clip.
+  H.264/AAC output and visually inspected frames across the rendered clip;
+  audited current release state and completed a local signed-candidate proof.
 - In progress: nothing.
 - Blocked: nothing in the current local build and runtime verification scope.
-- Next: prepare the explicit signing and release-readiness gate. Signing,
-  notarization, DMG creation, tagging, upload, and publishing still require
-  explicit approval.
+- Next: complete the recommended adversarial review, then explicitly approve
+  pushing the six-commit branch (five tested source/QA commits plus this
+  readiness record), opening and merging its pull request, and creating the
+  proposed `v1.5.43` tag. That tag will trigger signing, notarization, macOS and
+  Windows packaging, upload, and publishing.
 
 ## Decisions made
 
@@ -48,9 +52,11 @@ end-to-end clip-extraction smoke.
 - Verified the packaged pipeline offline with a local SRT and pre-seeded local
   clip selection so no external AI, research, notification, export, or posting
   action was involved.
+- Used the matching Developer ID identity to sign an unpacked local candidate,
+  with notarization and publishing explicitly disabled, and verified its strict
+  signature, hardened runtime, embedded tools, and bounded launch.
 
 ## Open questions
 
-- Are the Apple signing identity, notarization credentials, release version,
-  and intended distribution channel ready for an explicitly approved release
-  candidate build?
+- Should the five candidate commits be pushed and merged to `main`, then
+  released through the existing tag workflows as `v1.5.43`?
