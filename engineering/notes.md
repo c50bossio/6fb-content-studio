@@ -26,3 +26,7 @@
 - Rebuilt the stale macOS arm64 pipeline runtime so it includes MLX's
   `mlx.metallib`, and made `runtime:mac` fail if that library is unavailable or
   the completed runtime does not pass its packaged-runtime check.
+- Ran the unsigned app bundle's embedded pipeline end-to-end against a
+  disposable offline fixture. Transcript parsing, boundary validation, clip
+  extraction, crop-path analysis, and 1080x1920 H.264/AAC rendering completed;
+  external selection, posting, notifications, and exports were not invoked.

@@ -13,7 +13,8 @@ runtime source paths were moved or renamed. The development-tooling dependency
 repair is also complete and the full npm audit is clean. The macOS MLX runtime
 blocker is resolved and the runtime build now verifies its own output. An
 unsigned macOS arm64 app bundle has also passed local artifact and launch
-smoke tests.
+smoke tests, and its embedded pipeline has passed a disposable offline
+end-to-end clip-extraction smoke.
 
 ## Last session (2026-07-21)
 
@@ -22,12 +23,14 @@ smoke tests.
   remediated all remaining development-tooling advisories; passed a clean
   `npm ci`, full `npm audit`, `npm run build`, and bounded Electron development
   launch; rebuilt and verified the macOS arm64 pipeline runtime with MLX Metal
-  support; built and smoke-tested an unsigned local macOS app bundle.
+  support; built and smoke-tested an unsigned local macOS app bundle; completed
+  a packaged-binary clip extraction from transcript parsing through 1080x1920
+  H.264/AAC output and visually inspected frames across the rendered clip.
 - In progress: nothing.
 - Blocked: nothing in the current local build and runtime verification scope.
-- Next: run a bounded end-to-end clip-extraction smoke against the packaged
-  pipeline using a disposable local fixture, then prepare the explicit
-  signing/release gate.
+- Next: prepare the explicit signing and release-readiness gate. Signing,
+  notarization, DMG creation, tagging, upload, and publishing still require
+  explicit approval.
 
 ## Decisions made
 
@@ -42,8 +45,12 @@ smoke tests.
   and run the packaged-runtime assertion before reporting a successful build.
 - Built the local macOS smoke bundle with identity discovery, signing,
   notarization, and publishing disabled; do not treat it as a release artifact.
+- Verified the packaged pipeline offline with a local SRT and pre-seeded local
+  clip selection so no external AI, research, notification, export, or posting
+  action was involved.
 
 ## Open questions
 
-- Does the packaged pipeline complete a disposable local clip-extraction fixture
-  and produce inspectable outputs without using external APIs?
+- Are the Apple signing identity, notarization credentials, release version,
+  and intended distribution channel ready for an explicitly approved release
+  candidate build?
