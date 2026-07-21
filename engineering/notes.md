@@ -35,3 +35,6 @@ Last updated: 2026-07-21
   disposable offline fixture. Transcript parsing, boundary validation, clip
   extraction, crop-path analysis, and 1080x1920 H.264/AAC rendering completed;
   external selection, posting, notifications, and exports were not invoked.
+- The next approved product scope is Guided Plan-to-Post. Its implementation
+  plan keeps plan, clip, editor, and Scheduler handoffs local and requires
+  explicit scheduling or posting confirmation.

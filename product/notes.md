@@ -14,7 +14,6 @@ Last updated: 2026-07-21
 
 ## Open questions
 
-- Which product outcome is the next priority after `v1.5.43`?
 - Which workflows have recent direct barber feedback or usage evidence?
 
 ## Recent decisions
@@ -22,3 +21,6 @@ Last updated: 2026-07-21
 - Use this workspace for product intent and acceptance criteria, not runtime source.
 - Start the next cycle with one evidence-backed barber workflow and the smallest
   testable brief rather than an unranked feature list.
+- Prioritize Guided Plan-to-Post: preserve a saved plan and chosen media through
+  Clips, optional editing, and an explicit local scheduling draft. This is a
+  source-backed decision pending direct barber feedback.

@@ -27,9 +27,9 @@ There is no active engineering or release blocker.
   the macOS release; and recorded the release evidence under `/delivery`.
 - In progress: nothing.
 - Blocked: nothing.
-- Next: choose the next barber product outcome using recent workflow evidence,
-  then write the smallest useful brief and acceptance criteria in `/product`
-  before beginning implementation.
+- Next: implement the approved Guided Plan-to-Post brief through the existing
+  renderer and Electron boundaries, then run targeted desktop handoff proof
+  before proposing a release.
 
 ## Decisions made
 
@@ -44,9 +44,11 @@ There is no active engineering or release blocker.
 - Skip the quota-limited post-fix CodeRabbit wait by explicit owner decision;
   the actionable review threads were resolved and the remaining required local,
   merge, workflow, and public-release gates passed.
+- Prioritize Guided Plan-to-Post as the next product cycle. The decision is
+  grounded in the current source and release trajectory; no direct barber
+  feedback or usage evidence is yet recorded.
 
 ## Open questions
 
-- Which barber workflow is the next product priority?
 - Which workflow has the strongest recent direct barber feedback or usage
   evidence to support that choice?
