@@ -38,9 +38,7 @@ Last updated: 2026-07-21
 
 ## Open questions
 
-- None for release publication. A native-file-picker interaction in the optional
-  real-Mac acceptance flow awaits Apple Events permission for the local
-  automation process; it does not affect the completed release workflows.
+- None for release publication or real-Mac acceptance.
 
 ## Recent decisions
 

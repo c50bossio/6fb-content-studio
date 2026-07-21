@@ -42,6 +42,6 @@ Last updated: 2026-07-21
   explicit scheduling or posting confirmation.
 - The published macOS `v1.5.44` bundle passed isolated launch, bundled-runtime
   health, and the visible Plan-to-Clips handoff using a forced local planner
-  fallback. The app's local queue save/delete IPC round trip also passed in the
-  disposable profile; a direct media path correctly failed validation because it
-  had not been approved through the native picker.
+  fallback. A disposable fixture selected through the native picker passed
+  approved-path validation, then saved and removed a far-future local Scheduler
+  draft through the released UI. No external posting route ran.
