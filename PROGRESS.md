@@ -9,17 +9,20 @@ Last updated: 2026-07-21
 
 The folder-app operating layer is complete and validated around the existing
 application. The focused production dependency remediation is complete; no
-runtime source paths were moved or renamed.
+runtime source paths were moved or renamed. The development-tooling dependency
+repair is also complete and the full npm audit is clean.
 
 ## Last session (2026-07-21)
 
 - Completed: added the three-workspace operating layer; passed normal, strict,
   and portable folder-app validation; remediated the production dependency audit;
-  passed `npm audit --omit=dev` and `npm run build`.
+  remediated all remaining development-tooling advisories; passed a clean
+  `npm ci`, full `npm audit`, `npm run build`, and bounded Electron development launch.
 - In progress: nothing.
-- Blocked: nothing for this organization pass.
-- Next: decide whether to address the remaining development-only audit advisories
-  as a separate toolchain-upgrade change.
+- Blocked: the macOS packaged-runtime assertion fails because `mlx_whisper`
+  cannot load its default Metal library; this was not caused by the JavaScript repair.
+- Next: investigate and repair the bundled macOS Python/Metal runtime, then rerun
+  the packaged-runtime assertion before a macOS packaging or release gate.
 
 ## Decisions made
 
@@ -28,7 +31,10 @@ runtime source paths were moved or renamed.
 - Keep generated `release/` output separate from the `delivery/` workspace.
 - Applied the supported production-only audit repair and verified the exact
   updated lockfile with a clean production audit and successful build.
+- Applied the supported development-tooling repair within existing manifest
+  ranges; kept the change to `package-lock.json` and verification records.
 
 ## Open questions
 
-- None for the initial organization pass.
+- Which macOS bundled-runtime packaging change will make `mlx_whisper` load its
+  required Metal library consistently in the packaged runtime?

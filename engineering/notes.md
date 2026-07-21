@@ -13,9 +13,9 @@
 
 - There is no dedicated test script in `package.json`; feature verification must
   currently combine build checks with targeted smoke or manual flows.
-- The full audit still reports 10 development-tooling advisories (2 low, 7 high,
-  1 critical). `npm audit --omit=dev` is clean, so production dependencies are
-  not affected by those remaining findings.
+- The macOS packaged-runtime assertion currently fails because `mlx_whisper`
+  cannot load its default Metal library. This is separate from the JavaScript
+  dependency repair and needs a focused bundled-Python/runtime investigation.
 
 ## Recent decisions
 
@@ -23,5 +23,6 @@
 - Store only plans, architecture context, and verification evidence here.
 - Applied the supported production-only audit repair: `fast-uri@3.1.4`,
   `js-yaml@4.3.0`, and `ws@8.21.1`; `npm audit --omit=dev` and `npm run build` passed.
-- Address development-tooling audit fixes separately because the broad automatic
-  plan changes the Vite, React Router, Babel, esbuild, and other toolchain trees.
+- Applied the supported development-tooling audit repair within declared package
+  ranges. The full audit is clean, the Electron production build passes, and a
+  bounded development launch reached the renderer server and started the app.
