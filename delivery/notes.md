@@ -20,7 +20,8 @@
 
 - The proposed next version is `v1.5.43`. The tested source stack is five
   commits ahead of `origin/main`, and the readiness record adds one docs-only
-  commit; the branch has not been pushed, reviewed, merged, tagged, or published.
+  commit. The branch is pushed and draft pull request #18 is open; it has not
+  been reviewed, merged, tagged, or published.
 - Fresh `v1.5.43` updater and external availability cannot be verified until
   the explicitly approved tag workflows complete.
 

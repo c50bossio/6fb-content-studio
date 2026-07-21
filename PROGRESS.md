@@ -15,7 +15,9 @@ blocker is resolved and the runtime build now verifies its own output. An
 unsigned macOS arm64 app bundle has also passed local artifact and launch
 smoke tests, and its embedded pipeline has passed a disposable offline
 end-to-end clip-extraction smoke. Local Developer ID signing readiness has now
-also passed without notarizing or publishing an artifact.
+also passed without notarizing or publishing an artifact. The verified branch
+is pushed and draft pull request #18 is open for review; no merge, release tag,
+notarization, or publication has occurred.
 
 ## Last session (2026-07-21)
 
@@ -30,11 +32,9 @@ also passed without notarizing or publishing an artifact.
   audited current release state and completed a local signed-candidate proof.
 - In progress: nothing.
 - Blocked: nothing in the current local build and runtime verification scope.
-- Next: complete the recommended adversarial review, then explicitly approve
-  pushing the six-commit branch (five tested source/QA commits plus this
-  readiness record), opening and merging its pull request, and creating the
-  proposed `v1.5.43` tag. That tag will trigger signing, notarization, macOS and
-  Windows packaging, upload, and publishing.
+- Next: review draft pull request #18 and its checks, then explicitly approve
+  merging it and creating the proposed `v1.5.43` tag. That tag will trigger
+  signing, notarization, macOS and Windows packaging, upload, and publishing.
 
 ## Decisions made
 
@@ -58,5 +58,5 @@ also passed without notarizing or publishing an artifact.
 
 ## Open questions
 
-- Should the five candidate commits be pushed and merged to `main`, then
-  released through the existing tag workflows as `v1.5.43`?
+- Should draft pull request #18 be approved and merged to `main`, then released
+  through the existing tag workflows as `v1.5.43`?
