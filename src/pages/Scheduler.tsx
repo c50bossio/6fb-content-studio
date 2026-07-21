@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import InstagramPostModal from '../components/InstagramPostModal';
 import type { PublishingPlatform, PublishingQueuePost, PublishingStatus } from '../types/publishing';
 import type { ScheduleDraft } from '../types/creation-handoff';
+import { toLocalFileUrl } from '../utils/localFileUrl';
 
 // ─── Types ───────────────────────────────────────────────────────────
 type ScheduledPost = PublishingQueuePost;
@@ -44,9 +45,7 @@ const getPlatformMeta = (platform: PublishingPlatform | string) =>
   PLATFORMS.find(p => p.id === platform) ?? PLATFORMS[0];
 
 const mediaSrc = (path?: string | null) => {
-  if (!path) return '';
-  if (/^(https?:|data:|blob:)/i.test(path)) return path;
-  return `localfile://${path}`;
+  return toLocalFileUrl(path);
 };
 
 const isActivePost = (post: ScheduledPost) => post.status === 'scheduled' || post.status === 'due';
@@ -345,7 +344,7 @@ function NewPostModal({ draft, onClose, onSave }: {
                     <button key={i} onClick={() => { setMediaPath(clip.filePath!); setThumbnailPath(clip.thumbnailPath || ''); setShowPicker(false); }}
                       className={`rounded-lg overflow-hidden border transition-all ${mediaPath === clip.filePath ? 'border-[#00C851]' : 'border-[#1e1e1e] hover:border-[#333]'}`}>
                       {clip.thumbnailPath ? (
-                        <img src={`localfile://${clip.thumbnailPath}`} alt="" className="w-full aspect-square object-cover" />
+                        <img src={toLocalFileUrl(clip.thumbnailPath)} alt="" className="w-full aspect-square object-cover" />
                       ) : (
                         <div className="w-full aspect-square bg-[#141414] flex items-center justify-center">
                           <svg viewBox="0 0 24 24" fill="none" stroke="#333" strokeWidth={1.5} className="w-4 h-4">
@@ -362,7 +361,7 @@ function NewPostModal({ draft, onClose, onSave }: {
             {mediaPath ? (
               <div className="flex flex-col gap-1.5">
                 <div className="flex items-center gap-2 bg-black border border-[#2a2a2a] rounded-xl px-3 py-2">
-                  {thumbnailPath && <img src={`localfile://${thumbnailPath}`} alt="" className="w-8 h-10 rounded object-cover shrink-0" />}
+                  {thumbnailPath && <img src={toLocalFileUrl(thumbnailPath)} alt="" className="w-8 h-10 rounded object-cover shrink-0" />}
                   <p className="text-xs text-white flex-1 truncate">{mediaPath.split('/').pop()}</p>
                   <button onClick={() => { setMediaPath(''); setThumbnailPath(''); }} className="text-[#444] hover:text-red-400 transition-colors">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
