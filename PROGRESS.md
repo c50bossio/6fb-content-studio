@@ -12,14 +12,18 @@ application without moving or renaming runtime source paths. The dependency and
 macOS MLX runtime remediations were merged through pull request #18 at commit
 `9b792a1e9aac312c5599dbff7220e62103e432f5`.
 
-Release `v1.5.43` is published from that exact commit. Both macOS and Windows
-release workflows completed successfully, all eight expected public assets are
-available, and the downloaded macOS artifact passed independent checksum,
-updater-metadata, notarization, Gatekeeper, embedded-runtime, and tool checks.
-There is no active release blocker. Guided Plan-to-Post is implemented locally
-and has passed build, workspace validation, renderer smoke, and the complete
-packaged source-video-to-local-schedule acceptance path. It is ready for a
-review/merge decision; release remains a separate gate.
+Guided Plan-to-Post shipped in public release `v1.5.44` from merged
+`origin/main` commit `1949b06bb9f140210b2c94a93d2de899fe73e10f`. Both macOS
+and Windows release workflows completed successfully and all eight expected
+public assets are available. A fresh macOS arm64 download matched the published
+SHA-256, passed DMG stapling and strict code-signature verification, and launched
+from an isolated profile as version `1.5.44`. The visible Plan-to-Clips handoff
+also passed without content-generation or social-posting calls.
+
+There is no release blocker. The only incomplete optional acceptance detail is
+selecting a test video through macOS's native picker; this machine has not
+granted the automation process Apple Events access, so that interaction was not
+bypassed.
 
 ## Last session (2026-07-21)
 
@@ -33,9 +37,18 @@ review/merge decision; release remains a separate gate.
   validation, local-only handoff queue loading, no-stale-navigation reset, and
   the packaged pipeline → editor export → exactly-one-local-schedule path are
   verified.
-- Blocked: nothing.
-- Next: review and merge the Guided Plan-to-Post pull request when approved,
-  then decide separately whether a release is warranted.
+- Completed: merged pull request #21, tagged and published `v1.5.44`, and
+  completed the macOS and Windows release workflows. The public macOS DMG was
+  downloaded, checksum-verified, mounted read-only, notarization-validated,
+  signature-verified, and launched as an isolated `1.5.44` instance.
+- Completed: visible local-fallback Plan-to-Clips acceptance in the published
+  app and an isolated local scheduler queue save/delete round trip. No social
+  post, browser-open fallback, or content-generation API call was made.
+- Blocked: only the optional native-file-picker portion of the real-Mac flow,
+  pending Apple Events permission for the automation process.
+- Next: if fuller device acceptance is needed, grant that permission and select
+  a disposable video through the v1.5.44 native picker; otherwise collect direct
+  barber feedback for the next product cycle.
 
 ## Decisions made
 
