@@ -47,8 +47,11 @@ A lightweight human-and-agent operating workspace for planning, building, verify
 - Keep credentials and customer content out of tracked workspace notes; generated artifacts remain in their existing ignored output directories.
 
 ## Change policy
-Edit this file deliberately. Re-run:
+Edit this file deliberately. From the repository root, re-run the folder-app
+workspace doctor. This requires the folder-app skill to be installed and
+`FOLDER_APP_SKILL_DIR` to point to the directory containing
+`workspace_doctor.py`:
 
 ```bash
-python3 ~/.claude/skills/folder-app/workspace_doctor.py .
+python3 "$FOLDER_APP_SKILL_DIR/workspace_doctor.py" .
 ```
