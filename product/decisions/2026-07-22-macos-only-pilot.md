@@ -23,8 +23,9 @@ there is adoption evidence that those costs create value.
   release proof.
 - Deferring Windows reduces launch breadth while simplifying release safety and
   support during the pilot.
-- The exact adoption threshold for reconsidering Windows is still an open
-  product question and must be defined from real usage evidence.
+- A provisional adoption and direct-demand gate is now documented for owner
+  review. It is not controlling until explicitly approved, and its low-confidence
+  numbers must be revisited prospectively after initial pilot evidence.
 
 ## Acceptance criteria
 
@@ -40,6 +41,8 @@ there is adoption evidence that those costs create value.
 
 ## Revisit rule
 
-Reconsider Windows only after the team defines and observes a Mac adoption
-threshold or obtains direct customer demand strong enough to justify Windows
-signing, release certification, and support.
+If explicitly approved, use the provisional evidence gate in
+`../briefs/windows-reconsideration-threshold.md`. Until then, the measurable
+threshold remains open. Crossing an approved gate opens a fresh business,
+signing, certification, and support review; it does not approve Windows spend,
+publication, or distribution.
