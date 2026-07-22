@@ -83,7 +83,8 @@ assert.match(docsTest, /fs\.readdirSync\(absoluteDirectory, \{ withFileTypes: tr
 assert.match(windowsRelease, /workflow_call:/, 'Windows release validation must remain callable from the coordinated release workflow');
 assert.match(windowsRelease, /workflow_dispatch:/, 'Windows release validation must support a non-publishing pre-tag dry run');
 assert.match(windowsRelease, /RELEASE_VERSION_INPUT: \$\{\{ inputs\.version \}\}/, 'Workflow inputs must enter PowerShell through the environment, not source interpolation');
-assert.match(windowsRelease, /actions\/upload-artifact@v4/, 'Windows artifacts must be staged for coordinated publication');
+assert.match(windowsRelease, /actions\/upload-artifact@v7/, 'Windows artifacts must use the current Node 24 staging action');
+assert.match(releaseWorkflow, /actions\/download-artifact@v8/, 'Coordinated publication must use the current Node 24 download action');
 assert.doesNotMatch(windowsRelease, /softprops\/action-gh-release/, 'The Windows workflow must never publish independently');
 assert.match(releaseWorkflow, /release-windows:[\s\S]*?uses: \.\/\.github\/workflows\/release-windows\.yml/, 'The tag workflow must call the Windows release validator');
 assert.match(releaseWorkflow, /concurrency:[\s\S]*?cancel-in-progress: false/, 'Release reruns must serialize without cancelling an active release');
