@@ -287,7 +287,7 @@ export default function Analytics() {
               </span>
             )}
           </div>
-          <div className="grid grid-cols-6 gap-2 mb-3">
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 mb-3">
             <input aria-label="Content title" value={manualDraft.title} onChange={e => setManualDraft({ ...manualDraft, title: e.target.value })} placeholder="Title"
               className="col-span-2 bg-[#0f0f0f] border border-[#222] rounded-lg px-3 py-2 text-xs text-white placeholder:text-[#444] focus:outline-none focus:border-[#00C851]/50" />
             {(['predicted', 'views', 'saves', 'shares', 'comments'] as const).map(key => (

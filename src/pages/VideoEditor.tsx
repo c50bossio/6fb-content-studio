@@ -254,10 +254,10 @@ export default function VideoEditor({
   const previewStyle = outputFormat==='9x16' ? 'aspect-[9/16] max-h-[340px]' : outputFormat==='1x1' ? 'aspect-square max-h-[300px]' : 'aspect-video w-full max-h-[240px]';
 
   return (
-    <div className="h-full flex overflow-hidden bg-[#0f0f0f]">
+    <div className="h-full flex flex-col md:flex-row overflow-y-auto md:overflow-hidden bg-[#0f0f0f]">
 
       {/* ── LEFT: Library ─────────────────────────────────── */}
-      <div className="w-[200px] shrink-0 flex flex-col border-r border-[#1a1a1a] bg-[#0a0a0a]">
+      <div className="w-full h-[150px] md:w-[200px] md:h-auto shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-[#1a1a1a] bg-[#0a0a0a]">
         <div className="px-3 py-2.5 border-b border-[#1a1a1a] flex items-center justify-between">
           <p className="text-[11px] font-bold text-white">Library</p>
           <button onClick={loadLibrary} className="text-[#444] hover:text-white transition-colors">
@@ -308,7 +308,7 @@ export default function VideoEditor({
       </div>
 
       {/* ── CENTER: Player + Timeline ──────────────────────── */}
-      <div className="flex-1 flex flex-col overflow-hidden border-r border-[#1a1a1a] min-w-0">
+      <div className="flex-1 min-h-[300px] md:min-h-0 flex flex-col overflow-hidden border-b md:border-b-0 md:border-r border-[#1a1a1a] min-w-0">
 
         {/* Header + toolbar */}
         <div className="shrink-0 flex items-center gap-2 px-4 py-2.5 border-b border-[#1a1a1a]">
@@ -378,7 +378,7 @@ export default function VideoEditor({
       </div>
 
       {/* ── RIGHT: Transcript + Controls ─────────────────── */}
-      <div className="w-[280px] shrink-0 flex flex-col overflow-hidden">
+      <div className="w-full h-[320px] md:w-[280px] md:h-auto shrink-0 flex flex-col overflow-hidden">
 
         {/* Transcript */}
         <div className="flex flex-col border-b border-[#1a1a1a]" style={{height:'45%'}}>

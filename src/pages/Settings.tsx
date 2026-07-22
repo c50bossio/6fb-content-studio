@@ -338,10 +338,11 @@ export default function Settings() {
         </h2>
         <div className="bg-6fb-card border border-6fb-border rounded-xl p-5">
           {!account?.connected ? (
-            <div className="space-y-3">
+            <form className="space-y-3" onSubmit={event => { event.preventDefault(); void handleLogin6FB(); }}>
               <p className="text-xs text-6fb-text-muted mb-3">Sign in with your Content Manager account to sync your Instagram credentials automatically.</p>
               <input
                 type="email"
+                autoComplete="username"
                 value={loginEmail}
                 onChange={e => setLoginEmail(e.target.value)}
                 placeholder="Email"
@@ -349,21 +350,21 @@ export default function Settings() {
               />
               <input
                 type="password"
+                autoComplete="current-password"
                 value={loginPassword}
                 onChange={e => setLoginPassword(e.target.value)}
                 placeholder="Password"
-                onKeyDown={e => e.key === 'Enter' && handleLogin6FB()}
                 className="w-full bg-6fb-bg border border-6fb-border rounded-lg px-3 py-2 text-white text-sm placeholder-6fb-text-muted focus:outline-none focus:border-6fb-green transition-colors"
               />
               {loginError && <p className="text-xs text-red-400">{loginError}</p>}
               <button
-                onClick={handleLogin6FB}
+                type="submit"
                 disabled={loginLoading || !loginEmail.trim() || !loginPassword.trim()}
                 className="w-full bg-6fb-green hover:bg-6fb-green-hover disabled:bg-6fb-border disabled:text-6fb-text-muted text-white font-semibold py-2.5 rounded-lg text-sm transition-colors"
               >
                 {loginLoading ? 'Signing in...' : 'Sign In'}
               </button>
-            </div>
+            </form>
           ) : (
             <div className="space-y-4">
               <div className="flex items-center justify-between">

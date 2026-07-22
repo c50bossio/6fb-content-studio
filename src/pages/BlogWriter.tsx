@@ -197,7 +197,7 @@ export default function BlogWriter({ brandProfile, onBlogCreated, hasClaudeKey }
   return (
     <div className="h-full flex flex-col bg-[#0a0a0a]">
       {/* Top toolbar */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-[#1a1a1a] bg-[#0f0f0f]">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-6 py-3 border-b border-[#1a1a1a] bg-[#0f0f0f]">
         <div className="flex items-center gap-4">
           <h1 className="text-lg font-bold text-white">Blog Writer</h1>
           <div className="flex items-center bg-[#161616] rounded-lg border border-[#222] overflow-hidden">
@@ -225,9 +225,9 @@ export default function BlogWriter({ brandProfile, onBlogCreated, hasClaudeKey }
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex flex-col md:flex-row overflow-y-auto md:overflow-hidden">
         {/* Left sidebar: Source + Saved */}
-        <div className="w-[240px] border-r border-[#1a1a1a] flex flex-col bg-[#0d0d0d]">  
+        <div className="w-full h-[220px] md:w-[240px] md:h-auto shrink-0 border-b md:border-b-0 md:border-r border-[#1a1a1a] flex flex-col bg-[#0d0d0d]">
           <div className="p-4 border-b border-[#1a1a1a]">
             <p className="text-[10px] text-[#555] uppercase tracking-widest font-bold mb-2">Source Video</p>
             <select
@@ -292,7 +292,7 @@ export default function BlogWriter({ brandProfile, onBlogCreated, hasClaudeKey }
         </div>
 
         {/* Main content area */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 min-h-[420px] md:min-h-0 overflow-y-auto">
           {error && (
             <div className="mx-6 mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-xs text-red-400">{error}</div>
           )}

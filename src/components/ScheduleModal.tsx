@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { useModalFocus } from '../hooks/useModalFocus';
 
 interface ScheduleModalProps {
   isOpen: boolean;
@@ -22,6 +23,11 @@ export default function ScheduleModal({ isOpen, onClose, filePath, defaultCaptio
   const [isTrial, setIsTrial] = useState(false);
   const [status, setStatus] = useState<ScheduleStatus>('idle');
   const [errorMsg, setErrorMsg] = useState('');
+  const layerRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const busy = status === 'uploading' || status === 'scheduling';
+  const requestClose = useCallback(() => { if (!busy) onClose(); }, [busy, onClose]);
+  useModalFocus({ active: isOpen, containerRef: layerRef, initialFocusRef: dialogRef, onClose: requestClose });
 
   const api = (window as any).electronAPI;
 
@@ -59,25 +65,23 @@ export default function ScheduleModal({ isOpen, onClose, filePath, defaultCaptio
 
   if (!isOpen) return null;
 
-  const busy = status === 'uploading' || status === 'scheduling';
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div ref={layerRef} tabIndex={-1} className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={!busy ? onClose : undefined} />
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={requestClose} />
 
       {/* Modal */}
-      <div className="relative w-full max-w-md mx-4 bg-[#111] border border-[#222] rounded-2xl shadow-2xl overflow-hidden">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="content-schedule-title" aria-busy={busy} tabIndex={-1} className="relative w-full max-w-md mx-4 bg-[#111] border border-[#222] rounded-2xl shadow-2xl overflow-hidden focus:outline-none">
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#1e1e1e]">
           <div className="flex items-center gap-2.5">
             <span className="text-lg">📅</span>
             <div>
-              <h3 className="text-sm font-bold text-white">Schedule Post</h3>
+              <h3 id="content-schedule-title" className="text-sm font-bold text-white">Schedule Post</h3>
               <p className="text-[10px] text-[#555]">Push to Content Generator queue</p>
             </div>
           </div>
-          <button onClick={onClose} disabled={busy}
+          <button aria-label="Close schedule dialog" onClick={requestClose} disabled={busy}
             className="w-7 h-7 flex items-center justify-center rounded-lg text-[#555] hover:text-white hover:bg-white/5 transition-colors disabled:opacity-40">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-4 h-4">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>

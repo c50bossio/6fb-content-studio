@@ -15,11 +15,16 @@ Last updated: 2026-07-21
   `9b792a1e9aac312c5599dbff7220e62103e432f5`.
 - Guided Plan-to-Post shipped in `v1.5.44` from merge commit
   `1949b06bb9f140210b2c94a93d2de899fe73e10f`.
+- Renderer local-file URL encoding shipped in `v1.5.45` from merge commit
+  `14be3d825f28f91edfaf18cdaf6d334e545aeeb2`.
 
 ## Open questions
 
-- There is no dedicated test script in `package.json`; feature verification must
-  currently combine build checks with targeted smoke or manual flows.
+- `npm test` now runs TypeScript, path-safety/clip-metadata units, IPC/static
+  contracts, Python compilation/failure preflights, the packaged runtime gate,
+  a production build, and an isolated real Electron IPC smoke. `npm run
+  qa:visual` runs the responsive screen and interaction-state audit; its
+  self-test proves layout, console, and network defects fail closed.
 
 ## Recent decisions
 
@@ -45,3 +50,24 @@ Last updated: 2026-07-21
   fallback. A disposable fixture selected through the native picker passed
   approved-path validation, then saved and removed a far-future local Scheduler
   draft through the released UI. No external posting route ran.
+- The optional `--compose` pipeline is not part of the shipping Electron path
+  and requires a separate `python/remotion` workspace. It now fails before media
+  processing or Claude calls when that prerequisite is absent.
+- The complete local functionality, responsive UI, and folder-app audit is
+  recorded in `qa/2026-07-21-complete-project-audit.md`. The local candidate is
+  committed and pushed in ready-for-review pull request #25; it has not been
+  merged, tagged, deployed, packaged as a release, or published.
+- External media approvals are pinned to the canonical file selected by a
+  trusted native handler and app reset revokes them immediately. Assets saved by
+  older builds without a pinned approval may require one native re-selection;
+  they must not be silently reapproved from an untrusted renderer path.
+- Pull request #25 review follow-up makes the Windows workflow run Python tests
+  through the populated runtime-builder venv, permits Settings to open only the
+  exact canonical App Data directory, and makes visual QA reject an unrelated
+  server already occupying its configured port.
+- The final pull request #25 follow-up also aligns browser-preview API contracts,
+  awaits Scheduler publishing handoffs, gives every modal and mobile navigation
+  complete focus containment/restoration, rejects hanging CDP requests, handles
+  missing validation sources cleanly, selects Python cross-platform, and maps
+  unexpected pipeline exceptions to concise nonzero CLI failures. The verified
+  44 px target floor remains global because the audit contract covers every width.

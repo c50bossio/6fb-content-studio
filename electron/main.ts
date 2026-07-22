@@ -1,11 +1,26 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu } from 'electron';
-import { isAbsolute, join, relative, resolve } from 'path';
+import { basename, dirname, isAbsolute, join, resolve } from 'path';
+import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, mkdirSync } from 'fs';
 import { pathToFileURL } from 'url';
 import { runClipExtractor, checkPythonDeps, cancelActiveExtraction, resolveSystemPython, type ClipExtractorRuntime } from './python-bridge';
 import { autoUpdater } from 'electron-updater';
 import type { ContentBrain, ContentStrategyBrief } from '../src/types/content-strategy';
 import type { PublishingPlatform, PublishingQueuePost, PublishingQueueResponse, PublishingStatus } from '../src/types/publishing';
+import { canonicalPath, isAllowedReadPath, isSamePath, localFilePathFromValue, safeJsonRecordPath, safeNumericRunPath, safeOwnedPath } from './path-safety.mts';
+import { trimmedClipMetadata } from './clip-metadata.mts';
+
+const EXTERNAL_REQUEST_TIMEOUT_MS = 20_000;
+
+async function boundedFetch(
+  input: string | URL | Request,
+  init: RequestInit = {},
+  timeoutMs = EXTERNAL_REQUEST_TIMEOUT_MS,
+) {
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = init.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal;
+  return fetch(input, { ...init, signal });
+}
 
 // ── MUST be called before app.whenReady() ──────────────────────────────────
 // Disables GPU hardware acceleration & accelerated video decode.
@@ -16,6 +31,27 @@ app.commandLine.appendSwitch('disable-gpu');
 app.commandLine.appendSwitch('disable-accelerated-video-decode');
 app.commandLine.appendSwitch('disable-accelerated-video-encode');
 app.commandLine.appendSwitch('disable-gpu-memory-buffer-video-frames');
+
+// Electron applies Chromium's --user-data-dir switch after early module evaluation, which is
+// too late for persistence libraries that ask for app.getPath('userData') during startup.
+// Resolve the same explicit override here so disposable acceptance profiles cannot inherit or
+// mutate the real user's settings. SIXFB_USER_DATA_DIR is the non-Chromium test equivalent.
+const userDataArgIndex = process.argv.findIndex(arg => arg === '--user-data-dir');
+const userDataEqualsArg = process.argv.find(arg => arg.startsWith('--user-data-dir='));
+const requestedUserDataDir = (
+  process.env.SIXFB_USER_DATA_DIR ||
+  (userDataArgIndex >= 0 ? process.argv[userDataArgIndex + 1] : undefined) ||
+  userDataEqualsArg?.slice('--user-data-dir='.length) ||
+  ''
+).trim();
+
+if (requestedUserDataDir) {
+  if (!isAbsolute(requestedUserDataDir)) {
+    throw new Error('The user-data directory override must be an absolute path.');
+  }
+  mkdirSync(requestedUserDataDir, { recursive: true });
+  app.setPath('userData', requestedUserDataDir);
+}
 
 // electron-store: handle ESM default export
 import Store from 'electron-store';
@@ -41,13 +77,19 @@ export interface StoreSchema {
   igUserId?: string;
   igUsername?: string;
   igTokenExpiresAt?: string | null;
+  approvedMediaPaths?: string[];
 }
 
-// Untyped at runtime due to electron-store's dot-notation dynamic keys (apiKeys.${provider})
-// StoreSchema above is the authoritative reference for what keys exist.
-const store = new ElectronStore();
+// Untyped at runtime due to electron-store's dot-notation dynamic keys (apiKeys.${provider}).
+// StoreSchema above is the authoritative reference for what keys exist. Construct the store
+// only after Electron is ready so command-line profile isolation (for example
+// --user-data-dir during acceptance tests) has updated app.getPath('userData'). Creating it at
+// module load can bind the store to the real profile before Electron applies that override.
+let store: Store;
 let mainWindow: BrowserWindow | null = null;
 const approvedFilePaths = new Set<string>();
+const approvedDirectoryPaths = new Set<string>();
+const activeTrimPaths = new Set<string>();
 
 type PipelineSettings = {
   mode?: 'bundled' | 'custom';
@@ -102,29 +144,35 @@ function existingPath(value?: string) {
   return value && existsSync(value) ? value : undefined;
 }
 
-function isInsidePath(childPath: string, parentPath: string) {
-  const child = resolve(childPath);
-  const parent = resolve(parentPath);
-  const rel = relative(parent, child);
-  return rel === '' || (!!rel && !rel.startsWith('..') && !isAbsolute(rel));
+function clipsDir() {
+  return join(app.getPath('userData'), 'clips');
 }
 
-function localFilePathFromValue(value?: string | null) {
-  if (!value || /^(https?:|data:|blob:)/i.test(value)) return undefined;
-  const localfilePrefix = 'localfile://';
-  const filePath = value.startsWith(localfilePrefix)
-    ? decodeURIComponent(value.slice(localfilePrefix.length))
-    : value;
-  return isAbsolute(filePath) ? filePath : undefined;
+function safeRunPath(runId: string) {
+  return safeNumericRunPath(runId, clipsDir());
 }
 
 function registerApprovedPath(filePath?: string | null) {
   const localFilePath = localFilePathFromValue(filePath);
-  if (localFilePath) approvedFilePaths.add(resolve(localFilePath));
+  if (!localFilePath) return;
+  const approvedTarget = canonicalPath(localFilePath);
+  approvedFilePaths.add(approvedTarget);
+  try {
+    const savedPaths = store.get('approvedMediaPaths') as string[] | undefined;
+    const nextPaths = [...new Set([...(Array.isArray(savedPaths) ? savedPaths : []), approvedTarget])].slice(-1000);
+    store.set('approvedMediaPaths', nextPaths);
+  } catch {
+    // Renderer IPC starts after the store is initialized; preserve the in-memory grant if it is not ready.
+  }
 }
 
 function registerApprovedPaths(paths: Array<string | null | undefined>) {
   for (const filePath of paths) registerApprovedPath(filePath);
+}
+
+function registerApprovedDirectory(dirPath?: string | null) {
+  const localPath = localFilePathFromValue(dirPath);
+  if (localPath) approvedDirectoryPaths.add(canonicalPath(localPath));
 }
 
 function objectValue(value: unknown): Record<string, unknown> | undefined {
@@ -169,18 +217,63 @@ function registerPublishingPostAssetPaths(post: Pick<PublishingQueuePost, 'media
 function isAllowedLocalFilePath(filePath: string) {
   if (!filePath || !isAbsolute(filePath)) return false;
   const resolved = resolve(filePath);
-  const appOwnedRoots = [
-    app.getPath('userData'),
-    app.getPath('temp'),
-  ];
-  if (appOwnedRoots.some(root => isInsidePath(resolved, root))) return true;
+  const safeClipsRoot = safeOwnedPath(clipsDir(), app.getPath('userData'));
+  const appOwnedRoots = safeClipsRoot ? [safeClipsRoot] : [];
+  if (isAllowedReadPath(resolved, appOwnedRoots, [...approvedFilePaths])) return true;
 
-  const brand = store.get('brandProfile') as Record<string, unknown> | undefined;
-  if (typeof brand?.logoPath === 'string' && resolve(brand.logoPath) === resolved) return true;
+  return false;
+}
 
-  return Array.from(approvedFilePaths).some(approvedPath =>
-    resolved === approvedPath || isInsidePath(resolved, approvedPath)
-  );
+function isAllowedAppPath(filePath: string) {
+  return isAllowedLocalFilePath(filePath) ||
+    isSamePath(filePath, app.getPath('userData')) ||
+    Array.from(approvedDirectoryPaths).some(approvedPath => canonicalPath(filePath) === resolve(approvedPath));
+}
+
+function validateApprovedExistingFile(value: string | null | undefined, label: string) {
+  if (!value) return undefined;
+  const filePath = localFilePathFromValue(value);
+  if (!filePath || !isAllowedLocalFilePath(filePath)) return `${label} was not selected through Content Studio`;
+  if (!existsSync(filePath)) return `${label} was moved or deleted`;
+  return undefined;
+}
+
+function assetPathsFromCarousel(value: unknown) {
+  const data = objectValue(value);
+  if (!data) return [];
+  const paths: string[] = [];
+  if (Array.isArray(data.slides)) {
+    for (const slide of data.slides) {
+      const framePath = stringField(slide, 'framePath');
+      if (framePath) paths.push(framePath);
+    }
+  }
+  const logoPath = stringField(data.brandSnapshot, 'logoPath');
+  if (logoPath) paths.push(logoPath);
+  return paths;
+}
+
+function assetPathsFromBlog(value: unknown) {
+  const data = objectValue(value);
+  if (!data) return [];
+  const paths: string[] = [];
+  if (Array.isArray(data.sections)) {
+    for (const section of data.sections) {
+      const imagePath = stringField(section, 'imagePath');
+      if (imagePath) paths.push(imagePath);
+    }
+  }
+  const logoPath = stringField(data.brandSnapshot, 'logoPath');
+  if (logoPath) paths.push(logoPath);
+  return paths;
+}
+
+function validateAssetPaths(paths: string[]) {
+  for (const filePath of paths) {
+    const error = validateApprovedExistingFile(filePath, 'An asset');
+    if (error) return error;
+  }
+  return undefined;
 }
 
 function pipelineSettings(): PipelineSettings {
@@ -246,10 +339,22 @@ protocol.registerSchemesAsPrivileged([{
 }]);
 
 app.whenReady().then(() => {
+  store = new ElectronStore({ cwd: requestedUserDataDir || app.getPath('userData') });
+  const persistedMediaPaths = store.get('approvedMediaPaths') as string[] | undefined;
+  for (const filePath of Array.isArray(persistedMediaPaths) ? persistedMediaPaths : []) {
+    const localPath = localFilePathFromValue(filePath);
+    if (localPath) approvedFilePaths.add(resolve(localPath));
+  }
+
   // Handle localfile:// protocol with proper byte-range support for video streaming.
   // net.fetch() ignores Range headers so video elements show 0:00 and never load.
   protocol.handle('localfile', (request) => {
-    const filePath = decodeURIComponent(request.url.replace('localfile://', ''));
+    let filePath: string;
+    try {
+      filePath = decodeURIComponent(request.url.replace('localfile://', ''));
+    } catch {
+      return new Response('Invalid local file URL', { status: 400 });
+    }
     if (!isAllowedLocalFilePath(filePath)) {
       return new Response('Forbidden local file path', { status: 403 });
     }
@@ -344,12 +449,18 @@ app.on('activate', () => {
 // ─── IPC Handlers ─────────────────────────────────────────────────
 
 // API Key Management
+const allowedApiKeyProviders = new Set(['claude', 'openai', 'contentPlanner']);
+
 ipcMain.handle('save-api-key', async (_event, { provider, key }: { provider: string; key: string }) => {
+  if (!allowedApiKeyProviders.has(provider) || typeof key !== 'string' || !key.trim()) {
+    return { success: false, error: 'Invalid API key provider or value' };
+  }
   store.set(`apiKeys.${provider}`, key);
   return { success: true };
 });
 
 ipcMain.handle('get-api-key', async (_event, provider: string) => {
+  if (!allowedApiKeyProviders.has(provider)) return { hasKey: false, hint: null };
   const key = store.get(`apiKeys.${provider}`) as string | undefined;
   return { hasKey: !!key, hint: key ? key.slice(0, 7) + '...' + key.slice(-4) : null };
 });
@@ -377,7 +488,7 @@ ipcMain.handle('fetch-today-brief', async () => {
   const token = store.get('apiKeys.contentPlanner') as string | undefined;
   if (!token) return { success: false, error: 'No Content Planner token. Add it in Settings.' };
   try {
-    const res = await fetch('https://content.6fbmentorship.com/api/me/today-brief', {
+    const res = await boundedFetch('https://content.6fbmentorship.com/api/me/today-brief', {
       headers: { Authorization: `Bearer ${token}`, Cookie: `auth_token=${token}` },
     });
     if (!res.ok) return { success: false, error: `API returned ${res.status}` };
@@ -393,7 +504,7 @@ ipcMain.handle('complete-today-play', async (_, { postId, action }: { postId: st
   const token = store.get('apiKeys.contentPlanner') as string | undefined;
   if (!token) return { success: false, error: 'No Content Planner token.' };
   try {
-    const res = await fetch('https://content.6fbmentorship.com/apps/content/api/me/complete-play', {
+    const res = await boundedFetch('https://content.6fbmentorship.com/apps/content/api/me/complete-play', {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ postId, action }),
@@ -409,7 +520,7 @@ ipcMain.handle('fetch-voice-profile', async () => {
   const token = store.get('apiKeys.contentPlanner') as string | undefined;
   if (!token) return { success: false, error: 'No Content Planner token.' };
   try {
-    const res = await fetch('https://content.6fbmentorship.com/apps/content/api/me/voice-profile', {
+    const res = await boundedFetch('https://content.6fbmentorship.com/apps/content/api/me/voice-profile', {
       headers: { 'Authorization': `Bearer ${token}`, Cookie: `auth_token=${token}` },
     });
     return res.ok ? { success: true, data: await res.json() } : { success: false };
@@ -456,7 +567,7 @@ ipcMain.handle('select-output-dir', async () => {
   if (result.canceled || result.filePaths.length === 0) {
     return { cancelled: true };
   }
-  registerApprovedPath(result.filePaths[0]);
+  registerApprovedDirectory(result.filePaths[0]);
   return { cancelled: false, dirPath: result.filePaths[0] };
 });
 
@@ -466,9 +577,10 @@ ipcMain.handle('extract-clips', async (_event, { videoPath, options }: {
   videoPath: string;
   options: { outputFormat?: string; contentType?: string; numClips?: number; startSec?: number; endSec?: number; planContext?: { topic: string; dropZones: { label: string; timestamp: string; endTimestamp: string }[] }; strategyBrief?: ContentStrategyBrief };
 }) => {
+  const sourceError = validateApprovedExistingFile(videoPath, 'The source video');
+  if (sourceError) return { success: false, error: sourceError };
   const outputDir = join(app.getPath('userData'), 'clips', Date.now().toString());
   const bp = (store.get('brandProfile') as Record<string, unknown>) || DEFAULT_BRAND;
-  registerApprovedPaths([videoPath, outputDir]);
 
   // Save the full source video path so re-extraction works
   const mkdirSync = require('fs').mkdirSync;
@@ -503,11 +615,13 @@ ipcMain.handle('cancel-extraction', async () => {
 ipcMain.handle('read-clip-transcript', async (_event, clipPath: string) => {
   // Looks for words.json or captions.json in the same folder as the clip 
   try {
+    const safeClipPath = safeOwnedPath(clipPath, clipsDir());
+    if (!safeClipPath) return null;
     const { dirname, join } = require('path');
     const { existsSync, readFileSync } = require('fs');
     
     // Fallback search paths for the transcript JSON
-    const dir = dirname(clipPath);
+    const dir = dirname(safeClipPath);
     const wordsPath = join(dir, 'words.json');
     const captionsPath = join(dir, 'captions.json');
     const clipSpecPath = join(dir, 'clip_spec.json');
@@ -568,22 +682,33 @@ ipcMain.handle('check-system-health', async () => {
 // ─── Settings Management ──────────────────────────────────────────
 
 ipcMain.handle('delete-api-key', async (_event, provider: string) => {
+  if (!allowedApiKeyProviders.has(provider)) return { success: false, error: 'Invalid API key provider' };
   store.delete(`apiKeys.${provider}`);
   return { success: true };
 });
 
 ipcMain.handle('reset-app', async () => {
   store.clear();
+  approvedFilePaths.clear();
+  approvedDirectoryPaths.clear();
   return { success: true };
 });
 
 ipcMain.handle('open-path', async (_event, path: string) => {
-  shell.openPath(path);
-  return { success: true };
+  const localPath = localFilePathFromValue(path);
+  if (!localPath || !isAllowedAppPath(localPath) || !existsSync(localPath)) {
+    return { success: false, error: 'Invalid app path' };
+  }
+  const error = await shell.openPath(localPath);
+  return error ? { success: false, error } : { success: true };
 });
 
 ipcMain.handle('show-in-finder', async (_event, path: string) => {
-  shell.showItemInFolder(path);
+  const localPath = localFilePathFromValue(path);
+  if (!localPath || !isAllowedAppPath(localPath) || !existsSync(localPath)) {
+    return { success: false, error: 'Invalid app path' };
+  }
+  shell.showItemInFolder(localPath);
   return { success: true };
 });
 
@@ -635,7 +760,7 @@ ipcMain.handle('generate-carousel', async (_event, { topic, type, keyPoints, bra
 
   try {
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
-    const client = new Anthropic({ apiKey });
+    const client = new Anthropic({ apiKey, maxRetries: 2, timeout: 30_000 });
 
     const prompt = `You are a professional carousel designer for ${brandName}.
 
@@ -726,7 +851,11 @@ const DEFAULT_CONTENT_BRAIN: ContentBrain = {
 };
 
 ipcMain.handle('save-brand-profile', async (_event, profile: Record<string, unknown>) => {
-  if (typeof profile.logoPath === 'string') registerApprovedPath(profile.logoPath);
+  if (typeof profile.logoPath === 'string') {
+    const logoError = validateApprovedExistingFile(profile.logoPath, 'The brand logo');
+    if (logoError) return { success: false, error: logoError };
+    registerApprovedPath(profile.logoPath);
+  }
   store.set('brandProfile', profile);
   return { success: true };
 });
@@ -789,7 +918,8 @@ ipcMain.handle('export-carousel-deck', async (_event, { title, images }: { title
       require('fs').writeFileSync(filePath, buffer);
       savedPaths.push(filePath);
     }
-    registerApprovedPaths([folderPath, ...savedPaths]);
+    registerApprovedDirectory(folderPath);
+    registerApprovedPaths(savedPaths);
     
     return { success: true, folderPath, savedPaths };
   } catch (error) {
@@ -800,14 +930,16 @@ ipcMain.handle('export-carousel-deck', async (_event, { title, images }: { title
 
 // ─── Transcript & Carousel Extraction ────────────────────────────
 ipcMain.handle('read-transcript', async (_event, runPath: string) => {
-  const formattedPath = join(runPath, 'formatted_transcript.txt');
-  const srtFiles = existsSync(runPath)
-    ? readdirSync(runPath).filter(f => f.endsWith('.srt'))
+  const safeRunDir = safeOwnedPath(runPath, clipsDir());
+  if (!safeRunDir) return { success: false, error: 'Invalid clip run path' };
+  const formattedPath = join(safeRunDir, 'formatted_transcript.txt');
+  const srtFiles = existsSync(safeRunDir)
+    ? readdirSync(safeRunDir).filter(f => f.endsWith('.srt'))
     : [];
   if (existsSync(formattedPath)) {
     return { success: true, transcript: readFileSync(formattedPath, 'utf-8'), format: 'formatted' };
   } else if (srtFiles.length > 0) {
-    return { success: true, transcript: readFileSync(join(runPath, srtFiles[0]), 'utf-8'), format: 'srt' };
+    return { success: true, transcript: readFileSync(join(safeRunDir, srtFiles[0]), 'utf-8'), format: 'srt' };
   }
   return { success: false, error: 'No transcript found in run directory' };
 });
@@ -835,7 +967,7 @@ ipcMain.handle('extract-carousel', async (_event, {
 
   try {
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
-    const client = new Anthropic({ apiKey });
+    const client = new Anthropic({ apiKey, maxRetries: 2, timeout: 30_000 });
 
     const prompt = `You are a social media content strategist for ${brandName}.
 
@@ -912,8 +1044,10 @@ ipcMain.handle('auto-match-carousel-frames', async (_event, {
   timestamps,
 }: { runPath: string; timestamps: string[] }) => {
   try {
+    const safeRunDir = safeOwnedPath(runPath, clipsDir());
+    if (!safeRunDir) return { success: false, error: 'Invalid clip run path' };
     // Read validated clips to get time ranges
-    const clipsFile = join(runPath, 'validated_clips.json');
+    const clipsFile = join(safeRunDir, 'validated_clips.json');
     if (!existsSync(clipsFile)) return { success: false, error: 'No validated clips found' };
 
     const clips: { id: number; title: string; start: number; end: number }[] =
@@ -929,8 +1063,8 @@ ipcMain.handle('auto-match-carousel-frames', async (_event, {
     };
 
     // Find clip directories
-    const clipDirs = readdirSync(runPath)
-      .filter(d => d.startsWith('clip-') && existsSync(join(runPath, d, 'thumbnail.jpg')))
+    const clipDirs = readdirSync(safeRunDir)
+      .filter(d => d.startsWith('clip-') && existsSync(join(safeRunDir, d, 'thumbnail.jpg')))
       .map(d => {
         const match = d.match(/^clip-(\d+)/);
         const num = match ? parseInt(match[1], 10) : -1;
@@ -941,7 +1075,7 @@ ipcMain.handle('auto-match-carousel-frames', async (_event, {
           num,
           start: clipDef?.start ?? 0,
           end: clipDef?.end ?? 0,
-          thumbnailPath: join(runPath, d, 'thumbnail.jpg'),
+          thumbnailPath: join(safeRunDir, d, 'thumbnail.jpg'),
         };
       })
       .filter(c => c.num > 0);
@@ -1002,14 +1136,18 @@ function findFfprobe(): string {
 // Per-clip async thumbnail — never blocks scan
 ipcMain.handle('generate-thumbnail', (_event, { videoPath, thumbPath }: { videoPath: string; thumbPath: string }) => {
   const ffmpeg = findFfmpeg();
-  registerApprovedPaths([videoPath, thumbPath]);
+  const safeVideoPath = safeOwnedPath(videoPath, clipsDir());
+  const safeThumbPath = safeOwnedPath(thumbPath, clipsDir());
+  if (!safeVideoPath || !safeThumbPath || !existsSync(safeVideoPath)) {
+    return Promise.resolve({ success: false });
+  }
   return new Promise<{ success: boolean; thumbPath?: string }>((resolve) => {
     // -frames:v 1 -update 1 required for newer ffmpeg to write a single JPEG without pattern
-    execFile(ffmpeg, ['-y', '-ss', '1', '-i', videoPath, '-frames:v', '1', '-q:v', '3', '-vf', 'scale=540:960', '-update', '1', thumbPath],
+    execFile(ffmpeg, ['-y', '-ss', '1', '-i', safeVideoPath, '-frames:v', '1', '-q:v', '3', '-vf', 'scale=540:960', '-update', '1', safeThumbPath],
       { timeout: 12000 }, (err) => {
-        if (!err && existsSync(thumbPath)) {
-          registerApprovedPath(thumbPath);
-          resolve({ success: true, thumbPath });
+        if (!err && existsSync(safeThumbPath)) {
+          registerApprovedPath(safeThumbPath);
+          resolve({ success: true, thumbPath: safeThumbPath });
         }
         else resolve({ success: false });
       });
@@ -1018,7 +1156,7 @@ ipcMain.handle('generate-thumbnail', (_event, { videoPath, thumbPath }: { videoP
 
 // Fast scan — no ffmpeg, returns immediately
 ipcMain.handle('scan-library', async () => {
-  const clipsRoot = join(app.getPath('userData'), 'clips');
+  const clipsRoot = clipsDir();
   if (!existsSync(clipsRoot)) return { runs: [] };
   try {
     const runDirs = readdirSync(clipsRoot, { withFileTypes: true })
@@ -1095,20 +1233,26 @@ ipcMain.handle('scan-library', async () => {
 
 // ─── CRUD ────────────────────────────────────────────────────────────
 ipcMain.handle('delete-run', async (_event, runId: string) => {
-  try { rmSync(join(app.getPath('userData'), 'clips', runId), { recursive: true, force: true }); return { success: true }; }
+  const runPath = safeRunPath(runId);
+  if (!runPath) return { success: false, error: 'Invalid clip run id' };
+  try { rmSync(runPath, { recursive: true, force: true }); return { success: true }; }
   catch (err) { return { success: false, error: String(err) }; }
 });
 
 ipcMain.handle('delete-clip', async (_event, clipPath: string) => {
-  try { rmSync(clipPath, { recursive: true, force: true }); return { success: true }; }
+  const safeClipPath = safeOwnedPath(clipPath, clipsDir());
+  if (!safeClipPath) return { success: false, error: 'Invalid clip path' };
+  try { rmSync(safeClipPath, { recursive: true, force: true }); return { success: true }; }
   catch (err) { return { success: false, error: String(err) }; }
 });
 
 ipcMain.handle('rename-clip', async (_event, { specPath, newTitle }: { specPath: string; newTitle: string }) => {
+  const safeSpecPath = safeOwnedPath(specPath, clipsDir());
+  if (!safeSpecPath) return { success: false, error: 'Invalid clip spec path' };
   try {
-    const spec = JSON.parse(readFileSync(specPath, 'utf-8'));
+    const spec = JSON.parse(readFileSync(safeSpecPath, 'utf-8'));
     spec.title = newTitle;
-    writeFileSync(specPath, JSON.stringify(spec, null, 2));
+    writeFileSync(safeSpecPath, JSON.stringify(spec, null, 2));
     return { success: true };
   } catch (err) { return { success: false, error: String(err) }; }
 });
@@ -1117,31 +1261,94 @@ ipcMain.handle('rename-clip', async (_event, { specPath, newTitle }: { specPath:
 ipcMain.handle('trim-clip', async (_event, {
   filePath, specPath, startSec, endSec,
 }: { filePath: string; specPath: string; startSec: number; endSec: number }) => {
+  const safeFilePath = safeOwnedPath(filePath, clipsDir());
+  const safeSpecPath = safeOwnedPath(specPath, clipsDir());
+  if (!safeFilePath || !safeSpecPath) return { success: false, error: 'Invalid clip path' };
+  if (!existsSync(safeFilePath) || !existsSync(safeSpecPath)) return { success: false, error: 'Clip media or metadata is missing' };
+  const canonicalFilePath = canonicalPath(safeFilePath);
+  const canonicalSpecPath = canonicalPath(safeSpecPath);
+  if (basename(safeSpecPath) !== 'clip_spec.json' || dirname(canonicalSpecPath) !== dirname(canonicalFilePath)) {
+    return { success: false, error: 'Clip media and metadata must belong to the same clip' };
+  }
+  if (!safeFilePath.toLowerCase().endsWith('.mp4')) return { success: false, error: 'Invalid clip format' };
+  let originalSpecText: string;
+  let updatedSpec: Record<string, unknown> | undefined;
+  try {
+    originalSpecText = readFileSync(safeSpecPath, 'utf-8');
+    updatedSpec = trimmedClipMetadata(JSON.parse(originalSpecText), startSec, endSec);
+  } catch {
+    return { success: false, error: 'Clip metadata is invalid' };
+  }
+  if (!updatedSpec) return { success: false, error: 'Invalid trim range' };
   const ffmpeg = findFfmpeg();
-  const tmpOut = filePath.replace(/\.mp4$/, '_trimmed.mp4');
+  const operationId = randomUUID();
+  const tmpOut = safeFilePath.replace(/\.mp4$/i, `.trim-${operationId}.mp4`);
+  const specTmp = `${safeSpecPath}.trim-${operationId}.tmp`;
+  const safeTmpOut = safeOwnedPath(tmpOut, clipsDir());
+  const safeSpecTmp = safeOwnedPath(specTmp, clipsDir());
+  if (!safeTmpOut || !safeSpecTmp || safeTmpOut === safeFilePath) return { success: false, error: 'Invalid temporary clip path' };
+  if (activeTrimPaths.has(canonicalFilePath)) return { success: false, error: 'This clip is already being trimmed' };
+  activeTrimPaths.add(canonicalFilePath);
   const duration = endSec - startSec;
-  return new Promise<{ success: boolean; error?: string }>((resolve) => {
-    execFile(ffmpeg, [
-      '-y', '-i', filePath,
-      '-ss', String(startSec), '-t', String(duration),
-      '-c', 'copy', tmpOut,
-    ], { timeout: 60000 }, (err) => {
-      if (err) return resolve({ success: false, error: err.message });
+  return new Promise<{ success: boolean; error?: string }>((resolveTrim) => {
+    const failTrim = (error: unknown) => {
+      rmSync(safeTmpOut, { force: true });
+      rmSync(safeSpecTmp, { force: true });
+      activeTrimPaths.delete(canonicalFilePath);
+      resolveTrim({ success: false, error: error instanceof Error ? error.message : String(error) });
+    };
+    const commitTrim = () => {
       try {
-        // renameSync is atomic on POSIX — it replaces filePath in one operation.
-        // Do NOT delete first: if rename fails after delete, the clip is permanently lost.
-        require('fs').renameSync(tmpOut, filePath);
-        // Update spec
-        if (existsSync(specPath)) {
-          const spec = JSON.parse(readFileSync(specPath, 'utf-8'));
-          spec.clipStart = (spec.clipStart ?? 0) + startSec;
-          spec.clipEnd = spec.clipStart + duration;
-          spec.duration = duration;
-          writeFileSync(specPath, JSON.stringify(spec, null, 2));
+        writeFileSync(safeSpecTmp, JSON.stringify(updatedSpec, null, 2));
+        require('fs').renameSync(safeSpecTmp, safeSpecPath);
+        try {
+          require('fs').renameSync(safeTmpOut, safeFilePath);
+        } catch (error) {
+          writeFileSync(safeSpecPath, originalSpecText);
+          throw error;
         }
-        resolve({ success: true });
-      } catch (e) { resolve({ success: false, error: String(e) }); }
-    });
+        activeTrimPaths.delete(canonicalFilePath);
+        resolveTrim({ success: true });
+      } catch (error) {
+        failTrim(error);
+      }
+    };
+    try {
+      execFile(ffmpeg, [
+        '-y', '-ss', String(startSec), '-i', safeFilePath,
+        '-t', String(duration),
+        '-c:v', 'libx264', '-preset', 'fast', '-crf', '18',
+        '-c:a', 'aac', '-movflags', '+faststart', safeTmpOut,
+      ], { timeout: 60000 }, (err) => {
+        if (err) return failTrim(err);
+        execFile(findFfprobe(), [
+          '-v', 'error', '-select_streams', 'v:0',
+          '-show_entries', 'stream=index,duration:format=duration',
+          '-of', 'json', safeTmpOut,
+        ], { timeout: 15000, encoding: 'utf8' }, (probeError, stdout) => {
+          if (probeError) return failTrim(probeError);
+          try {
+            const probe = JSON.parse(stdout) as { streams?: { duration?: string }[] };
+            const outputDuration = Number(probe.streams?.[0]?.duration);
+            const minimumDuration = duration * 0.9;
+            const maximumDuration = duration + Math.max(0.1, duration * 0.1);
+            if (
+              !probe.streams?.length ||
+              !Number.isFinite(outputDuration) ||
+              outputDuration < minimumDuration ||
+              outputDuration > maximumDuration
+            ) {
+              return failTrim('Trim output did not contain the requested playable duration');
+            }
+            commitTrim();
+          } catch (error) {
+            failTrim(error);
+          }
+        });
+      });
+    } catch (error) {
+      failTrim(error);
+    }
   });
 });
 
@@ -1163,9 +1370,26 @@ ipcMain.handle('render-video', async (_event, payload: RenderVideoProps | { prop
   const { clipPath, trimStart, trimEnd, outputFormat, caption, music, outputDir, cuts } = props;
   const ffmpeg = findFfmpeg();
   const outDir = outputDir || app.getPath('downloads');
+  const clipError = validateApprovedExistingFile(clipPath, 'The source clip');
+  if (clipError) return { success: false, error: clipError };
+  if (music?.path) {
+    const musicError = validateApprovedExistingFile(music.path, 'The music file');
+    if (musicError) return { success: false, error: musicError };
+  }
+  if (outputDir && (!isAbsolute(outputDir) || !isAllowedAppPath(outputDir) || !existsSync(outputDir))) {
+    return { success: false, error: 'Choose the output folder through Content Studio' };
+  }
+  if (!Number.isFinite(trimStart) || !Number.isFinite(trimEnd) || trimStart < 0 || trimEnd <= trimStart) {
+    return { success: false, error: 'Invalid trim range' };
+  }
+  if (!['9x16', '1x1', '16x9'].includes(outputFormat)) {
+    return { success: false, error: 'Invalid output format' };
+  }
+  if (cuts?.some(cut => !Number.isFinite(cut.start) || !Number.isFinite(cut.end) || cut.start < 0 || cut.end <= cut.start)) {
+    return { success: false, error: 'Invalid cut range' };
+  }
   if (!existsSync(outDir)) { try { mkdirSync(outDir, { recursive: true }); } catch {} }
   const outFile = join(outDir, `6fb_edit_${Date.now()}.mp4`);
-  registerApprovedPaths([clipPath, music?.path, outDir, outFile]);
   
   // Calculate duration correctly depending on if cuts exist
   let duration = trimEnd - trimStart;
@@ -1203,6 +1427,7 @@ ipcMain.handle('render-video', async (_event, payload: RenderVideoProps | { prop
   let filterComplex = '';
   let currentV = '0:v';
   let currentA = '0:a';
+  const filterInput = (stream: string) => stream.startsWith('[') ? stream : `[${stream}]`;
 
   // 1. Text-Based Concat
   if (cuts && cuts.length > 0) {
@@ -1217,14 +1442,14 @@ ipcMain.handle('render-video', async (_event, payload: RenderVideoProps | { prop
 
   // 2. Video Filters
   if (vf.length > 0) {
-    filterComplex += `${currentV}${vf.join(',')}[finalv];`;
+    filterComplex += `${filterInput(currentV)}${vf.join(',')}[finalv];`;
     currentV = '[finalv]';
   }
 
   // 3. Audio Mixing
   if (hasMusic) {
     const vol = (music!.volume).toFixed(2);
-    filterComplex += `[1:a]volume=${vol}[mv];${currentA}[mv]amix=inputs=2:duration=first[finala];`;
+    filterComplex += `[1:a]volume=${vol}[mv];${filterInput(currentA)}[mv]amix=inputs=2:duration=first[finala];`;
     currentA = '[finala]';
   }
 
@@ -1289,6 +1514,8 @@ ipcMain.handle('save-carousel', async (_event, { title, slides, brandSnapshot }:
   const id = Date.now().toString();
   const filePath = join(dir, `${id}.json`);
   const data = { id, title, slides, brandSnapshot, createdAt: new Date().toISOString() };
+  const assetError = validateAssetPaths(assetPathsFromCarousel(data));
+  if (assetError) return { success: false, error: assetError };
   registerCarouselAssetPaths(data);
   writeFileSync(filePath, JSON.stringify(data, null, 2));
   return { success: true, id };
@@ -1310,22 +1537,24 @@ ipcMain.handle('list-carousels', async () => {
 });
 
 ipcMain.handle('load-carousel', async (_event, id: string) => {
-  const filePath = join(carouselsDir(), `${id}.json`);
+  const filePath = safeJsonRecordPath(carouselsDir(), id);
+  if (!filePath) return { success: false, error: 'Invalid carousel id' };
   try {
     const data = JSON.parse(readFileSync(filePath, 'utf-8'));
-    registerCarouselAssetPaths(data);
     return { success: true, data };
   } catch (err) { return { success: false, error: String(err) }; }
 });
 
 ipcMain.handle('delete-carousel', async (_event, id: string) => {
-  const filePath = join(carouselsDir(), `${id}.json`);
+  const filePath = safeJsonRecordPath(carouselsDir(), id);
+  if (!filePath) return { success: false, error: 'Invalid carousel id' };
   try { rmSync(filePath, { force: true }); return { success: true }; }
   catch (err) { return { success: false, error: String(err) }; }
 });
 
 ipcMain.handle('rename-carousel', async (_event, { id, title }: { id: string; title: string }) => {
-  const filePath = join(carouselsDir(), `${id}.json`);
+  const filePath = safeJsonRecordPath(carouselsDir(), id);
+  if (!filePath) return { success: false, error: 'Invalid carousel id' };
   try {
     const data = JSON.parse(readFileSync(filePath, 'utf-8'));
     data.title = title;
@@ -1359,7 +1588,7 @@ ipcMain.handle('generate-blog-post', async (_event, {
   try {
     const vpToken = store.get('apiKeys.contentPlanner') as string | undefined;
     if (vpToken) {
-      const vpRes = await fetch('https://content.6fbmentorship.com/apps/content/api/me/voice-profile', {
+      const vpRes = await boundedFetch('https://content.6fbmentorship.com/apps/content/api/me/voice-profile', {
         headers: { 'Authorization': `Bearer ${vpToken}`, Cookie: `auth_token=${vpToken}` },
       });
       if (vpRes.ok) {
@@ -1378,7 +1607,7 @@ ipcMain.handle('generate-blog-post', async (_event, {
 
   try {
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
-    const client = new Anthropic({ apiKey });
+    const client = new Anthropic({ apiKey, maxRetries: 2, timeout: 30_000 });
 
     const prompt = `You are a blog content writer for ${brandName}.
 
@@ -1465,6 +1694,8 @@ ipcMain.handle('save-blog-post', async (_event, { title, metaDescription, sectio
   const id = Date.now().toString();
   const filePath = join(dir, `${id}.json`);
   const data = { id, title, metaDescription, sections, brandSnapshot, createdAt: new Date().toISOString() };
+  const assetError = validateAssetPaths(assetPathsFromBlog(data));
+  if (assetError) return { success: false, error: assetError };
   registerBlogAssetPaths(data);
   require('fs').writeFileSync(filePath, JSON.stringify(data, null, 2));
   return { success: true, id };
@@ -1486,16 +1717,17 @@ ipcMain.handle('list-blog-posts', async () => {
 });
 
 ipcMain.handle('load-blog-post', async (_event, id: string) => {
-  const filePath = join(blogsDir(), `${id}.json`);
+  const filePath = safeJsonRecordPath(blogsDir(), id);
+  if (!filePath) return { success: false, error: 'Invalid blog post id' };
   try {
     const data = JSON.parse(readFileSync(filePath, 'utf-8'));
-    registerBlogAssetPaths(data);
     return { success: true, data };
   } catch (err) { return { success: false, error: String(err) }; }
 });
 
 ipcMain.handle('delete-blog-post', async (_event, id: string) => {
-  const filePath = join(blogsDir(), `${id}.json`);
+  const filePath = safeJsonRecordPath(blogsDir(), id);
+  if (!filePath) return { success: false, error: 'Invalid blog post id' };
   try { rmSync(filePath, { force: true }); return { success: true }; }
   catch (err) { return { success: false, error: String(err) }; }
 });
@@ -1614,6 +1846,24 @@ function normalizePublishingPost(post: Record<string, unknown>, origin: 'local' 
   };
 }
 
+function validateLocalScheduledPost(post: PublishingQueuePost): string | undefined {
+  if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/.test(post.id)) return 'Invalid post id';
+  if (!post.caption.trim()) return 'A caption is required';
+  if (!Number.isFinite(Date.parse(post.scheduledAt))) return 'Invalid scheduled date';
+
+  const assetValues = [post.mediaPath, post.thumbnailPath, ...(post.mediaUrls || [])]
+    .filter((value): value is string => Boolean(value));
+  for (const value of assetValues) {
+    const filePath = localFilePathFromValue(value);
+    if (!filePath || !isAllowedLocalFilePath(filePath)) {
+      return 'Choose media through Content Studio before scheduling';
+    }
+    if (!existsSync(filePath)) return 'The scheduled media file was moved or deleted';
+  }
+
+  return undefined;
+}
+
 function getPostSortTime(post: PublishingQueuePost) {
   return new Date(post.publishedAt || post.postedAt || post.updatedAt || post.scheduledAt).getTime();
 }
@@ -1643,7 +1893,6 @@ function loadLocalPublishingPosts(): PublishingQueuePost[] {
     const normalized = posts
       .map(post => normalizePublishingPost(post, 'local'))
       .filter((post): post is PublishingQueuePost => !!post && visiblePublishingStatuses.has(post.status));
-    for (const post of normalized) registerPublishingPostAssetPaths(post);
     return sortPublishingPosts(normalized);
   } catch { return []; }
 }
@@ -1658,7 +1907,7 @@ async function fetchRemotePublishingQueue(): Promise<PublishingQueueResponse | n
 
   const fetchedAt = new Date().toISOString();
   try {
-    const res = await fetch(`${CONTENT_MANAGER}/api/scheduled-posts`, {
+    const res = await boundedFetch(`${CONTENT_MANAGER}/api/scheduled-posts`, {
       headers: {
         'Authorization': `Bearer ${token}`,
         'X-Client': '6fb-content-studio',
@@ -1746,6 +1995,8 @@ ipcMain.handle('get-scheduled-posts', async () => {
 ipcMain.handle('save-scheduled-post', async (_event, post: Record<string, unknown>) => {
   const normalized = normalizePublishingPost(post, 'local');
   if (!normalized) return { success: false, error: 'Invalid post' };
+  const validationError = validateLocalScheduledPost(normalized);
+  if (validationError) return { success: false, error: validationError };
   const posts = loadLocalPublishingPosts();
   const idx = posts.findIndex(p => p.id === normalized.id);
   if (idx >= 0) posts[idx] = normalized; else posts.push(normalized);
@@ -1784,8 +2035,14 @@ ipcMain.handle('post-to-social', async (_event, { platform }: { platform: string
     youtube: 'https://studio.youtube.com/',
     linkedin: 'https://www.linkedin.com/feed/',
   };
-  const opened = !!(urls[platform] && shell.openExternal(urls[platform]));
-  return { success: true, opened, note: 'Opened platform in browser. No API post was made.' };
+  const url = urls[platform];
+  if (!url) return { success: false, opened: false, error: 'Unsupported publishing platform' };
+  try {
+    await shell.openExternal(url);
+    return { success: true, opened: true, note: 'Opened platform in browser. No API post was made.' };
+  } catch (error) {
+    return { success: false, opened: false, error: String(error) };
+  }
 });
 
 // Background daemon — checks every 60s, marks posts 'due' when their time arrives
@@ -1907,7 +2164,7 @@ const CONTENT_MANAGER = 'https://content.6fbmentorship.com/apps/content';
 
 ipcMain.handle('login-6fb', async (_event, { email, password }: { email: string; password: string }) => {
   try {
-    const res = await fetch(`${CONTENT_MANAGER}/api/auth/login`, {
+    const res = await boundedFetch(`${CONTENT_MANAGER}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'X-Client': '6fb-content-studio' },
       body: JSON.stringify({ email, password }),
@@ -1931,7 +2188,7 @@ ipcMain.handle('sync-instagram-credentials', async () => {
   const token = store.get('contentManagerToken') as string | undefined;
   if (!token) return { success: false, error: 'Not signed in to Content Manager' };
   try {
-    const res = await fetch(`${CONTENT_MANAGER}/api/me/credentials`, {
+    const res = await boundedFetch(`${CONTENT_MANAGER}/api/me/credentials`, {
       headers: { 'Authorization': `Bearer ${token}`, 'X-Client': '6fb-content-studio' },
     });
     const data = await res.json() as Record<string, unknown>;
@@ -1973,7 +2230,7 @@ async function pollIgContainer(containerId: string, token: string, maxWaitMs = 1
   const deadline = Date.now() + maxWaitMs;
   while (Date.now() < deadline) {
     await new Promise(r => setTimeout(r, 4000));
-    const r = await fetch(`${IG_GRAPH}/${containerId}?fields=status_code,status&access_token=${token}`);
+    const r = await boundedFetch(`${IG_GRAPH}/${containerId}?fields=status_code,status&access_token=${token}`);
     const d = await r.json() as Record<string, string>;
     if (d.status_code === 'FINISHED') return;
     if (d.status_code === 'ERROR' || d.status_code === 'EXPIRED') {
@@ -1987,13 +2244,15 @@ async function pollIgContainer(containerId: string, token: string, maxWaitMs = 1
 ipcMain.handle('post-reel-to-instagram', async (_event, {
   filePath, caption,
 }: { filePath: string; caption: string }) => {
+  const mediaError = validateApprovedExistingFile(filePath, 'The reel');
+  if (mediaError) return { success: false, error: mediaError };
   const token = store.get('igAccessToken') as string | undefined;
   const igUserId = store.get('igUserId') as string | undefined;
   if (!token || !igUserId) return { success: false, error: 'Instagram not connected. Go to Settings → 6FB Account → Sync Instagram.' };
 
   try {
     // 1. Init resumable upload container
-    const initRes = await fetch(`${IG_GRAPH}/${igUserId}/media`, {
+    const initRes = await boundedFetch(`${IG_GRAPH}/${igUserId}/media`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ media_type: 'REELS', upload_type: 'resumable', caption, access_token: token }),
@@ -2005,7 +2264,7 @@ ipcMain.handle('post-reel-to-instagram', async (_event, {
 
     // 2. Upload binary
     const videoBuffer = readFileSync(filePath);
-    const uploadRes = await fetch(initData.uri, {
+    const uploadRes = await boundedFetch(initData.uri, {
       method: 'POST',
       headers: {
         'Authorization': `OAuth ${token}`,
@@ -2015,7 +2274,7 @@ ipcMain.handle('post-reel-to-instagram', async (_event, {
         'file_size': String(videoBuffer.byteLength),
       },
       body: videoBuffer,
-    });
+    }, 120_000);
     if (!uploadRes.ok) {
       const e = await uploadRes.text();
       return { success: false, error: `Upload failed: ${e}` };
@@ -2025,7 +2284,7 @@ ipcMain.handle('post-reel-to-instagram', async (_event, {
     await pollIgContainer(initData.id, token);
 
     // 4. Publish
-    const pubRes = await fetch(`${IG_GRAPH}/${igUserId}/media_publish`, {
+    const pubRes = await boundedFetch(`${IG_GRAPH}/${igUserId}/media_publish`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ creation_id: initData.id, access_token: token }),
@@ -2043,12 +2302,14 @@ ipcMain.handle('post-reel-to-instagram', async (_event, {
 ipcMain.handle('post-carousel-to-instagram', async (_event, {
   imagePaths, caption,
 }: { imagePaths: string[]; caption: string }) => {
-  const token = store.get('igAccessToken') as string | undefined;
-  const igUserId = store.get('igUserId') as string | undefined;
-  if (!token || !igUserId) return { success: false, error: 'Instagram not connected. Go to Settings → 6FB Account → Sync Instagram.' };
   if (imagePaths.length < 2 || imagePaths.length > 10) {
     return { success: false, error: 'Carousel requires 2–10 images' };
   }
+  const assetError = validateAssetPaths(imagePaths);
+  if (assetError) return { success: false, error: assetError };
+  const token = store.get('igAccessToken') as string | undefined;
+  const igUserId = store.get('igUserId') as string | undefined;
+  if (!token || !igUserId) return { success: false, error: 'Instagram not connected. Go to Settings → 6FB Account → Sync Instagram.' };
 
   try {
     // 1. Upload each image as a carousel item
@@ -2060,14 +2321,14 @@ ipcMain.handle('post-carousel-to-instagram', async (_event, {
       form.append('is_carousel_item', 'true');
       form.append('access_token', token);
 
-      const r = await fetch(`${IG_GRAPH}/${igUserId}/media`, { method: 'POST', body: form });
+      const r = await boundedFetch(`${IG_GRAPH}/${igUserId}/media`, { method: 'POST', body: form }, 60_000);
       const d = await r.json() as Record<string, string>;
       if (!d.id) throw new Error(`Image upload failed: ${d.error?.toString() || JSON.stringify(d)}`);
       childIds.push(d.id);
     }
 
     // 2. Create carousel container
-    const carRes = await fetch(`${IG_GRAPH}/${igUserId}/media`, {
+    const carRes = await boundedFetch(`${IG_GRAPH}/${igUserId}/media`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2084,7 +2345,7 @@ ipcMain.handle('post-carousel-to-instagram', async (_event, {
     await pollIgContainer(carData.id, token);
 
     // 4. Publish
-    const pubRes = await fetch(`${IG_GRAPH}/${igUserId}/media_publish`, {
+    const pubRes = await boundedFetch(`${IG_GRAPH}/${igUserId}/media_publish`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ creation_id: carData.id, access_token: token }),
@@ -2167,8 +2428,8 @@ ipcMain.handle('get-analytics', async () => {
 
   try {
     const [accountRes, mediaRes] = await Promise.all([
-      fetch(`${IG_GRAPH}/${igUserId}?fields=username,followers_count,media_count,profile_picture_url&access_token=${token}`),
-      fetch(`${IG_GRAPH}/${igUserId}/media?fields=id,media_type,caption,timestamp,like_count,comments_count,thumbnail_url,media_url&limit=12&access_token=${token}`),
+      boundedFetch(`${IG_GRAPH}/${igUserId}?fields=username,followers_count,media_count,profile_picture_url&access_token=${token}`),
+      boundedFetch(`${IG_GRAPH}/${igUserId}/media?fields=id,media_type,caption,timestamp,like_count,comments_count,thumbnail_url,media_url&limit=12&access_token=${token}`),
     ]);
 
     const account = await accountRes.json() as Record<string, unknown>;
@@ -2180,7 +2441,7 @@ ipcMain.handle('get-analytics', async () => {
       (mediaItems as any[]).map(async (item: any) => {
         try {
           const insightMetrics = item.media_type === 'VIDEO' ? 'reach,plays,impressions' : 'reach,impressions';
-          const ir = await fetch(`${IG_GRAPH}/${item.id}/insights?metric=${insightMetrics}&period=lifetime&access_token=${token}`);
+          const ir = await boundedFetch(`${IG_GRAPH}/${item.id}/insights?metric=${insightMetrics}&period=lifetime&access_token=${token}`);
           const id = await ir.json() as { data?: any[] };
           const insights: Record<string, number> = {};
           for (const m of (id.data ?? [])) insights[m.name] = m.values?.[0]?.value ?? 0;
@@ -2202,7 +2463,7 @@ ipcMain.handle('generate-video-plan', async (_event, { prompt }: { prompt: strin
   if (!apiKey) return { success: false, error: 'No Claude API key configured. Add it in Settings.' };
   try {
     const Anthropic = (await import('@anthropic-ai/sdk')).default;
-    const client = new Anthropic({ apiKey });
+    const client = new Anthropic({ apiKey, maxRetries: 2, timeout: 30_000 });
     const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 2048,
@@ -2222,9 +2483,14 @@ ipcMain.handle('save-video-plan', async (_event, plan: object) => {
   try {
     const plansDir = join(app.getPath('userData'), 'video-plans');
     mkdirSync(plansDir, { recursive: true });
-    const id = (plan as any).id ?? Date.now().toString();
-    writeFileSync(join(plansDir, `${id}.json`), JSON.stringify(plan, null, 2));
-    return { success: true, id };
+    const requestedId = typeof (plan as { id?: unknown }).id === 'string'
+      ? (plan as { id: string }).id
+      : Date.now().toString();
+    const filePath = safeJsonRecordPath(plansDir, requestedId);
+    if (!filePath) return { success: false, error: 'Invalid video plan id' };
+    const savedPlan = { ...plan, id: requestedId };
+    writeFileSync(filePath, JSON.stringify(savedPlan, null, 2));
+    return { success: true, id: requestedId };
   } catch (err) {
     return { success: false, error: String(err) };
   }

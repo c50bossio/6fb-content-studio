@@ -34,23 +34,43 @@ jobs:
         shell: powershell
         run: npm run runtime:win
 
+      - name: Run full test suite
+        shell: powershell
+        run: |
+          $env:SIXFB_TEST_PYTHON = (Resolve-Path "python/.build-venv-win32-x64/Scripts/python.exe").Path
+          npm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Validate bundled runtime
         shell: powershell
         run: |
+          function Assert-NativeSuccess([string]$Command) {
+            if ($LASTEXITCODE -ne 0) { throw "$Command failed with exit code $LASTEXITCODE" }
+          }
           node scripts/assert-packaged-runtime.cjs win32-x64
+          Assert-NativeSuccess "assert-packaged-runtime"
           .\python\runtime\win32-x64\pipeline\6fb-pipeline\6fb-pipeline.exe --runtime-check
+          Assert-NativeSuccess "pipeline runtime check"
           .\python\runtime\win32-x64\pipeline\6fb-pipeline\6fb-pipeline.exe --help
+          Assert-NativeSuccess "pipeline help"
           .\python\runtime\win32-x64\bin\ffmpeg.exe -version
+          Assert-NativeSuccess "ffmpeg version"
           .\python\runtime\win32-x64\bin\ffprobe.exe -version
+          Assert-NativeSuccess "ffprobe version"
 
       - name: Package Windows installer
         shell: powershell
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
+          function Assert-NativeSuccess([string]$Command) {
+            if ($LASTEXITCODE -ne 0) { throw "$Command failed with exit code $LASTEXITCODE" }
+          }
           $version = $env:GITHUB_REF_NAME.TrimStart("v")
           npm version $version --no-git-tag-version --allow-same-version
+          Assert-NativeSuccess "npm version"
           npm run package:win -- --publish never
+          Assert-NativeSuccess "Windows package"
           $installer = Get-ChildItem -Path release -File -Filter "*.exe" | Where-Object { $_.Name -match "Setup" } | Select-Object -First 1
           $portable = Get-ChildItem -Path release -File -Filter "*.exe" | Where-Object { $_.Name -notmatch "Setup" } | Select-Object -First 1
           $blockmap = Get-ChildItem -Path release -File -Filter "*.blockmap" | Select-Object -First 1

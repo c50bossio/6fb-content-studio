@@ -1,4 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useModalFocus } from '../hooks/useModalFocus';
 
 interface Props {
   type: 'reel' | 'carousel';
@@ -32,15 +34,6 @@ export default function InstagramPostModal({ type, filePath, imagePaths, default
   const [state, setState] = useState<PostState>('idle');
   const [error, setError] = useState('');
   const [mediaId, setMediaId] = useState('');
-
-  // Close on Escape (unless posting)
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && state !== 'uploading' && state !== 'processing') onClose();
-    };
-    window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
-  }, [state, onClose]);
 
   const toggleTag = (tag: string) => {
     setSelectedTags(prev => {
@@ -85,13 +78,19 @@ export default function InstagramPostModal({ type, filePath, imagePaths, default
 
   const isPosting = state === 'uploading' || state === 'processing';
   const isDone = state === 'done';
+  const layerRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const requestClose = useCallback(() => { if (!isPosting) onClose(); }, [isPosting, onClose]);
+  useModalFocus({ active: true, containerRef: layerRef, initialFocusRef: dialogRef, onClose: requestClose });
 
-  return (
+  return createPortal(
     <div
+      ref={layerRef}
+      tabIndex={-1}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-md"
-      onClick={e => { if (e.target === e.currentTarget && !isPosting) onClose(); }}
+      onClick={e => { if (e.target === e.currentTarget) requestClose(); }}
     >
-      <div className="w-[440px] max-w-[95vw] bg-[#111] border border-[#222] rounded-2xl overflow-hidden shadow-2xl"
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="instagram-post-title" aria-busy={isPosting} tabIndex={-1} className="w-[440px] max-w-[95vw] bg-[#111] border border-[#222] rounded-2xl overflow-hidden shadow-2xl focus:outline-none"
         style={{ animation: 'slideUp 0.25s ease' }}>
 
         {/* Header */}
@@ -104,7 +103,7 @@ export default function InstagramPostModal({ type, filePath, imagePaths, default
             </svg>
           </div>
           <div className="flex-1">
-            <h2 className="text-sm font-bold text-white">
+            <h2 id="instagram-post-title" className="text-sm font-bold text-white">
               Post {type === 'reel' ? 'Reel' : 'Carousel'} to Instagram
             </h2>
             <p className="text-[10px] text-[#555]">
@@ -112,7 +111,7 @@ export default function InstagramPostModal({ type, filePath, imagePaths, default
             </p>
           </div>
           {!isPosting && (
-            <button onClick={onClose} className="w-7 h-7 flex items-center justify-center text-[#444] hover:text-white transition-colors">
+            <button aria-label="Close Instagram post dialog" onClick={requestClose} className="w-7 h-7 flex items-center justify-center text-[#444] hover:text-white transition-colors">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} width="14" height="14">
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
               </svg>
@@ -137,7 +136,7 @@ export default function InstagramPostModal({ type, filePath, imagePaths, default
                 <p className="text-xs text-[#555] mt-1">Your {type === 'reel' ? 'Reel' : 'carousel'} is live on Instagram</p>
                 {mediaId && <p className="text-[10px] text-[#333] font-mono mt-2">ID: {mediaId}</p>}
               </div>
-              <button onClick={onClose}
+              <button onClick={requestClose}
                 className="mt-2 px-6 py-2 rounded-xl text-sm font-bold"
                 style={{ background: '#00C851', color: '#000' }}>
                 Done
@@ -246,6 +245,7 @@ export default function InstagramPostModal({ type, filePath, imagePaths, default
           to   { opacity: 1; transform: translateY(0) scale(1); }
         }
       `}</style>
-    </div>
+    </div>,
+    document.body,
   );
 }

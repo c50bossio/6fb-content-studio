@@ -399,11 +399,11 @@ export default function BrandStudio({ onSave }: Props) {
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <BrainListField label="Offers" value={contentBrain.offers} onChange={value => updateBrain('offers', value)} placeholder="Membership, coaching, downloads, services" />
+              <BrainListField label="Offers" value={contentBrain.offers} onChange={value => updateBrain('offers', value)} placeholder="Membership, coaching, services" />
               <BrainListField label="Content Pillars" value={contentBrain.contentPillars} onChange={value => updateBrain('contentPillars', value)} placeholder="Pricing, retention, marketing, systems" />
-              <BrainListField label="Proof Assets" value={contentBrain.proofAssets} onChange={value => updateBrain('proofAssets', value)} placeholder="Client wins, numbers, stories, before/after proof" />
+              <BrainListField label="Proof Assets" value={contentBrain.proofAssets} onChange={value => updateBrain('proofAssets', value)} placeholder="Client wins, numbers, before/after" />
               <BrainListField label="Voice Rules" value={contentBrain.voiceRules} onChange={value => updateBrain('voiceRules', value)} placeholder="Direct, no fluff, use concrete examples" />
-              <BrainListField label="Preferred Phrases" value={contentBrain.preferredPhrases} onChange={value => updateBrain('preferredPhrases', value)} placeholder="Phrases the planner should sound like you" />
+              <BrainListField label="Preferred Phrases" value={contentBrain.preferredPhrases} onChange={value => updateBrain('preferredPhrases', value)} placeholder="Phrases that sound like you" />
               <BrainListField label="Avoided Phrases" value={contentBrain.avoidedPhrases} onChange={value => updateBrain('avoidedPhrases', value)} placeholder="Words or phrases that feel off-brand" />
             </div>
 

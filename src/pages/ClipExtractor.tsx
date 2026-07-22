@@ -3,6 +3,7 @@ import InstagramPostModal from '../components/InstagramPostModal';
 import type { ContentStrategyBrief, PackageVariant } from '../types/content-strategy';
 import type { ScheduleDraft } from '../types/creation-handoff';
 import { toLocalFileUrl } from '../utils/localFileUrl';
+import { useModalFocus } from '../hooks/useModalFocus';
 
 // ─── SVG Icons ────────────────────────────────────────────────────────
 const Icon = {
@@ -160,6 +161,8 @@ function ClipPreviewModal({ clip, onClose, onOpenInEditor, onSchedule }: {
   const [trimming, setTrimming] = useState(false);
   const [trimMsg, setTrimMsg] = useState('');
   const [showIgModal, setShowIgModal] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useModalFocus({ active: true, containerRef: dialogRef, onClose });
 
   const togglePlay = () => {
     const v = videoRef.current;
@@ -211,11 +214,10 @@ function ClipPreviewModal({ clip, onClose, onOpenInEditor, onSchedule }: {
     setTrimming(false);
   };
 
-  // Close on Escape
+  // Preserve the spacebar playback shortcut while this is the active modal.
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if (showIgModal) return;
-      if (e.key === 'Escape') onClose();
       if (e.key === ' ') { e.preventDefault(); togglePlay(); }
     };
     window.addEventListener('keydown', h);
@@ -229,7 +231,7 @@ function ClipPreviewModal({ clip, onClose, onOpenInEditor, onSchedule }: {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className="relative flex gap-4 max-h-[92vh] w-[860px] max-w-[95vw]">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="clip-preview-title" tabIndex={-1} className="relative flex gap-4 max-h-[92vh] w-[860px] max-w-[95vw] focus:outline-none">
 
         {/* Video column */}
         <div className="flex flex-col gap-3 flex-1 min-w-0">
@@ -292,14 +294,14 @@ function ClipPreviewModal({ clip, onClose, onOpenInEditor, onSchedule }: {
         <div className="w-52 shrink-0 flex flex-col gap-4">
 
           {/* Close */}
-          <button onClick={onClose}
+          <button aria-label="Close clip preview" onClick={onClose}
             className="self-end w-8 h-8 flex items-center justify-center text-[#555] hover:text-white transition-colors rounded-lg border border-[#222] hover:border-[#333]">
             <div className="w-4 h-4"><Icon.X /></div>
           </button>
 
           {/* Title + meta */}
           <div>
-            <h3 className="text-sm font-bold text-white leading-snug mb-1">{clip.title}</h3>
+            <h3 id="clip-preview-title" className="text-sm font-bold text-white leading-snug mb-1">{clip.title}</h3>
             <p className="text-[10px] text-[#555] font-mono">{fmtFull(clip.start)} – {fmtFull(clip.end)}</p>
             {clip.strategyLabel && (
               <p className="text-[10px] text-[#00C851] mt-1">{clip.strategyLabel}{clip.strategyRationale ? ` · ${clip.strategyRationale}` : ''}</p>
@@ -549,7 +551,7 @@ function LibraryPanel({ runs, selectedRunId, onSelect, onDeleteRun, onRefresh, o
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
   return (
-    <aside className="w-56 shrink-0 flex flex-col h-full border-r border-[#1e1e1e] bg-[#0d0d0d]">
+    <aside className="w-full h-48 md:w-56 md:h-full shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-[#1e1e1e] bg-[#0d0d0d]">
       <div className="flex items-center justify-between px-3 py-3 border-b border-[#1e1e1e]">
         <div>
           <p className="text-[10px] font-bold text-[#666] uppercase tracking-widest">History</p>
@@ -929,7 +931,7 @@ export default function ClipExtractor({
   const progressCopy = getProgressCopy(progress.percent);
 
   return (
-    <div className="flex h-full overflow-hidden bg-[#0f0f0f]">
+    <div className="flex flex-col md:flex-row h-full overflow-y-auto md:overflow-hidden bg-[#0f0f0f]">
 
       {/* Preview Modal */}
       {previewClip && (
@@ -954,7 +956,7 @@ export default function ClipExtractor({
       )}
 
       {/* Main panel */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 min-h-[520px] md:min-h-0 flex flex-col overflow-hidden">
 
         {/* Header */}
         <div className="shrink-0 border-b border-[#1a1a1a] px-5 py-3.5 flex items-center gap-3">
