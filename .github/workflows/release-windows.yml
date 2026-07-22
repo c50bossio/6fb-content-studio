@@ -1,16 +1,10 @@
-name: Build & Release (Windows)
+name: Validate Future Windows Build (Non-Publishing)
 
 on:
-  workflow_call:
-    inputs:
-      version:
-        description: Release version with or without a leading v
-        required: true
-        type: string
   workflow_dispatch:
     inputs:
       version:
-        description: Non-publishing package version to validate
+        description: Future Windows package version to validate without publishing
         required: true
         type: string
 
@@ -18,7 +12,7 @@ permissions:
   contents: read
 
 jobs:
-  release-windows:
+  validate-windows:
     runs-on: windows-latest
     env:
       PYTHONUTF8: '1'
@@ -108,10 +102,10 @@ jobs:
           EXPECTED_VERSION: ${{ inputs.version }}
         run: node scripts/smoke-windows-app.cjs
 
-      - name: Stage Windows release artifacts
+      - name: Stage future Windows validation artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: release-windows
+          name: validation-windows
           if-no-files-found: error
           retention-days: 7
           path: |

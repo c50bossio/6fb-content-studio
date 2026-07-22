@@ -36,10 +36,10 @@ npm run runtime:win
 npm run package:win
 ```
 
-The coordinated tag workflow in `.github/workflows/release.yml` builds both
-platforms, stages all eight artifacts, verifies the notarized macOS DMG, and
-only then publishes the release. The reusable Windows workflow also supports a
-non-publishing manual dry run before tagging.
+The coordinated tag workflow in `.github/workflows/release.yml` publishes
+macOS arm64 only: it stages exactly four Mac artifacts, verifies the notarized
+DMG from the draft, and only then publishes. Windows packaging remains available
+as an explicit non-publishing manual validation for a future Windows launch.
 Creating a tag or publishing a release is an explicit human approval gate.
 
 `npm run qa:visual` starts an isolated renderer server, captures every screen at

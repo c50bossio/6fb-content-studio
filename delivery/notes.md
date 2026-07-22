@@ -6,11 +6,12 @@ Last updated: 2026-07-22
 
 - The source `package.json` reports version `1.5.39`; tag workflows stamp the
   release version while packaging.
-- `.github/workflows/release.yml` coordinates `v*` releases: it builds and
-  validates both platforms, stages all eight assets in a draft, smoke-checks
-  the notarized macOS DMG from that draft, and only then publishes.
-- `.github/workflows/release-windows.yml` is a reusable, non-publishing Windows
-  build/test/package workflow with a manual pre-tag dry-run entry point.
+- `.github/workflows/release.yml` coordinates macOS-arm64-only `v*` releases:
+  it stages exactly four Mac assets in a draft, smoke-checks the notarized DMG
+  from that draft, and only then publishes.
+- `.github/workflows/release-windows.yml` is a manual, non-publishing future
+  Windows build/test/package validator. It is not callable from the production
+  tag workflow.
 - Generated package output belongs in ignored `release/`.
 - Pull request #18 merged to `main` as
   `9b792a1e9aac312c5599dbff7220e62103e432f5` on 2026-07-21.
@@ -45,17 +46,17 @@ Last updated: 2026-07-22
 - This audit verified the live release metadata and workflow conclusions but did
   not independently download and certify the 417 MB `v1.5.45` DMG. The most
   recent independent DMG launch/signature certification remains `v1.5.44`.
-- Proposed `v1.5.46` preparation is based on audited `origin/main` commit
-  `821b1582d45941e74580a162dc6e7a3066116aef`, which includes pull requests #25
-  and #26. The final tag target must be the exact verified `origin/main` commit
-  after the preparation change is reviewed and merged.
+- Prepared `v1.5.46` baseline is exact `origin/main` commit
+  `1ca93cf2abaf6b4be629c5203d8dbee3fc00b69a`, which includes pull requests #25
+  through #28. The final tag target must be the exact verified `origin/main`
+  commit after the macOS-only change is reviewed and merged.
 - `delivery/checklists/v1.5.46-release-readiness.md` and
   `delivery/release-notes/v1.5.46.md` define the release candidate gates and
   draft copy. They do not authorize or claim a tag or publication.
-- v1.5.46 preparation removes independent platform publication: the coordinated
-  workflow can make the release public only after both artifact sets exist and
-  the staged macOS DMG passes stapling, signature, Gatekeeper, and version
-  checks. The tracked release-note file is the public release body.
+- v1.5.46 is now macOS arm64 only. The coordinated workflow can make the release
+  public only after exactly four Mac artifacts exist and the staged DMG passes
+  stapling, signature, Gatekeeper, and version checks. The tracked release-note
+  file is the public release body.
 - No `v1.5.46` tag, GitHub Release, or public artifact exists. Non-publishing
   Windows run `29937539545` is the first clean semantic preflight and passed on
   exact code commit `95a34de2faf8cf53d42a0318580a79601502fa23`, including
@@ -70,20 +71,22 @@ Last updated: 2026-07-22
 - Exact final release-coordinator code commit
   `b06b0947fab202eb31099567e9dc32a340bb56eb` disables persisted credentials in
   every checkout. Its complete local suite, dependency audit, actionlint, YAML,
-  shell, and workspace checks pass. The post-Windows delta is limited to this
-  coordinator hardening and its contract; the reusable Windows workflow and
-  application/runtime code remain those tested in run `29937539545`.
-- The current Windows packaging path does not configure or claim Authenticode
-  signing. Owner acceptance or a signing change is required before tagging;
-  workflow smoke and independent downloaded-installer acceptance remain
-  distinct from signature trust.
+  shell, and workspace checks pass. The application/runtime and Windows package
+  implementation remain those tested in run `29937539545`; the macOS-only
+  change removes Windows from production orchestration and makes its validator
+  manual-only.
+- The owner deferred Windows distribution and Authenticode signing until Mac
+  adoption justifies that platform. Draft Azure-signing pull request #29 was
+  closed without merge; its branch remains recoverable for later reference.
+- The signed-in Azure tenant showed zero subscriptions at the decision point.
+  No Artifact Signing resource, repository signing setup, signing workflow, tag,
+  GitHub Release, or public v1.5.46 artifact was created during that exploration.
 
 ## Open questions
 
 - What exact post-preparation `origin/main` commit will be approved as the
   `v1.5.46` tag target?
-- Will v1.5.46 receive an independent Windows-host installer and portable-app
-  launch certification in addition to the Windows workflow smoke?
+- What adoption threshold should trigger reconsidering a Windows release?
 
 ## Recent decisions
 
@@ -95,3 +98,5 @@ Last updated: 2026-07-22
   limit, not a code failure; do not weaken required local or post-merge verification.
 - Record the absence of an independent Windows-host launch smoke explicitly
   instead of implying that macOS verification exercised Windows binaries.
+- Publish v1.5.46 for macOS arm64 only. Keep Windows validation non-publishing
+  and exclude all Windows artifacts from the v1.5.46 draft and public manifest.

@@ -15,6 +15,7 @@ const requiredSources = [
   '.github/workflows/release-windows.yml',
   'scripts/test-docs.cjs',
   'scripts/test-python.cjs',
+  'scripts/verify-public-macos-release-assets.sh',
   'scripts/validate-workspace.cjs',
   'take-screenshots.mjs',
   'src/App.tsx',
@@ -41,6 +42,7 @@ const [
   windowsRelease,
   docsTest,
   pythonTest,
+  publicMacManifestVerifier,
   workspaceValidator,
   screenshotHarness,
   app,
@@ -83,8 +85,8 @@ assert.match(windowsRelease, /name: Run full test suite[\s\S]*?SIXFB_TEST_PYTHON
 assert.match(releaseWorkflow, /name: Run full test suite\s+env:\s+SIXFB_TEST_PYTHON: \$\{\{ github\.workspace \}\}\/python\/\.build-venv\/bin\/python\s+run: npm test/, 'macOS releases must test with the freshly built runtime venv');
 assert.doesNotMatch(docsTest, /execFileSync\(['"]rg['"]/, 'Documentation tests must not require ripgrep on Windows runners');
 assert.match(docsTest, /fs\.readdirSync\(absoluteDirectory, \{ withFileTypes: true \}\)/, 'Documentation tests must enumerate Markdown files portably');
-assert.match(windowsRelease, /workflow_call:/, 'Windows release validation must remain callable from the coordinated release workflow');
-assert.match(windowsRelease, /workflow_dispatch:/, 'Windows release validation must support a non-publishing pre-tag dry run');
+assert.doesNotMatch(windowsRelease, /workflow_call:/, 'Deferred Windows validation must not be callable from the production release workflow');
+assert.match(windowsRelease, /workflow_dispatch:/, 'Deferred Windows validation must remain an explicit non-publishing manual action');
 assert.match(windowsRelease, /RELEASE_VERSION_INPUT: \$\{\{ inputs\.version \}\}/, 'Workflow inputs must enter PowerShell through the environment, not source interpolation');
 assert.match(windowsRelease, /actions\/upload-artifact@v7/, 'Windows artifacts must use the current Node 24 staging action');
 assert.match(releaseWorkflow, /actions\/download-artifact@v8/, 'Coordinated publication must use the current Node 24 download action');
@@ -94,11 +96,25 @@ const releaseCheckoutCount = (releaseWorkflow.match(/uses: actions\/checkout@v6/
 const hardenedReleaseCheckoutCount = (releaseWorkflow.match(/uses: actions\/checkout@v6\s+with:\s+persist-credentials: false/g) || []).length;
 assert.equal(hardenedReleaseCheckoutCount, releaseCheckoutCount, 'Every coordinated release checkout must remove persisted credentials');
 assert.doesNotMatch(windowsRelease, /softprops\/action-gh-release/, 'The Windows workflow must never publish independently');
-assert.match(releaseWorkflow, /release-windows:[\s\S]*?uses: \.\/\.github\/workflows\/release-windows\.yml/, 'The tag workflow must call the Windows release validator');
+assert.doesNotMatch(releaseWorkflow, /release-windows|\.exe|latest\.yml/, 'The production tag workflow must remain macOS-only');
 assert.match(releaseWorkflow, /concurrency:[\s\S]*?cancel-in-progress: false/, 'Release reruns must serialize without cancelling an active release');
 assert.match(releaseWorkflow, /validate-tag:[\s\S]*?\^v\[0-9\]\+/, 'Release tags must be validated before platform builds start');
-assert.match(releaseWorkflow, /stage-release:[\s\S]*?needs:[\s\S]*?- release-mac[\s\S]*?- release-windows/, 'Release staging must wait for both platform jobs');
-assert.match(releaseWorkflow, /Stage complete draft release[\s\S]*?draft: true/, 'Complete artifacts must remain draft until certification passes');
+assert.match(releaseWorkflow, /stage-release:[\s\S]*?needs: release-mac/, 'Release staging must wait for the macOS build');
+assert.match(releaseWorkflow, /name: release-mac[\s\S]*?path: release/, 'Release staging must download only the macOS artifact set');
+const exactMacReleaseAssets = [
+  '6FB-Content-Studio-arm64.dmg',
+  '6FB-Content-Studio-arm64.zip',
+  '6FB-Content-Studio-arm64.zip.blockmap',
+  'latest-mac.yml',
+].sort();
+const workflowManifestArrays = [...releaseWorkflow.matchAll(/expected=\(\s*([\s\S]*?)\s*\)/g)].map(match =>
+  [...match[1].matchAll(/"([^"]+)"/g)].map(asset => asset[1]).sort(),
+);
+assert.equal(workflowManifestArrays.length, 2, 'The release workflow must validate exactly two asset manifests: local staging and draft');
+for (const manifest of workflowManifestArrays) {
+  assert.deepEqual(manifest, exactMacReleaseAssets, 'Every release workflow manifest must contain exactly the four macOS artifacts');
+}
+assert.match(releaseWorkflow, /Stage complete macOS draft release[\s\S]*?draft: true/, 'macOS artifacts must remain draft until certification passes');
 assert.match(releaseWorkflow, /body_path: delivery\/release-notes\/v/, 'The public release must use the tracked release notes');
 assert.match(releaseWorkflow, /RELEASE_ID: \$\{\{ steps\.stage-draft\.outputs\.id \}\}/, 'Draft verification must use the exact release created by the staging action');
 assert.match(releaseWorkflow, /Verify exact draft asset manifest[\s\S]*?expected-assets\.txt[\s\S]*?actual-assets\.txt/, 'Draft verification must reject stale or missing release assets');
@@ -107,6 +123,13 @@ assert.match(releaseWorkflow, /RELEASE_ID: \$\{\{ needs\.stage-release\.outputs\
 assert.match(releaseWorkflow, /publish-release:[\s\S]*?needs: smoke-staged-mac[\s\S]*?gh release edit[\s\S]*?--repo "\$GITHUB_REPOSITORY"[\s\S]*?--draft=false/, 'Publication must happen only after staged macOS certification and target the explicit repository');
 assert.match(releaseWorkflow, /smoke-published-mac:[\s\S]*?needs: publish-release[\s\S]*?smoke-mac-release-dmg\.sh/, 'Workflow success must include a public macOS download smoke');
 assert.doesNotMatch(releaseWorkflow.match(/smoke-published-mac:[\s\S]*$/)?.[0] || '', /GH_TOKEN:/, 'Public release smoke must prove anonymous availability');
+assert.match(releaseWorkflow, /Verify anonymous public macOS asset manifest[\s\S]*?verify-public-macos-release-assets\.sh[\s\S]*?Smoke public macOS DMG/, 'Public certification must verify the exact anonymous asset manifest before DMG smoke');
+assert.match(publicMacManifestVerifier, /curl[\s\S]*?--retry 2[\s\S]*?--connect-timeout 10 --max-time 60/, 'Public manifest verification must use bounded anonymous network calls');
+assert.doesNotMatch(publicMacManifestVerifier, /Authorization:|GH_TOKEN/, 'Public manifest verification must not depend on authentication');
+const publicManifestMatch = publicMacManifestVerifier.match(/expected=\(\s*([\s\S]*?)\s*\)/);
+assert.ok(publicManifestMatch, 'Public manifest verifier must declare the expected asset set');
+const publicManifestAssets = [...publicManifestMatch[1].matchAll(/"([^"]+)"/g)].map(asset => asset[1]).sort();
+assert.deepEqual(publicManifestAssets, exactMacReleaseAssets, 'Public manifest verifier must require exactly the four macOS artifacts');
 assert.match(pythonTest, /process\.env\.SIXFB_TEST_PYTHON/, 'Python tests must honor the workflow-selected interpreter');
 assert.match(pythonTest, /const candidates = requestedPython \? \[requestedPython\] : systemCandidates/, 'An explicitly selected Python interpreter must fail closed instead of falling back to the host');
 assert.match(pythonTest, /legacy_codepage_env\['PYTHONIOENCODING'\] = 'cp1252'/, 'Python tests must reproduce redirected Windows legacy-codepage output');
@@ -151,4 +174,4 @@ assert.match(scheduleModal, /requestClose = useCallback\(\(\) => \{ if \(!busy\)
 assert.match(instagramModal, /requestClose = useCallback\(\(\) => \{ if \(!isPosting\) onClose\(\); \}/, 'Instagram modal must not close while posting');
 assert.match(scheduler, /closeDialog = \(\) => \{ if \(!isPosting\) onClose\(\); \}/, 'Post details must not close while a publishing handoff is pending');
 
-console.log(`Contract checks passed: ${preloadChannels.length} IPC channels, bounded external clients, packaged assets, Windows gates, and critical validators.`);
+console.log(`Contract checks passed: ${preloadChannels.length} IPC channels, bounded external clients, packaged assets, macOS release gates, deferred Windows validation, and critical validators.`);
