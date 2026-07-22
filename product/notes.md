@@ -17,6 +17,9 @@ Last updated: 2026-07-22
 ## Open questions
 
 - Which workflows have recent direct barber feedback or usage evidence?
+- Who owns the non-repository pilot roster and weekly participant check-in?
+- Will the owner approve or revise the provisional Mac adoption and Windows
+  demand thresholds after reviewing their low-confidence pilot rationale?
 
 ## Recent decisions
 
@@ -35,3 +38,14 @@ Last updated: 2026-07-22
   distribution and code-signing spend until Mac adoption provides evidence that
   the additional platform is justified. Preserve Windows build validation as a
   non-publishing future path; do not publish Windows assets now.
+
+## Proposals pending approval
+
+- Measure Mac adoption through a frozen invitation cohort, verified activation,
+  four-week retained creation, outcome coverage, and blocker guardrails rather
+  than GitHub downloads. The proposed standard Windows-review trigger requires
+  20 verified mature-cohort activations, at least 50% activation, at least 80%
+  outcome coverage, at least 10 four-week-eligible participants with at least 50%
+  retention, 5 qualified Windows commitments in 30 days, and clean support
+  guardrails. A proposed 10-commitment direct-demand override may open the
+  review early. Neither proposal authorizes automatic release.
