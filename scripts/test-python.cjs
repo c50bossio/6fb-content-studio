@@ -8,7 +8,7 @@ const { spawnSync } = require('node:child_process');
 const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), '6fb-python-test-'));
 const requestedPython = process.env.SIXFB_TEST_PYTHON?.trim();
 const systemCandidates = process.platform === 'win32' ? ['python', 'py'] : ['python3', 'python'];
-const candidates = [...new Set([...(requestedPython ? [requestedPython] : []), ...systemCandidates])];
+const candidates = requestedPython ? [requestedPython] : systemCandidates;
 let result;
 let pythonExecutable;
 
