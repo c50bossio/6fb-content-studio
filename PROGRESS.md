@@ -17,9 +17,12 @@ complete-project audit candidate on exact `origin/main`. Functionality,
 responsive UI, instruction routing, folder-app validators, the rebuilt macOS
 pipeline runtime, and isolated production Electron IPC pass locally. The
 candidate is committed and pushed in ready-for-review pull request #25. The
-first automated review's three actionable findings are repaired and verified in
-the follow-up commit. No merge, tag, deployment, release, social post, or other
-production mutation was made.
+first automated review's three actionable findings and 10 of the subsequent 11
+CodeRabbit findings are repaired and verified locally. The remaining 44 px CSS
+suggestion was deliberately retained because the acceptance contract and clean
+all-width screenshots require every visible interaction target to remain at
+least 44 px. The final follow-up is not yet pushed. No merge, tag, deployment,
+release, social post, or other production mutation was made.
 
 ## Last session (2026-07-21)
 
@@ -47,11 +50,23 @@ production mutation was made.
 - Completed: ready-for-review follow-up for the Windows populated-venv test
   interpreter, exact trusted App Data folder opening without descendant access,
   and visual-audit rejection of a stale server occupying the configured port.
+- Completed: full review follow-up for browser API signature parity, truthful
+  awaited publishing handoffs, cross-platform validation, graceful missing-file
+  failures, fail-closed pipeline exceptions, canonical-path efficiency, and CDP
+  close/error rejection without hanging pending requests.
+- Completed: keyboard-safe focus entry, Tab/Shift+Tab containment, Escape close,
+  inert background, and opener restoration for navigation and every modal overlay;
+  47 responsive captures remain clean with two executable focus contracts.
+- Completed: rebuilt the macOS bundled runtime from the repaired Python source,
+  then passed the complete serial suite with 10 unit tests, 68 IPC contracts, 14
+  required documentation paths, the CDP fault probe, production build, and
+  isolated Electron IPC smoke.
 - Blocked: no local code or instruction blocker. Independent Windows-host
   execution and a fresh `v1.5.45` installer certification were outside this
   macOS local audit and are not claimed.
-- Next: automated re-review of the follow-up commit; stop before merge, tag,
-  deployment, or release without explicit approval.
+- Next: commit and push the verified follow-up, run final automated/independent
+  re-review, and stop before merge, tag, deployment, or release without explicit
+  approval.
 
 ## Decisions made
 

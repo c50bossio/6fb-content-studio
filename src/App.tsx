@@ -87,7 +87,7 @@ declare global {
       // System
       getAppVersion: () => Promise<string>;
       renderVideo: (compositionId: string, props: Record<string, unknown> & { cuts?: {start: number, end: number}[] }) => Promise<{ success: boolean; error?: string }>;
-      postToSocial: (platform: string, content: Record<string, unknown>) => Promise<{ success: boolean; error?: string }>;
+      postToSocial: (platform: string, content: Record<string, unknown>) => Promise<{ success: boolean; opened: boolean; error?: string }>;
       checkSystemHealth: () => Promise<unknown>;
       resetApp: () => Promise<{ success: boolean }>;
       openPath: (path: string) => Promise<{ success: boolean }>;
@@ -229,7 +229,7 @@ export default function App() {
         exampleHooks: [],
       };
       (window as unknown as { electronAPI: typeof window.electronAPI }).electronAPI = {
-        saveApiKey: async (provider: string) => {
+        saveApiKey: async (provider: string, _key: string) => {
           if (provider === 'claude') localStorage.setItem('contentStudio:hasClaudeKey', 'true');
           return { success: true };
         },
@@ -272,7 +272,7 @@ export default function App() {
         },
         getContentBrain: async () => localJson('contentStudio:contentBrain', mockContentBrain),
         renderVideo: async () => ({ success: false, error: 'Electron required' }),
-        postToSocial: async () => ({ success: false, error: 'Electron required' }),
+        postToSocial: async () => ({ success: false, opened: false, error: 'Electron required' }),
         onProgress: () => () => {},
         deleteApiKey: async () => ({ success: true }),
         checkSystemHealth: async () => ({

@@ -54,8 +54,9 @@ Last updated: 2026-07-21
   and requires a separate `python/remotion` workspace. It now fails before media
   processing or Claude calls when that prerequisite is absent.
 - The complete local functionality, responsive UI, and folder-app audit is
-  recorded in `qa/2026-07-21-complete-project-audit.md`. The local candidate has
-  not been committed, pushed, merged, packaged as a release, or published.
+  recorded in `qa/2026-07-21-complete-project-audit.md`. The local candidate is
+  committed and pushed in ready-for-review pull request #25; it has not been
+  merged, tagged, deployed, packaged as a release, or published.
 - External media approvals are pinned to the canonical file selected by a
   trusted native handler and app reset revokes them immediately. Assets saved by
   older builds without a pinned approval may require one native re-selection;
@@ -64,3 +65,9 @@ Last updated: 2026-07-21
   through the populated runtime-builder venv, permits Settings to open only the
   exact canonical App Data directory, and makes visual QA reject an unrelated
   server already occupying its configured port.
+- The final pull request #25 follow-up also aligns browser-preview API contracts,
+  awaits Scheduler publishing handoffs, gives every modal and mobile navigation
+  complete focus containment/restoration, rejects hanging CDP requests, handles
+  missing validation sources cleanly, selects Python cross-platform, and maps
+  unexpected pipeline exceptions to concise nonzero CLI failures. The verified
+  44 px target floor remains global because the audit contract covers every width.

@@ -18,9 +18,9 @@ export function canonicalPath(candidate: string) {
 }
 
 export function isInsidePath(childPath: string, parentPath: string) {
-  const child = canonicalPath(childPath);
-  const parent = canonicalPath(parentPath);
-  const rel = relative(parent, child);
+  const canonicalCandidate = canonicalPath(childPath);
+  const canonicalParent = canonicalPath(parentPath);
+  const rel = relative(canonicalParent, canonicalCandidate);
   return rel === '' || (!!rel && !rel.startsWith('..') && !isAbsolute(rel));
 }
 
@@ -30,8 +30,9 @@ export function isSamePath(firstPath: string, secondPath: string) {
 
 export function isAllowedReadPath(candidate: string, ownedRoots: string[], approvedFiles: string[]) {
   if (!candidate || !isAbsolute(candidate)) return false;
-  return ownedRoots.some(root => isInsidePath(candidate, root)) ||
-    approvedFiles.some(filePath => isAbsolute(filePath) && canonicalPath(candidate) === resolve(filePath));
+  if (ownedRoots.some(root => isInsidePath(candidate, root))) return true;
+  const canonicalCandidate = canonicalPath(candidate);
+  return approvedFiles.some(filePath => isAbsolute(filePath) && canonicalCandidate === resolve(filePath));
 }
 
 export function safeOwnedPath(candidate: string, rootPath: string) {

@@ -1985,7 +1985,7 @@ Examples:
         if failure:
             raise RuntimeError(failure)
         return 0
-    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+    except Exception as exc:
         print(f"[pipeline] ERROR: {exc}", file=sys.stderr)
         return 1
 

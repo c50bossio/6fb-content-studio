@@ -52,7 +52,8 @@ npm test
   TypeScript: PASS
   path-safety and clip-metadata unit tests: 10/10 PASS
   IPC/contracts: 68 channels PASS
-  documentation: 13 required paths, 31 source Markdown files PASS
+  CDP socket failure probe: pending requests reject on close/error PASS
+  documentation: 14 required paths, 31 source Markdown files PASS
   Python compile and failure preflights: PASS
   packaged runtime assertion: PASS
   Electron production build: PASS
@@ -75,7 +76,11 @@ The trusted Settings `Open Folder` path is limited to the exact canonical App
 Data directory; a unit test proves that its `config.json` and sibling paths do
 not inherit authorization. The Windows tag workflow selects the populated
 runtime-builder virtual environment for Python tests, and executable source
-preflights pass when pointed at that populated environment.
+preflights pass when pointed at that populated environment. Workspace validation
+now selects Python across macOS/Linux and Windows, and documentation/contract
+checks report missing prerequisites without raw filesystem stack traces. A local
+WebSocket fault probe proves that CDP requests cannot hang after a browser socket
+error or close.
 
 Additional clean commands:
 
@@ -89,6 +94,13 @@ git diff --check
 
 Dependency audit reports zero vulnerabilities. All three workspace modes exit
 zero with no findings.
+
+The macOS PyInstaller rebuild emitted third-party collection warnings for the
+optional MediaPipe GenAI converter (missing JAX/SentencePiece), generated
+pycparser/scipy hidden imports, and Numba's optional OpenMP pool library. The
+builder still exited zero; the packaged-runtime assertion, source/binary
+preflights, Electron smoke, and disposable media acceptance all passed. No
+active shipping-path error was observed from those warnings.
 
 ### No-post bundled media acceptance
 
@@ -138,16 +150,26 @@ evidence identifiable.
   validation, Planner loading, Scheduler hover/modal, and mobile navigation.
 - Result: 0 console errors, 0 network errors, 0 overlays, 0 horizontal overflow,
   0 clipped-text controls, and 0 visible targets below 44 px.
+- The 375 px Scheduler dialog and navigation drawer each pass executable focus
+  entry, Tab/Shift+Tab wrap, inert-background, Escape-close, background-restore,
+  and opener-restore checks. The shared focus contract also covers Clip Preview,
+  Post Details, Schedule, and Instagram publishing dialogs; posting and upload
+  states remain non-dismissible while their operations are pending.
+- A review suggestion to scope the global 44 px target floor to coarse pointers
+  was deliberately not applied: the owner's acceptance contract requires every
+  audited width to reject visible targets below 44 px. Compact glyphs remain
+  visually compact inside the larger hit areas, and all three clean contact
+  sheets show no resulting overlap, overflow, or panel distortion.
 - The gate self-test first occupies the configured Vite port with an unrelated
   HTTP 200 server and proves the audit fails rather than accepting it. It then
   injects a sub-44px target, `console.error`, and a failed localhost request;
   `npm run qa:visual:self-test` passes only when the audit records all three
   classes and exits nonzero.
 - Contact-sheet/report hashes:
-  - report: `21a5338d4b44478d353919705424ee47682401bfd8e1994b698a9581955b78bd`
-  - 375 px: `986ef4c13e4f03852e2a93c81e1f12dd73f2192715259e2f3f21cd11951c518a`
-  - 768 px: `01df3e4d0a461e20d933042ce1f1f1c6c3d61834835f86ac774a6ee2aaff947f`
-  - 1440 px: `3fb1e739174da58dc02e12e7f18d61f018fbfa43f8c50fdb24e636a8f4a51aae`
+  - report: `d4372445e393c3855377f3b40baf96c7282c153beabbfa191729ccd4efac44d5`
+  - 375 px: `df93f14ab5b50d0fec1c39df327cd1d7d8e31fdcb3dd154d9e15644aab89c5e9`
+  - 768 px: `58c46ebd71f89865b73fe585484e890df214b5cc2fb7aaca370919988f521d45`
+  - 1440 px: `264a8f41478d49cc2eeb8df00f0b28687f1b983e12c9d532f92ac3a05ed2fde6`
 
 The phase completed within the ten-loop safety limit. No fix approach failed
 three times.
@@ -156,7 +178,7 @@ three times.
 
 `npm run validate:workspace`, `npm run validate:workspace:strict`, and
 `npm run validate:workspace:portable` all exit zero. `npm run test:docs`
-validates 13 required paths, 31 source Markdown files, routing, local links, and
+validates 14 required paths, 31 source Markdown files, routing, local links, and
 README/npm command references. Missing Chrome and missing folder-app skill paths
 both fail with exact remediation text.
 
@@ -184,6 +206,10 @@ Result: 5/5 positive and 5/5 negative triggers route without guessing.
 
 No local implementation or instruction blocker remains. The pull request is not
 a merge, deployment, tag, package publication, social post, or updater release.
+A CodeRabbit informational heuristic reported 21.62% Python docstring coverage
+against its default 80% target. The repository has no matching enforced gate,
+and mass documentation churn was not used to disguise the verified functional,
+security, or UI findings.
 A legacy external asset saved before canonical approval pinning is not silently
 trusted; the user may need to select it once through the native picker. This is
 an intentional security migration, not data deletion.

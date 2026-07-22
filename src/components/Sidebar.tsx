@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Page } from '../App';
 import logoSrc from '../../assets/6fb-logo.png';
+import { useModalFocus } from '../hooks/useModalFocus';
 
 interface SidebarProps {
   currentPage: Page;
@@ -89,13 +91,24 @@ const ENGINE_ITEMS: { page: Page; label: string; ready: boolean; subtitle?: stri
 export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
   const [appVersion, setAppVersion] = useState('...');
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileTriggerRef = useRef<HTMLButtonElement>(null);
+  const mobileLayerRef = useRef<HTMLDivElement>(null);
+  const mobileDrawerRef = useRef<HTMLElement>(null);
+  const closeMobile = useCallback(() => setMobileOpen(false), []);
+  useModalFocus({
+    active: mobileOpen,
+    containerRef: mobileLayerRef,
+    onClose: closeMobile,
+    initialFocusRef: mobileDrawerRef,
+    returnFocusRef: mobileTriggerRef,
+  });
   useEffect(() => {
     (window as any).electronAPI?.getAppVersion?.().then((v: string) => setAppVersion(v)).catch(() => {});
   }, []);
 
   const navigate = (page: Page) => {
     onNavigate(page);
-    setMobileOpen(false);
+    closeMobile();
   };
   const currentLabel = [
     { page: 'dashboard' as Page, label: 'Dashboard' },
@@ -208,6 +221,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
     <>
       <header className="lg:hidden fixed inset-x-0 top-0 z-40 h-14 bg-6fb-card border-b border-6fb-border flex items-center gap-3 px-3">
         <button
+          ref={mobileTriggerRef}
           type="button"
           aria-label="Open navigation"
           aria-expanded={mobileOpen}
@@ -227,18 +241,28 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
         </div>
       </header>
 
-      <div className={`lg:hidden fixed inset-0 z-50 ${mobileOpen ? 'pointer-events-auto' : 'pointer-events-none'}`} aria-hidden={!mobileOpen} inert={!mobileOpen}>
-        <button
-          type="button"
-          aria-label="Close navigation"
-          tabIndex={mobileOpen ? 0 : -1}
-          onClick={() => setMobileOpen(false)}
-          className={`absolute inset-0 w-full h-full bg-black/70 transition-opacity ${mobileOpen ? 'opacity-100' : 'opacity-0'}`}
-        />
-        <aside className={`absolute inset-y-0 left-0 w-[min(320px,calc(100vw-48px))] bg-6fb-card border-r border-6fb-border flex flex-col pt-4 transition-transform duration-200 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-          {content()}
-        </aside>
-      </div>
+      {createPortal(
+        <div ref={mobileLayerRef} tabIndex={-1} className={`lg:hidden fixed inset-0 z-50 ${mobileOpen ? 'pointer-events-auto' : 'pointer-events-none'}`} aria-hidden={!mobileOpen} inert={!mobileOpen}>
+          <button
+            type="button"
+            aria-label="Close navigation"
+            tabIndex={-1}
+            onClick={closeMobile}
+            className={`absolute inset-0 w-full h-full bg-black/70 transition-opacity ${mobileOpen ? 'opacity-100' : 'opacity-0'}`}
+          />
+          <aside
+            ref={mobileDrawerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Navigation"
+            tabIndex={-1}
+            className={`absolute inset-y-0 left-0 w-[min(320px,calc(100vw-48px))] bg-6fb-card border-r border-6fb-border flex flex-col pt-4 transition-transform duration-200 focus:outline-none ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}
+          >
+            {content()}
+          </aside>
+        </div>,
+        document.body,
+      )}
 
       <aside className="hidden lg:flex w-[220px] h-full bg-6fb-card border-r border-6fb-border flex-col pt-4 shrink-0">
         {content()}

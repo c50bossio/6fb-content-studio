@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import InstagramPostModal from '../components/InstagramPostModal';
 import type { PublishingPlatform, PublishingQueuePost, PublishingStatus } from '../types/publishing';
 import type { ScheduleDraft } from '../types/creation-handoff';
 import { toLocalFileUrl } from '../utils/localFileUrl';
+import { useModalFocus } from '../hooks/useModalFocus';
 
 // ─── Types ───────────────────────────────────────────────────────────
 type ScheduledPost = PublishingQueuePost;
@@ -119,21 +121,26 @@ function PostChip({ post, onClick }: { post: ScheduledPost; onClick: () => void 
 }
 
 // ─── Post Detail Modal ────────────────────────────────────────────────
-function PostDetailModal({ post, onClose, onDelete, onMarkPosted, onPostNow }: {
+function PostDetailModal({ post, onClose, onDelete, onMarkPosted, onPostNow, isPosting, postError }: {
   post: ScheduledPost;
   onClose: () => void;
   onDelete: () => void;
   onMarkPosted: () => void;
-  onPostNow: () => void;
+  onPostNow: () => Promise<void> | void;
+  isPosting: boolean;
+  postError: string;
 }) {
   const pl = getPlatformMeta(post.platform);
   const canPost = post.status === 'scheduled' || post.status === 'due';
   const preview = post.thumbnailPath || post.thumbnailUrl;
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeDialog = () => { if (!isPosting) onClose(); };
+  useModalFocus({ active: true, containerRef: dialogRef, onClose: closeDialog });
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md"
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-80 bg-[#111] border border-[#222] rounded-2xl overflow-hidden shadow-2xl">
+      onClick={e => { if (e.target === e.currentTarget) closeDialog(); }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="post-detail-title" aria-busy={isPosting} tabIndex={-1} className="w-80 bg-[#111] border border-[#222] rounded-2xl overflow-hidden shadow-2xl focus:outline-none">
         {/* Thumbnail */}
         <div className="relative h-36 bg-[#0a0a0a]">
           {preview ? (
@@ -160,7 +167,7 @@ function PostDetailModal({ post, onClose, onDelete, onMarkPosted, onPostNow }: {
               </span>
             </div>
           </div>
-          <button onClick={onClose}
+          <button aria-label="Close post details" onClick={closeDialog} disabled={isPosting}
             className="absolute top-3 right-3 w-7 h-7 bg-black/50 rounded-full flex items-center justify-center text-white/50 hover:text-white transition-colors">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -170,7 +177,7 @@ function PostDetailModal({ post, onClose, onDelete, onMarkPosted, onPostNow }: {
 
         <div className="p-4 flex flex-col gap-3">
           <div>
-            <p className="text-xs font-bold text-white mb-1">
+            <p id="post-detail-title" className="text-xs font-bold text-white mb-1">
               {new Date(post.scheduledAt).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
               {' · '}{fmt12(post.scheduledAt)}
             </p>
@@ -187,24 +194,25 @@ function PostDetailModal({ post, onClose, onDelete, onMarkPosted, onPostNow }: {
 
           {canPost && (
             <div className="flex flex-col gap-2">
-              <button onClick={onPostNow}
-                className="w-full py-2 rounded-xl text-xs font-bold text-white"
+              <button onClick={onPostNow} disabled={isPosting}
+                className="w-full py-2 rounded-xl text-xs font-bold text-white disabled:cursor-wait disabled:opacity-60"
                 style={{ background: post.platform === 'instagram'
                   ? 'linear-gradient(135deg, #f9ce34, #ee2a7b, #6228d7)'
                   : pl.gradient }}>
-                Post Now
+                {isPosting ? 'Opening…' : 'Post Now'}
               </button>
+              {postError && <p role="alert" className="text-[10px] text-red-400">{postError}</p>}
               {post.status === 'due' && (
-                <button onClick={onMarkPosted}
-                  className="w-full py-2 rounded-xl text-xs font-semibold border border-[#00C851]/30 text-[#00C851] hover:bg-[#00C851]/10 transition-colors">
+                <button onClick={onMarkPosted} disabled={isPosting}
+                  className="w-full py-2 rounded-xl text-xs font-semibold border border-[#00C851]/30 text-[#00C851] hover:bg-[#00C851]/10 transition-colors disabled:cursor-wait disabled:opacity-60">
                   Mark as Published
                 </button>
               )}
             </div>
           )}
 
-          <button onClick={onDelete}
-            className="w-full py-1.5 text-xs text-red-400/60 hover:text-red-400 transition-colors">
+          <button onClick={onDelete} disabled={isPosting}
+            className="w-full py-1.5 text-xs text-red-400/60 hover:text-red-400 transition-colors disabled:cursor-wait disabled:opacity-40">
             Delete post
           </button>
         </div>
@@ -230,6 +238,8 @@ function NewPostModal({ draft, onClose, onSave }: {
   const [mediaStatus, setMediaStatus] = useState<'idle' | 'checking' | 'available' | 'missing'>(draft?.mediaPath ? 'checking' : 'idle');
   const [mediaError, setMediaError] = useState('');
   const requiresMedia = Boolean(draft?.mediaPath);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useModalFocus({ active: true, containerRef: dialogRef, onClose });
 
   useEffect(() => {
     (async () => {
@@ -284,10 +294,10 @@ function NewPostModal({ draft, onClose, onSave }: {
     if (saved !== false) onClose();
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div role="dialog" aria-modal="true" aria-labelledby="schedule-post-title" className="w-[440px] max-w-[calc(100vw-24px)] bg-[#111] border border-[#222] rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="schedule-post-title" tabIndex={-1} className="w-[440px] max-w-[calc(100vw-24px)] bg-[#111] border border-[#222] rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto focus:outline-none">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#1c1c1c]">
           <div>
             <h2 id="schedule-post-title" className="text-sm font-bold text-white">Schedule Post</h2>
@@ -409,7 +419,8 @@ function NewPostModal({ draft, onClose, onSave }: {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -427,6 +438,8 @@ export default function Scheduler({
   const [newPostDraft, setNewPostDraft] = useState<ScheduleDraft | null>(null);
   const [selectedPost, setSelectedPost] = useState<ScheduledPost | null>(null);
   const [igPostTarget, setIgPostTarget] = useState<ScheduledPost | null>(null);
+  const [postingPostId, setPostingPostId] = useState<string | null>(null);
+  const [postNowError, setPostNowError] = useState('');
 
   useEffect(() => {
     loadPosts(Boolean(initialDraft));
@@ -452,6 +465,11 @@ export default function Scheduler({
   const closeNewPost = () => {
     setNewPostDraft(null);
     setShowNewModal(false);
+  };
+
+  const openPostDetails = (post: ScheduledPost) => {
+    setPostNowError('');
+    setSelectedPost(post);
   };
 
   const loadPosts = async (localOnly = false) => {
@@ -499,13 +517,31 @@ export default function Scheduler({
     setSelectedPost(null);
   };
 
-  const handlePostNow = (post: ScheduledPost) => {
+  const handlePostNow = async (post: ScheduledPost) => {
     if (post.platform === 'instagram' && post.mediaPath) {
+      setPostNowError('');
       setIgPostTarget(post);
       setSelectedPost(null);
     } else {
       // Non-IG: open in browser
-      void window.electronAPI.postToSocial(post.platform, { caption: post.caption, mediaPath: post.mediaPath });
+      if (postingPostId) return;
+      setPostingPostId(post.id);
+      setPostNowError('');
+      try {
+        const result = await window.electronAPI.postToSocial(post.platform, {
+          caption: post.caption,
+          mediaPath: post.mediaPath,
+        });
+        if (!result.success || !result.opened) {
+          setPostNowError(result.error || `Could not open ${getPlatformMeta(post.platform).name}.`);
+          return;
+        }
+        setSelectedPost(null);
+      } catch (error) {
+        setPostNowError(error instanceof Error ? error.message : 'Could not open the publishing page.');
+      } finally {
+        setPostingPostId(null);
+      }
     }
   };
 
@@ -566,10 +602,12 @@ export default function Scheduler({
       {selectedPost && (
         <PostDetailModal
           post={selectedPost}
-          onClose={() => setSelectedPost(null)}
+          onClose={() => { setSelectedPost(null); setPostNowError(''); }}
           onDelete={() => handleDelete(selectedPost.id)}
           onMarkPosted={() => handleMarkPosted(selectedPost.id)}
           onPostNow={() => handlePostNow(selectedPost)}
+          isPosting={postingPostId !== null}
+          postError={postNowError}
         />
       )}
 
@@ -705,7 +743,7 @@ export default function Scheduler({
                     </p>
                     <div className="flex flex-col gap-0.5">
                       {dayPosts.slice(0, 3).map(post => (
-                        <PostChip key={post.id} post={post} onClick={() => setSelectedPost(post)} />
+                        <PostChip key={post.id} post={post} onClick={() => openPostDetails(post)} />
                       ))}
                       {dayPosts.length > 3 && (
                         <p className="text-[8px] text-[#444] text-center">+{dayPosts.length - 3} more</p>
@@ -732,7 +770,7 @@ export default function Scheduler({
                   </div>
                   <div className="flex flex-col gap-1.5 flex-1">
                     {dayPosts.map(post => (
-                      <PostChip key={post.id} post={post} onClick={() => setSelectedPost(post)} />
+                      <PostChip key={post.id} post={post} onClick={() => openPostDetails(post)} />
                     ))}
                     {dayPosts.length === 0 && (
                       <button onClick={openBlankPost}
@@ -775,7 +813,7 @@ export default function Scheduler({
                       const pl = getPlatformMeta(post.platform);
                       const preview = post.thumbnailPath || post.thumbnailUrl;
                       return (
-                        <button key={post.id} onClick={() => setSelectedPost(post)}
+                        <button key={post.id} onClick={() => openPostDetails(post)}
                           className="w-full flex items-center gap-3 p-3 rounded-xl border border-[#1a1a1a] bg-[#111] hover:border-[#2a2a2a] transition-colors mb-1.5 text-left">
                           {preview ? (
                             <img src={mediaSrc(preview)} alt="" className="w-10 h-14 rounded-lg object-cover shrink-0 border border-[#222]" />

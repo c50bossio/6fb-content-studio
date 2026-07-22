@@ -16,12 +16,28 @@ if (!existsSync(doctorPath)) {
   process.exit(2);
 }
 
-const result = spawnSync('python3', [doctorPath, ...process.argv.slice(2), projectRoot], {
-  stdio: 'inherit',
-});
+const requestedPython = process.env.SIXFB_WORKSPACE_PYTHON?.trim();
+const candidates = requestedPython
+  ? [{ command: requestedPython, args: [] }]
+  : process.platform === 'win32'
+    ? [{ command: 'py', args: ['-3'] }, { command: 'python', args: [] }]
+    : [{ command: 'python3', args: [] }, { command: 'python', args: [] }];
 
-if (result.error) {
-  console.error(`Could not run the folder-app validator: ${result.error.message}`);
+let result;
+let selectedCommand;
+for (const candidate of candidates) {
+  result = spawnSync(candidate.command, [...candidate.args, doctorPath, ...process.argv.slice(2), projectRoot], {
+    stdio: 'inherit',
+  });
+  if (!result.error || result.error.code !== 'ENOENT') {
+    selectedCommand = [candidate.command, ...candidate.args].join(' ');
+    break;
+  }
+}
+
+if (!result || result.error) {
+  const attempted = selectedCommand || candidates.map(candidate => [candidate.command, ...candidate.args].join(' ')).join(', ');
+  console.error(`Could not run the folder-app validator with ${attempted}: ${result?.error?.message || 'no Python interpreter was found'}`);
   process.exit(2);
 }
 

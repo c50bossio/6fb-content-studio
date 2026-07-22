@@ -5,7 +5,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import WebSocket from 'ws';
 
-const rootDir = path.dirname(fileURLToPath(import.meta.url));
+const modulePath = fileURLToPath(import.meta.url);
+const rootDir = path.dirname(modulePath);
 const appUrl = process.env.SIXFB_SCREENSHOT_URL || 'http://127.0.0.1:5173/';
 const outputDir = path.resolve(process.env.SIXFB_SCREENSHOT_DIR || path.join(rootDir, 'out/qa/phase2'));
 const chromePath = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
@@ -32,15 +33,55 @@ class CdpClient {
     this.nextId = 1;
     this.pending = new Map();
     this.events = [];
+    this.closedError = null;
+
+    this.socket.on('error', error => {
+      this.rejectPending(error instanceof Error ? error : new Error(String(error)));
+    });
+    this.socket.on('close', (code, reason) => {
+      const detail = reason?.length ? `: ${String(reason)}` : '';
+      this.rejectPending(new Error(`CDP socket closed (${code})${detail}`));
+    });
+  }
+
+  rejectPending(error) {
+    this.closedError ||= error;
+    for (const waiter of this.pending.values()) waiter.reject(this.closedError);
+    this.pending.clear();
   }
 
   async open() {
     await new Promise((resolve, reject) => {
-      this.socket.once('open', resolve);
-      this.socket.once('error', reject);
+      const onOpen = () => {
+        cleanup();
+        resolve();
+      };
+      const onError = error => {
+        cleanup();
+        reject(error);
+      };
+      const onClose = (code, reason) => {
+        cleanup();
+        const detail = reason?.length ? `: ${String(reason)}` : '';
+        reject(new Error(`CDP socket closed before opening (${code})${detail}`));
+      };
+      const cleanup = () => {
+        this.socket.off('open', onOpen);
+        this.socket.off('error', onError);
+        this.socket.off('close', onClose);
+      };
+      this.socket.once('open', onOpen);
+      this.socket.once('error', onError);
+      this.socket.once('close', onClose);
     });
     this.socket.on('message', data => {
-      const message = JSON.parse(String(data));
+      let message;
+      try {
+        message = JSON.parse(String(data));
+      } catch (error) {
+        this.rejectPending(new Error(`Invalid CDP response: ${error instanceof Error ? error.message : String(error)}`));
+        return;
+      }
       if (message.id) {
         const waiter = this.pending.get(message.id);
         if (!waiter) return;
@@ -56,13 +97,35 @@ class CdpClient {
   send(method, params = {}) {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
+      if (this.closedError) {
+        reject(this.closedError);
+        return;
+      }
+      if (this.socket.readyState !== WebSocket.OPEN) {
+        reject(new Error(`Cannot send CDP command ${method}: socket is not open`));
+        return;
+      }
       this.pending.set(id, { resolve, reject });
-      this.socket.send(JSON.stringify({ id, method, params }));
+      try {
+        this.socket.send(JSON.stringify({ id, method, params }), error => {
+          if (!error) return;
+          const waiter = this.pending.get(id);
+          if (!waiter) return;
+          this.pending.delete(id);
+          waiter.reject(error);
+        });
+      } catch (error) {
+        this.pending.delete(id);
+        reject(error);
+      }
     });
   }
 
   close() {
-    this.socket.close();
+    this.rejectPending(new Error('CDP client closed'));
+    if (this.socket.readyState === WebSocket.OPEN || this.socket.readyState === WebSocket.CONNECTING) {
+      this.socket.close();
+    }
   }
 }
 
@@ -273,7 +336,7 @@ async function main() {
     ]);
 
     await waitForContent(client, 'Welcome to 6FB Content Studio');
-    const report = { appUrl, height, widths, screens: {}, console: [], network: [] };
+    const report = { appUrl, height, widths, screens: {}, focus: {}, console: [], network: [] };
 
     for (const width of widths) {
       await setViewport(client, width);
@@ -342,11 +405,57 @@ async function main() {
         report.screens[`${width}/scheduler-hover`] = await auditLayout(client);
         await capture(client, path.join(outputDir, String(width), 'scheduler-hover.png'));
       }
-      await clickButton(client, 'New Post');
+      if (width === 375) {
+        const openedFromFocus = await evaluate(client, `(() => {
+          const button = [...document.querySelectorAll('button')].find(candidate => candidate.textContent?.trim().replace(/\\s+/g, ' ') === 'New Post');
+          if (!button) return false;
+          button.focus();
+          button.click();
+          return true;
+        })()`);
+        if (!openedFromFocus) throw new Error('Could not focus and open the Scheduler dialog');
+      } else {
+        await clickButton(client, 'New Post');
+      }
       await waitForContent(client, 'Schedule Post');
       report.screens[`${width}/scheduler-modal`] = await auditLayout(client);
       await capture(client, path.join(outputDir, String(width), 'scheduler-modal.png'));
-      await clickButton(client, 'Cancel');
+      if (width === 375) {
+        const focusProof = await evaluate(client, `(() => {
+          const dialog = document.querySelector('[role="dialog"][aria-labelledby="schedule-post-title"]');
+          const root = document.getElementById('root');
+          if (!(dialog instanceof HTMLElement)) return { error: 'Scheduler dialog not found' };
+          const focusable = [...dialog.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+            .filter(element => element instanceof HTMLElement && element.getClientRects().length > 0);
+          const entered = document.activeElement === dialog;
+          const backgroundInert = Boolean(root?.hasAttribute('inert'));
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+          last?.focus();
+          last?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+          const tabWrapped = document.activeElement === first;
+          first?.focus();
+          first?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+          const shiftTabWrapped = document.activeElement === last;
+          document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+          return { entered, backgroundInert, tabWrapped, shiftTabWrapped, focusableCount: focusable.length };
+        })()`);
+        await delay(150);
+        const closeProof = await evaluate(client, `(() => {
+          const active = document.activeElement;
+          return {
+            closed: !document.querySelector('[role="dialog"][aria-labelledby="schedule-post-title"]'),
+            backgroundRestored: !document.getElementById('root')?.hasAttribute('inert'),
+            openerRestored: active instanceof HTMLButtonElement && active.textContent?.trim().replace(/\\s+/g, ' ') === 'New Post',
+          };
+        })()`);
+        report.focus['375/scheduler-modal'] = { ...focusProof, ...closeProof };
+        if (Object.entries(report.focus['375/scheduler-modal']).some(([key, value]) => key !== 'focusableCount' && value !== true) || focusProof.focusableCount < 1) {
+          throw new Error(`Scheduler focus contract failed: ${JSON.stringify(report.focus['375/scheduler-modal'])}`);
+        }
+      } else {
+        await clickButton(client, 'Cancel');
+      }
 
       await clickScreen(client, 'Video Planner');
       await evaluate(client, `window.electronAPI.generateVideoPlan = () => new Promise(() => {})`);
@@ -357,11 +466,49 @@ async function main() {
       await capture(client, path.join(outputDir, String(width), 'planner-loading.png'));
 
       if (width < 1024) {
-        await evaluate(client, `document.querySelector('button[aria-label="Open navigation"]')?.click()`);
+        await evaluate(client, `(() => {
+          const trigger = document.querySelector('button[aria-label="Open navigation"]');
+          if (!(trigger instanceof HTMLButtonElement)) return false;
+          if (${width} === 375) trigger.focus();
+          trigger.click();
+          return true;
+        })()`);
         await delay(300);
         report.screens[`${width}/navigation-open`] = await auditLayout(client);
         await capture(client, path.join(outputDir, String(width), 'navigation-open.png'));
-        await evaluate(client, `document.querySelector('button[aria-label="Close navigation"]')?.click()`);
+        if (width === 375) {
+          const focusProof = await evaluate(client, `(() => {
+            const drawer = document.querySelector('[role="dialog"][aria-label="Navigation"]');
+            const root = document.getElementById('root');
+            if (!(drawer instanceof HTMLElement)) return { error: 'Navigation drawer not found' };
+            const focusable = [...drawer.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+              .filter(element => element instanceof HTMLElement && element.getClientRects().length > 0);
+            const entered = document.activeElement === drawer;
+            const backgroundInert = Boolean(root?.hasAttribute('inert'));
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            last?.focus();
+            last?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }));
+            const tabWrapped = document.activeElement === first;
+            first?.focus();
+            first?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true, cancelable: true }));
+            const shiftTabWrapped = document.activeElement === last;
+            document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+            return { entered, backgroundInert, tabWrapped, shiftTabWrapped, focusableCount: focusable.length };
+          })()`);
+          await delay(150);
+          const closeProof = await evaluate(client, `(() => ({
+            closed: document.querySelector('[role="dialog"][aria-label="Navigation"]')?.closest('[aria-hidden="true"]') !== null,
+            backgroundRestored: !document.getElementById('root')?.hasAttribute('inert'),
+            openerRestored: document.activeElement === document.querySelector('button[aria-label="Open navigation"]'),
+          }))()`);
+          report.focus['375/navigation-drawer'] = { ...focusProof, ...closeProof };
+          if (Object.entries(report.focus['375/navigation-drawer']).some(([key, value]) => key !== 'focusableCount' && value !== true) || focusProof.focusableCount < 1) {
+            throw new Error(`Navigation focus contract failed: ${JSON.stringify(report.focus['375/navigation-drawer'])}`);
+          }
+        } else {
+          await evaluate(client, `document.querySelector('button[aria-label="Close navigation"]')?.click()`);
+        }
       }
     }
 
@@ -426,6 +573,7 @@ async function main() {
       consoleErrors: report.console.length,
       networkErrors: report.network.length,
       screensWithFindings: failures.length,
+      focusContracts: Object.keys(report.focus).length,
     }, null, 2));
     if (failures.length > 0 || report.console.length > 0 || report.network.length > 0) {
       process.exitCode = 1;
@@ -439,7 +587,11 @@ async function main() {
   }
 }
 
-main().catch(error => {
-  console.error(error.stack || error.message);
-  process.exitCode = 1;
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === modulePath) {
+  main().catch(error => {
+    console.error(error.stack || error.message);
+    process.exitCode = 1;
+  });
+}
+
+export { CdpClient };

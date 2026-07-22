@@ -11,6 +11,7 @@ const requiredFiles = [
   'CLAUDE.md',
   'README.md',
   'PROGRESS.md',
+  'package.json',
   'setup/questionnaire.md',
   'product/CONTEXT.md',
   'product/notes.md',
@@ -29,6 +30,11 @@ const assert = (condition, message) => {
 
 for (const relativePath of requiredFiles) {
   assert(fs.existsSync(path.join(root, relativePath)), `Missing required path: ${relativePath}`);
+}
+
+if (failures.length) {
+  failures.forEach(failure => console.error(`- ${failure}`));
+  process.exit(1);
 }
 
 const agents = read('AGENTS.md');

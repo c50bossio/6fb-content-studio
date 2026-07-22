@@ -5,12 +5,47 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = process.cwd();
-const main = fs.readFileSync(path.join(root, 'electron/main.ts'), 'utf8');
-const preload = fs.readFileSync(path.join(root, 'electron/preload.ts'), 'utf8');
-const setup = fs.readFileSync(path.join(root, 'src/pages/Setup.tsx'), 'utf8');
-const windowsRuntimeBuilder = fs.readFileSync(path.join(root, 'scripts/build-pipeline-runtime.ps1'), 'utf8');
-const windowsRelease = fs.readFileSync(path.join(root, '.github/workflows/release-windows.yml'), 'utf8');
-const pythonTest = fs.readFileSync(path.join(root, 'scripts/test-python.cjs'), 'utf8');
+const requiredSources = [
+  'electron/main.ts',
+  'electron/preload.ts',
+  'src/pages/Setup.tsx',
+  'scripts/build-pipeline-runtime.ps1',
+  '.github/workflows/release-windows.yml',
+  'scripts/test-python.cjs',
+  'scripts/validate-workspace.cjs',
+  'take-screenshots.mjs',
+  'src/App.tsx',
+  'src/components/Sidebar.tsx',
+  'src/pages/Scheduler.tsx',
+  'src/hooks/useModalFocus.ts',
+  'src/index.css',
+  'src/pages/ClipExtractor.tsx',
+  'src/components/ScheduleModal.tsx',
+  'src/components/InstagramPostModal.tsx',
+];
+const missingSources = requiredSources.filter(relativePath => !fs.existsSync(path.join(root, relativePath)));
+if (missingSources.length) {
+  missingSources.forEach(relativePath => console.error(`Missing contract source: ${relativePath}`));
+  process.exit(1);
+}
+const [
+  main,
+  preload,
+  setup,
+  windowsRuntimeBuilder,
+  windowsRelease,
+  pythonTest,
+  workspaceValidator,
+  screenshotHarness,
+  app,
+  sidebar,
+  scheduler,
+  modalFocus,
+  globalStyles,
+  clipExtractor,
+  scheduleModal,
+  instagramModal,
+] = requiredSources.map(relativePath => fs.readFileSync(path.join(root, relativePath), 'utf8'));
 
 const uniqueSorted = values => [...new Set(values)].sort();
 const preloadChannels = uniqueSorted([...preload.matchAll(/ipcRenderer\.invoke\(['"]([^'"]+)['"]/g)].map(match => match[1]));
@@ -39,5 +74,38 @@ assert.match(windowsRuntimeBuilder, /if \(\$LASTEXITCODE -ne 0\)/, 'Windows runt
 assert.match(windowsRelease, /name: Run full test suite[\s\S]*?SIXFB_TEST_PYTHON[\s\S]*?npm test/, 'Windows releases must test with the populated runtime venv');
 assert.match(pythonTest, /process\.env\.SIXFB_TEST_PYTHON/, 'Python tests must honor the workflow-selected interpreter');
 assert.match(main, /isSamePath\(filePath, app\.getPath\('userData'\)\)/, 'Trusted Open Folder must allow only the exact app-data directory');
+assert.match(workspaceValidator, /process\.env\.SIXFB_WORKSPACE_PYTHON/, 'Workspace validation must support an explicit Python interpreter');
+assert.match(workspaceValidator, /process\.platform === 'win32'/, 'Workspace validation must select Python cross-platform');
+assert.match(screenshotHarness, /socket\.on\('error'/, 'CDP must reject pending commands on persistent socket errors');
+assert.match(screenshotHarness, /socket\.on\('close'/, 'CDP must reject pending commands when the socket closes');
+assert.match(app, /saveApiKey:\s*async \(provider: string, _key: string\)/, 'Browser preview must preserve the two-argument API-key contract');
+assert.match(sidebar, /useModalFocus\([\s\S]*?initialFocusRef: mobileDrawerRef[\s\S]*?returnFocusRef: mobileTriggerRef/, 'Mobile navigation must trap focus and restore its opener');
+assert.match(scheduler, /useModalFocus\(\{ active: true, containerRef: dialogRef, onClose \}\)/, 'Scheduler dialog must use modal focus management');
+assert.match(modalFocus, /event\.key === 'Escape'/, 'Modal focus management must close on Escape');
+assert.match(modalFocus, /event\.key !== 'Tab'/, 'Modal focus management must trap Tab navigation');
+assert.match(modalFocus, /for \(const sibling of modalBranch\.parentElement\.children\)/, 'Modal focus management must inert sibling subtrees along its ancestor chain');
+assert.match(modalFocus, /if \(opener\?\.isConnected\) opener\.focus\(\)/, 'Modal focus management must restore the opener after close');
+assert.match(scheduler, /const result = await window\.electronAPI\.postToSocial/, 'Scheduler publishing handoff must await the browser-open result');
+assert.match(scheduler, /!result\.success \|\| !result\.opened/, 'Scheduler publishing handoff must fail unless the page actually opened');
+assert.match(scheduler, /disabled=\{isPosting\}/, 'Scheduler publishing handoff must disable repeat attempts while pending');
+assert.match(scheduler, /onClick=\{onMarkPosted\} disabled=\{isPosting\}/, 'Scheduler must block status mutation while a publishing handoff is pending');
+assert.match(scheduler, /onClick=\{onDelete\} disabled=\{isPosting\}/, 'Scheduler must block deletion while a publishing handoff is pending');
+assert.match(scheduler, /role="alert"/, 'Scheduler publishing handoff must surface failures accessibly');
+assert.match(globalStyles, /min-height:\s*44px/, 'The verified 44px interaction target floor must remain enabled');
+assert.match(screenshotHarness, /rect\.width < 44 \|\| rect\.height < 44/, 'Visual QA must continue rejecting undersized interaction targets at every audited width');
+for (const [name, source] of [
+  ['Clip preview', clipExtractor],
+  ['Post details', scheduler],
+  ['Schedule modal', scheduleModal],
+  ['Instagram modal', instagramModal],
+]) {
+  assert.match(source, /useModalFocus\(/, `${name} must use complete modal focus management`);
+  assert.match(source, /role="dialog"/, `${name} must expose dialog semantics`);
+  assert.match(source, /aria-modal="true"/, `${name} must identify itself as modal`);
+}
+assert.match(clipExtractor, /useModalFocus\(\{ active: true, containerRef: dialogRef, onClose \}\)/, 'Clip preview must preserve its original opener while a nested Instagram dialog is active');
+assert.match(scheduleModal, /requestClose = useCallback\(\(\) => \{ if \(!busy\) onClose\(\); \}/, 'Schedule modal must not close during upload or scheduling');
+assert.match(instagramModal, /requestClose = useCallback\(\(\) => \{ if \(!isPosting\) onClose\(\); \}/, 'Instagram modal must not close while posting');
+assert.match(scheduler, /closeDialog = \(\) => \{ if \(!isPosting\) onClose\(\); \}/, 'Post details must not close while a publishing handoff is pending');
 
 console.log(`Contract checks passed: ${preloadChannels.length} IPC channels, bounded external clients, packaged assets, Windows gates, and critical validators.`);
