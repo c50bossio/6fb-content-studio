@@ -7,11 +7,12 @@ Last updated: 2026-07-22
 - The product is a desktop content studio for barbers.
 - Current visible surfaces include Dashboard, Brand & Brain, Video Planner,
   Clips, Carousel, Blog Writer, Video Editor, Scheduler, Analytics, and Settings.
-- Public release `v1.5.45` is available for macOS arm64 and Windows.
-- The source `package.json` remains at `1.5.39`; the existing tag workflows
-  stamp the release version during packaging. The most recently independently
-  downloaded and launched app reports version and build `1.5.44`; the live
-  `v1.5.45` release metadata is verified but its installer was not recertified.
+- Public release `v1.5.46` is available for macOS arm64 only. Windows
+  distribution is deferred pending evidence of Mac adoption.
+- The source `package.json` remains at `1.5.39`; the existing tag workflow
+  stamps the release version during packaging. The independently downloaded
+  public `v1.5.46` app reports version `1.5.46` and passed
+  notarization, signature, Gatekeeper, and disposable-profile launch checks.
 
 ## Open questions
 
@@ -28,8 +29,8 @@ Last updated: 2026-07-22
 - Guided Plan-to-Post is now shipped in `v1.5.44`; the published macOS app
   visibly completed its local-fallback Plan-to-Clips handoff without creating
   content externally or posting to a social platform.
-- `v1.5.45` supersedes `v1.5.44` and applies encoded local-media URLs across
-  clip, carousel, blog, brand, scheduler, and editor previews.
+- `v1.5.45` applied encoded local-media URLs across clip, carousel, blog,
+  brand, scheduler, and editor previews; `v1.5.46` now supersedes it.
 - Ship v1.5.46 and the near-term product as macOS arm64 only. Defer Windows
   distribution and code-signing spend until Mac adoption provides evidence that
   the additional platform is justified. Preserve Windows build validation as a
