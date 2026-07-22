@@ -25,15 +25,21 @@ issue on the final implementation head, and the observer cleared the subsequent
 handoff-only change. No tag, deployment, release, social post, or other
 production-runtime mutation was made.
 
-Proposed v1.5.46 release preparation is on
-`codex/v1.5.46-release-prep`, based on `origin/main`
-`821b1582d45941e74580a162dc6e7a3066116aef`. The preparation replaces
-independent platform publication with a coordinated, draft-first release: both
-platform jobs must pass, the draft must contain exactly eight non-empty assets,
-the staged macOS DMG must pass stapling/signature/Gatekeeper/version checks, and
-only then may the release become public. A final anonymous public-DMG smoke is
-part of workflow completion. No `v1.5.46` tag, release, public installer, or
-updater publication exists yet.
+The v1.5.46 release preparation and post-merge runtime correction are merged to
+`origin/main` at `1ca93cf2abaf6b4be629c5203d8dbee3fc00b69a` through pull
+requests #27 and #28. Exact-main unsigned Windows preflight `29940447111`
+passed, but the owner subsequently chose macOS arm64 as the only near-term
+distribution platform. Windows and its signing cost are deferred until Mac
+adoption justifies the additional platform.
+
+The current macOS-only candidate is commit
+`e019b1530ab26ee8fafc6f0f383035ec96591c5e` on
+`codex/v1.5.46-mac-only`, opened as draft pull request #30. It requires
+exactly four Mac artifacts, staged-DMG certification before publication, and an
+anonymous public-DMG smoke afterward. Draft Azure-signing pull request #29 was
+closed without merge. The signed-in Azure tenant showed zero subscriptions at
+the decision point, and no Artifact Signing or repository signing setup occurred.
+No `v1.5.46` tag, release, public installer, or updater publication exists.
 
 ## Release preparation (2026-07-22)
 
@@ -42,8 +48,9 @@ updater publication exists yet.
 - Completed: added early semantic-tag/release-note validation, per-tag release
   concurrency, exact draft-asset verification, staged-DMG smoke, explicit draft
   promotion, and anonymous public-download smoke.
-- Completed: converted the Windows workflow to a reusable, non-publishing job
-  with a manual pre-tag dry-run path; removed independent Windows publication.
+- Completed: removed independent Windows publication. The historical reusable
+  preflight proved portability; the current path is manual and non-publishing
+  so it cannot join a production tag release.
 - Completed: Windows-host run `29937539545` passed on exact code commit
   `95a34de2faf8cf53d42a0318580a79601502fa23`: runtime rebuild, full suite,
   strict source and frozen UTF-8 probes, bundled-runtime validation, v1.5.46
@@ -63,14 +70,22 @@ updater publication exists yet.
   final coordinator code commit
   `b06b0947fab202eb31099567e9dc32a340bb56eb`. Every release checkout now
   disables persisted credentials, enforced by a complete-count contract. The
-  reusable Windows workflow and application/runtime code remain identical to
-  Windows-tested commit `95a34de2faf8cf53d42a0318580a79601502fa23`.
-- Blocked for tagging: merge the preparation change, run and record the Windows
-  workflow on the exact final main commit, and decide whether v1.5.46 may ship
-  with unsigned Windows installers or requires Authenticode signing.
-- Next: review and merge the preparation change, re-pin exact `origin/main`, run
-  the non-publishing Windows-host preflight, then request separate explicit tag
-  approval. Do not tag or publish during preparation.
+  Windows packaging and application/runtime implementation remain those tested
+  at `95a34de2faf8cf53d42a0318580a79601502fa23`; only production orchestration is
+  now removed and the validator is manual-only.
+- Decision: ship macOS arm64 only; retain Windows as a manual, non-publishing
+  future validation path. Historical Windows proof remains evidence, not a tag
+  or release gate.
+- Completed: macOS-only release contract, four-asset manifest, documentation,
+  full local proof, and clean code, adversarial-verification, and observer
+  reviews on implementation commit `e019b1530ab26ee8fafc6f0f383035ec96591c5e`.
+- Completed: opened draft pull request #30 from
+  `codex/v1.5.46-mac-only`; it has no tag or publication side effect.
+- Blocked for tagging: review and merge the macOS-only change, re-pin exact
+  `origin/main`, rerun complete proof on that commit, and obtain separate
+  explicit tag approval.
+- Next: review and merge draft pull request #30, then certify the resulting
+  exact `origin/main` before seeking separate approval to create `v1.5.46`.
 
 ## Last session (2026-07-21)
 
@@ -148,10 +163,11 @@ updater publication exists yet.
 - Prioritize Guided Plan-to-Post as the next product cycle. The decision is
   grounded in the current source and release trajectory; no direct barber
   feedback or usage evidence is yet recorded.
+- Ship the near-term product for macOS arm64 only. Defer Windows distribution,
+  support, and Authenticode signing until Mac adoption supplies evidence for it.
 
 ## Open questions
 
-- Will v1.5.46 ship with the current unsigned Windows artifacts, or must
-  Authenticode signing and verification be added first?
-- Independent public-DMG launch/runtime and downloaded Windows installer and
-  portable-app acceptance remain separate certification gates after publication.
+- What measurable Mac adoption threshold should trigger reconsidering Windows?
+- Independent public-DMG launch/runtime remains a separate post-publication
+  certification gate.

@@ -1,6 +1,6 @@
 # Product notes
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 
 ## Confirmed facts
 
@@ -30,3 +30,7 @@ Last updated: 2026-07-21
   content externally or posting to a social platform.
 - `v1.5.45` supersedes `v1.5.44` and applies encoded local-media URLs across
   clip, carousel, blog, brand, scheduler, and editor previews.
+- Ship v1.5.46 and the near-term product as macOS arm64 only. Defer Windows
+  distribution and code-signing spend until Mac adoption provides evidence that
+  the additional platform is justified. Preserve Windows build validation as a
+  non-publishing future path; do not publish Windows assets now.
