@@ -16,8 +16,9 @@ The current `codex/complete-project-audit` worktree contains the reviewed
 complete-project audit candidate on exact `origin/main`. Functionality,
 responsive UI, instruction routing, folder-app validators, the rebuilt macOS
 pipeline runtime, and isolated production Electron IPC pass locally. The
-candidate is ready for its commit and draft pull request. No merge, tag,
-deployment, release, social post, or other production mutation was made.
+candidate is committed and pushed for review in draft pull request #25. No
+merge, tag, deployment, release, social post, or other production mutation was
+made.
 
 ## Last session (2026-07-21)
 
@@ -45,8 +46,8 @@ deployment, release, social post, or other production mutation was made.
 - Blocked: no local code or instruction blocker. Independent Windows-host
   execution and a fresh `v1.5.45` installer certification were outside this
   macOS local audit and are not claimed.
-- Next: commit the reviewed candidate and open a draft pull request for human/CI
-  review; stop before merge, tag, deployment, or release.
+- Next: human/CI review of draft pull request #25; stop before merge, tag,
+  deployment, or release without explicit approval.
 
 ## Decisions made
 
