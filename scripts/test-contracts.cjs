@@ -87,6 +87,11 @@ assert.doesNotMatch(docsTest, /execFileSync\(['"]rg['"]/, 'Documentation tests m
 assert.match(docsTest, /fs\.readdirSync\(absoluteDirectory, \{ withFileTypes: true \}\)/, 'Documentation tests must enumerate Markdown files portably');
 assert.doesNotMatch(windowsRelease, /workflow_call:/, 'Deferred Windows validation must not be callable from the production release workflow');
 assert.match(windowsRelease, /workflow_dispatch:/, 'Deferred Windows validation must remain an explicit non-publishing manual action');
+assert.match(
+  windowsRelease,
+  /npm run package:win\s+--\s+--publish never/,
+  'Deferred Windows validation must force publishing off',
+);
 assert.match(windowsRelease, /RELEASE_VERSION_INPUT: \$\{\{ inputs\.version \}\}/, 'Workflow inputs must enter PowerShell through the environment, not source interpolation');
 assert.match(windowsRelease, /actions\/upload-artifact@v7/, 'Windows artifacts must use the current Node 24 staging action');
 assert.match(releaseWorkflow, /actions\/download-artifact@v8/, 'Coordinated publication must use the current Node 24 download action');
