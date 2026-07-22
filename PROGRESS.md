@@ -7,6 +7,26 @@ Last updated: 2026-07-22
 
 ## Current status
 
+### Smart Live Trends candidate (2026-07-22)
+
+Smart Live Trends is implemented and locally verified in isolated branch
+`codex/smart-live-trends`, based on exact `origin/main` commit
+`aacdbff6924b6fe4fc5219c8eeabb6590b8bef8f`. The Video Planner now retrieves
+bounded current Google Trends RSS signals on an explicit click, can use an
+authorized Instagram professional account when available, labels connected
+Content Planner topics as **Your plan**, and keeps TikTok visibly unavailable
+until an approved source exists. When current signals have no barber relevance,
+the picker leads with labelled offline Idea starters rather than pretending a
+broad trend is niche evidence.
+
+The candidate passes the full local suite, responsive state matrix at 375, 768,
+and 1440 px, visual-gate negative self-test, and normal/strict/portable workspace
+validation. The complete commands, counts, boundaries, trigger tests, and
+screenshot locations are recorded in
+`engineering/qa/2026-07-22-smart-live-trends.md`. No real Instagram account was
+used, no TikTok request was made, and this candidate is not merged, pushed,
+tagged, packaged, or released.
+
 Public release `v1.5.46` is available for macOS arm64 from annotated tag
 `v1.5.46`, which resolves to the exact approved tag-target commit
 `f81b63b7b9400fb76cd37d399f366b9a3fbb2aed`. Production workflow run

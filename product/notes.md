@@ -45,3 +45,10 @@ Last updated: 2026-07-22
   retention, 5 qualified Windows commitments in 30 days, and clean support
   guardrails. A 10-commitment direct-demand override may open the review early.
   Neither gate authorizes automatic release.
+- Smart Live Trends is implemented and locally verified on an isolated feature
+  branch with explicit live,
+  cached, planned, and starter evidence states. Google Trends public RSS and an
+  authorized Instagram professional account are the initial live-source paths;
+  TikTok remains unavailable until an approved commercial feed exists. This
+  local candidate has not been merged, released, published, or exercised
+  against a real Instagram account.

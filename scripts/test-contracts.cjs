@@ -26,6 +26,11 @@ const requiredSources = [
   'src/pages/ClipExtractor.tsx',
   'src/components/ScheduleModal.tsx',
   'src/components/InstagramPostModal.tsx',
+  'src/pages/VideoPlanner.tsx',
+  'src/types/trends.ts',
+  'electron/trend-intelligence.mts',
+  'electron/smart-trend-service.mts',
+  'electron/instagram-graph.mts',
 ];
 const missingSources = requiredSources.filter(relativePath => !fs.existsSync(path.join(root, relativePath)));
 if (missingSources.length) {
@@ -53,6 +58,11 @@ const [
   clipExtractor,
   scheduleModal,
   instagramModal,
+  videoPlanner,
+  trendTypes,
+  trendIntelligence,
+  smartTrendService,
+  instagramGraph,
 ] = requiredSources.map(relativePath => fs.readFileSync(path.join(root, relativePath), 'utf8'));
 
 const uniqueSorted = values => [...new Set(values)].sort();
@@ -65,6 +75,34 @@ assert.ok(preloadChannels.length >= 60, `Expected a substantial IPC contract, fo
 const rawFetchCalls = [...main.matchAll(/(?<![A-Za-z.])fetch\(/g)];
 assert.equal(rawFetchCalls.length, 1, 'Only boundedFetch may call the raw fetch API');
 assert.match(main, /AbortSignal\.timeout\(timeoutMs\)/, 'External fetches must have a hard timeout');
+assert.match(preload, /fetchSmartTrends:[\s\S]*?ipcRenderer\.invoke\('fetch-smart-trends'\)/, 'Smart Trends must cross the typed preload bridge');
+assert.match(main, /ipcMain\.handle\('fetch-smart-trends'/, 'Smart Trends must run in Electron main');
+assert.match(main, /ipcMain\.handle\('open-trend-source'[\s\S]*?sanitizeTrendUrl[\s\S]*?try \{[\s\S]*?shell\.openExternal\(safeUrl\)[\s\S]*?catch \{[\s\S]*?Could not open the trend source\./, 'Trend source links must be allowlisted and return a handled OS-open failure');
+assert.match(smartTrendService, /ATTEMPT_TIMEOUT_MS = 5_000/, 'Trend source attempts must have a five-second timeout');
+assert.match(smartTrendService, /AGGREGATE_TIMEOUT_MS = 8_000/, 'Trend source retries must have an aggregate deadline');
+assert.match(smartTrendService, /attempt < 2/, 'Trend source retries must stop after two total attempts');
+assert.match(smartTrendService, /CIRCUIT_FAILURE_LIMIT = 3/, 'Trend sources must open their circuit after three failures');
+assert.match(smartTrendService, /CIRCUIT_OPEN_MS = 5 \* 60_000/, 'Trend source circuits must have a bounded open window');
+assert.match(smartTrendService, /MAX_JSON_BYTES = 512 \* 1024/, 'Trend JSON responses must have a hard size cap');
+assert.match(smartTrendService, /MIN_USEFUL_BARBER_FIT = 20/, 'Broad live data must clear a fixed useful-fit threshold');
+assert.match(smartTrendService, /createIdeaStarters\(4\)[\s\S]*?broadLiveIdeas\.slice\(0, 2\)/, 'All-low-fit live data must lead with useful starters and cap broad signals');
+assert.match(smartTrendService, /No signal cleared barber fit \$\{MIN_USEFUL_BARBER_FIT\}/, 'Low-fit source status must explain why starters lead');
+assert.match(smartTrendService, /createHash\('sha256'\)/, 'Authenticated trend caches must be partitioned without storing raw credentials as keys');
+assert.match(smartTrendService, /'tiktok', 'unavailable'/, 'TikTok must remain unavailable until an approved source exists');
+assert.match(instagramGraph, /graph\.facebook\.com\/v23\.0/, 'Instagram integrations must use the centrally pinned supported Graph API version');
+assert.doesNotMatch(`${main}\n${smartTrendService}\n${instagramGraph}`, /graph\.facebook\.com\/v1[89]\.0/, 'Instagram integrations must not use expired Graph API versions');
+assert.match(trendTypes, /'your-plan'/, 'Planned content must have a non-live evidence state');
+assert.match(trendTypes, /'connected'/, 'Content Planner must have a truthful connected source state');
+assert.match(trendIntelligence, /MAX_GOOGLE_RSS_BYTES = 512 \* 1024/, 'Google RSS parsing must reject oversized payloads');
+assert.match(trendIntelligence, /SENSITIVE_QUERY_KEY/, 'Trend source URLs must reject credential-like query keys');
+assert.match(videoPlanner, /Find live trends/, 'The planner must use explicit live-source copy');
+assert.equal((videoPlanner.match(/window\.electronAPI\.fetchSmartTrends\(\)/g) ?? []).length, 1, 'Live trend retrieval must have one explicit renderer call site');
+assert.match(videoPlanner, /onClick=\{fetchTrending\}/, 'Only the explicit Find live trends control may invoke the renderer retrieval handler');
+assert.match(videoPlanner, /Source checked.*source\.checkedAt/s, 'Trend source states must render their evidence timestamp');
+assert.match(videoPlanner, /Published.*idea\.publishedAt/s, 'Trend ideas must render their source publication timestamp when present');
+assert.match(videoPlanner, /Live signals, your plan, and offline starters are labelled separately\./, 'The planner must explain evidence states');
+assert.doesNotMatch(videoPlanner, /Trending in your niche|How I price my cuts in 2025|Tools every barber needs in 2025/, 'The planner must not present stale starters as trends');
+assert.doesNotMatch(videoPlanner, /access[_-]?token|contentPlannerToken|instagramAccessToken/i, 'The renderer must not receive trend credentials');
 
 const anthropicClients = [...main.matchAll(/new Anthropic\(([^\n]+)\)/g)].map(match => match[1]);
 assert.ok(anthropicClients.length >= 4, 'Expected all AI generation entry points to be present');

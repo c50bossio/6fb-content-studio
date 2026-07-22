@@ -1,6 +1,6 @@
 # Engineering notes
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 
 ## Confirmed facts
 
@@ -27,6 +27,14 @@ Last updated: 2026-07-21
   self-test proves layout, console, and network defects fail closed.
 
 ## Recent decisions
+
+- Smart Live Trends is implemented on an isolated feature branch. Electron
+  main owns bounded Google Trends RSS and authorized Instagram Graph requests;
+  the renderer receives typed, source-labelled results without credentials.
+  Personal Content Planner topics and offline Idea starters remain explicitly
+  separate from live evidence, while TikTok remains unavailable until an
+  approved provider exists. The local proof record is
+  `qa/2026-07-22-smart-live-trends.md`; merge and release remain separate gates.
 
 - Keep all implementation source in its existing runtime directories.
 - Store only plans, architecture context, and verification evidence here.

@@ -16,6 +16,7 @@ import UpdateBanner from './components/UpdateBanner';
 import type { ContentBrain, ContentStrategyBrief } from './types/content-strategy';
 import type { PublishingQueueResponse } from './types/publishing';
 import type { ScheduleDraft } from './types/creation-handoff';
+import type { TrendFeed } from './types/trends';
 
 export interface BrandProfile {
   brandName: string;
@@ -93,6 +94,8 @@ declare global {
       openPath: (path: string) => Promise<{ success: boolean }>;
       showInFinder: (path: string) => Promise<{ success: boolean }>;
       fetchTodayBrief: () => Promise<{ success: boolean; data?: unknown; error?: string }>;
+      fetchSmartTrends: () => Promise<TrendFeed>;
+      openTrendSource: (url: string) => Promise<{ success: boolean; error?: string }>;
       // Library
       scanLibrary: () => Promise<unknown>;
       deleteRun: (runId: string) => Promise<{ success: boolean }>;
@@ -285,6 +288,26 @@ export default function App() {
         openPath: async () => ({ success: true }),
         showInFinder: async () => ({ success: true }),
         fetchTodayBrief: async () => ({ success: false, error: 'Electron required' }),
+        fetchSmartTrends: async () => ({
+          fetchedAt: new Date().toISOString(),
+          ideas: [
+            {
+              id: 'preview-idea-starter',
+              title: 'The consultation habit that builds repeat clientele',
+              sourceId: 'idea-starter',
+              sourceLabel: 'Idea starters',
+              evidenceState: 'idea-starter',
+              whyNow: 'Timeless barber-specific inspiration; no live trend evidence.',
+            },
+          ],
+          sources: [
+            { sourceId: 'google-trends', sourceLabel: 'Google Trends', state: 'unavailable', message: 'Open the Electron app to check live sources.' },
+            { sourceId: 'instagram', sourceLabel: 'Instagram', state: 'not-connected', message: 'Open the Electron app to use an authorized account.' },
+            { sourceId: 'content-planner', sourceLabel: 'Your plan', state: 'not-connected', message: 'Open the Electron app to include your plan.' },
+            { sourceId: 'tiktok', sourceLabel: 'TikTok', state: 'unavailable', message: 'Approved trend source not connected.' },
+          ],
+        }),
+        openTrendSource: async () => ({ success: true }),
         scanLibrary: async () => ({ runs: [] }),
         deleteRun: async () => ({ success: true }),
         deleteClip: async () => ({ success: true }),

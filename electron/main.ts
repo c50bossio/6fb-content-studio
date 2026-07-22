@@ -9,6 +9,9 @@ import type { ContentBrain, ContentStrategyBrief } from '../src/types/content-st
 import type { PublishingPlatform, PublishingQueuePost, PublishingQueueResponse, PublishingStatus } from '../src/types/publishing';
 import { canonicalPath, isAllowedReadPath, isSamePath, localFilePathFromValue, safeJsonRecordPath, safeNumericRunPath, safeOwnedPath } from './path-safety.mts';
 import { trimmedClipMetadata } from './clip-metadata.mts';
+import { SmartTrendService } from './smart-trend-service.mts';
+import { sanitizeTrendUrl } from './trend-intelligence.mts';
+import { INSTAGRAM_GRAPH_ORIGIN } from './instagram-graph.mts';
 
 const EXTERNAL_REQUEST_TIMEOUT_MS = 20_000;
 
@@ -21,6 +24,10 @@ async function boundedFetch(
   const signal = init.signal ? AbortSignal.any([init.signal, timeoutSignal]) : timeoutSignal;
   return fetch(input, { ...init, signal });
 }
+
+const smartTrendService = new SmartTrendService({
+  request: (url, init, timeoutMs) => boundedFetch(url, init, timeoutMs),
+});
 
 // ── MUST be called before app.whenReady() ──────────────────────────────────
 // Disables GPU hardware acceleration & accelerated video decode.
@@ -496,6 +503,33 @@ ipcMain.handle('fetch-today-brief', async () => {
     return { success: true, data };
   } catch (e) {
     return { success: false, error: String(e) };
+  }
+});
+
+// Smart Trends — explicit, bounded source checks with no background polling.
+// Credentials remain in Electron main and are never included in the response.
+ipcMain.handle('fetch-smart-trends', async () => {
+  const savedBrain = store.get('contentBrain') as ContentBrain | undefined;
+  return smartTrendService.fetch({
+    contentBrain: { ...DEFAULT_CONTENT_BRAIN, ...(savedBrain ?? {}) },
+    contentPlannerToken: store.get('apiKeys.contentPlanner') as string | undefined,
+    instagramAccessToken: store.get('igAccessToken') as string | undefined,
+    instagramUserId: store.get('igUserId') as string | undefined,
+  });
+});
+
+ipcMain.handle('open-trend-source', async (_event, value: unknown) => {
+  const safeUrl = sanitizeTrendUrl(value, [
+    'trends.google.com',
+    'instagram.com',
+    'www.instagram.com',
+  ]);
+  if (!safeUrl) return { success: false, error: 'Untrusted trend source URL.' };
+  try {
+    await shell.openExternal(safeUrl);
+    return { success: true };
+  } catch {
+    return { success: false, error: 'Could not open the trend source.' };
   }
 });
 
@@ -2224,7 +2258,7 @@ ipcMain.handle('disconnect-6fb', async () => {
 });
 
 // ─── Instagram Direct Posting ─────────────────────────────────────────
-const IG_GRAPH = 'https://graph.facebook.com/v18.0';
+const IG_GRAPH = INSTAGRAM_GRAPH_ORIGIN;
 
 async function pollIgContainer(containerId: string, token: string, maxWaitMs = 120000): Promise<void> {
   const deadline = Date.now() + maxWaitMs;
