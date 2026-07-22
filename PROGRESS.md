@@ -8,7 +8,7 @@ Last updated: 2026-07-22
 ## Current status
 
 Public release `v1.5.46` is available for macOS arm64 from annotated tag
-`v1.5.46`, which resolves to exact merged `origin/main` commit
+`v1.5.46`, which resolves to the exact approved tag-target commit
 `f81b63b7b9400fb76cd37d399f366b9a3fbb2aed`. Production workflow run
 `29950002444` passed all six jobs. Exactly four Mac assets are public; an
 independent anonymous DMG download matched its published SHA-256, passed
