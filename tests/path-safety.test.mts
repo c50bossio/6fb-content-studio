@@ -7,6 +7,7 @@ import { trimmedClipMetadata } from '../electron/clip-metadata.mts';
 import {
   isInsidePath,
   isAllowedReadPath,
+  isSamePath,
   canonicalPath,
   localFilePathFromValue,
   safeJsonRecordPath,
@@ -41,6 +42,17 @@ test('owned paths must be absolute descendants, never the root itself', () => {
     assert.equal(safeOwnedPath(root, root), undefined);
     assert.equal(safeOwnedPath(join('..', 'outside'), root), undefined);
     assert.equal(safeOwnedPath(join(root, '..', 'outside'), root), undefined);
+  } finally {
+    rmSync(parent, { recursive: true, force: true });
+  }
+});
+
+test('trusted app-folder actions allow only the exact directory, not its contents', () => {
+  const { parent, root } = fixture();
+  try {
+    assert.equal(isSamePath(root, root), true);
+    assert.equal(isSamePath(join(root, 'config.json'), root), false);
+    assert.equal(isSamePath(join(parent, 'outside'), root), false);
   } finally {
     rmSync(parent, { recursive: true, force: true });
   }

@@ -7,7 +7,7 @@ import { runClipExtractor, checkPythonDeps, cancelActiveExtraction, resolveSyste
 import { autoUpdater } from 'electron-updater';
 import type { ContentBrain, ContentStrategyBrief } from '../src/types/content-strategy';
 import type { PublishingPlatform, PublishingQueuePost, PublishingQueueResponse, PublishingStatus } from '../src/types/publishing';
-import { canonicalPath, isAllowedReadPath, localFilePathFromValue, safeJsonRecordPath, safeNumericRunPath, safeOwnedPath } from './path-safety.mts';
+import { canonicalPath, isAllowedReadPath, isSamePath, localFilePathFromValue, safeJsonRecordPath, safeNumericRunPath, safeOwnedPath } from './path-safety.mts';
 import { trimmedClipMetadata } from './clip-metadata.mts';
 
 const EXTERNAL_REQUEST_TIMEOUT_MS = 20_000;
@@ -226,6 +226,7 @@ function isAllowedLocalFilePath(filePath: string) {
 
 function isAllowedAppPath(filePath: string) {
   return isAllowedLocalFilePath(filePath) ||
+    isSamePath(filePath, app.getPath('userData')) ||
     Array.from(approvedDirectoryPaths).some(approvedPath => canonicalPath(filePath) === resolve(approvedPath));
 }
 

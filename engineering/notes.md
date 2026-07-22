@@ -60,3 +60,7 @@ Last updated: 2026-07-21
   trusted native handler and app reset revokes them immediately. Assets saved by
   older builds without a pinned approval may require one native re-selection;
   they must not be silently reapproved from an untrusted renderer path.
+- Pull request #25 review follow-up makes the Windows workflow run Python tests
+  through the populated runtime-builder venv, permits Settings to open only the
+  exact canonical App Data directory, and makes visual QA reject an unrelated
+  server already occupying its configured port.

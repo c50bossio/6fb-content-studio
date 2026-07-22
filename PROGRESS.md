@@ -16,9 +16,10 @@ The current `codex/complete-project-audit` worktree contains the reviewed
 complete-project audit candidate on exact `origin/main`. Functionality,
 responsive UI, instruction routing, folder-app validators, the rebuilt macOS
 pipeline runtime, and isolated production Electron IPC pass locally. The
-candidate is committed and pushed for review in draft pull request #25. No
-merge, tag, deployment, release, social post, or other production mutation was
-made.
+candidate is committed and pushed in ready-for-review pull request #25. The
+first automated review's three actionable findings are repaired and verified in
+the follow-up commit. No merge, tag, deployment, release, social post, or other
+production mutation was made.
 
 ## Last session (2026-07-21)
 
@@ -36,17 +37,20 @@ made.
   closed renderer settings-file disclosure, symlink escape, broad output-folder
   read authorization, invalid re-trim, false-green visual gate, packaged Setup
   asset, Windows native-command masking, and failed-stage CLI exit defects.
-- Completed: 9 unit tests, 68 IPC contracts, 31 documentation files, production
+- Completed: 10 unit tests, 68 IPC contracts, 31 documentation files, production
   build, isolated Electron IPC smoke, visual-gate negative self-test, and a
   clean 47-screen final matrix with zero layout/console/network findings.
 - Completed: pinned exact-file approvals that resist symlink retargeting and are
   revoked immediately by app reset; transactional concurrent trim locking,
   accurate re-encoding, playable-output probing, and metadata rollback; and
   fail-closed Python stage, posting, research, format, and clip-count behavior.
+- Completed: ready-for-review follow-up for the Windows populated-venv test
+  interpreter, exact trusted App Data folder opening without descendant access,
+  and visual-audit rejection of a stale server occupying the configured port.
 - Blocked: no local code or instruction blocker. Independent Windows-host
   execution and a fresh `v1.5.45` installer certification were outside this
   macOS local audit and are not claimed.
-- Next: human/CI review of draft pull request #25; stop before merge, tag,
+- Next: automated re-review of the follow-up commit; stop before merge, tag,
   deployment, or release without explicit approval.
 
 ## Decisions made

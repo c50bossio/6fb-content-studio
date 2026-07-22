@@ -10,6 +10,7 @@ const preload = fs.readFileSync(path.join(root, 'electron/preload.ts'), 'utf8');
 const setup = fs.readFileSync(path.join(root, 'src/pages/Setup.tsx'), 'utf8');
 const windowsRuntimeBuilder = fs.readFileSync(path.join(root, 'scripts/build-pipeline-runtime.ps1'), 'utf8');
 const windowsRelease = fs.readFileSync(path.join(root, '.github/workflows/release-windows.yml'), 'utf8');
+const pythonTest = fs.readFileSync(path.join(root, 'scripts/test-python.cjs'), 'utf8');
 
 const uniqueSorted = values => [...new Set(values)].sort();
 const preloadChannels = uniqueSorted([...preload.matchAll(/ipcRenderer\.invoke\(['"]([^'"]+)['"]/g)].map(match => match[1]));
@@ -35,6 +36,8 @@ assert.match(main, /return \{ success: false, error: 'Invalid trim range' \}/, '
 assert.doesNotMatch(main, /settingsPath:\s*store\.path/, 'Renderer health must not expose the electron-store settings path');
 assert.doesNotMatch(setup, /src=["']\/content-playbook\.png["']/, 'Packaged renderer assets must not use filesystem-root URLs');
 assert.match(windowsRuntimeBuilder, /if \(\$LASTEXITCODE -ne 0\)/, 'Windows runtime native commands must fail closed');
-assert.match(windowsRelease, /name: Run full test suite[\s\S]*?run: npm test/, 'Windows releases must execute the full test suite');
+assert.match(windowsRelease, /name: Run full test suite[\s\S]*?SIXFB_TEST_PYTHON[\s\S]*?npm test/, 'Windows releases must test with the populated runtime venv');
+assert.match(pythonTest, /process\.env\.SIXFB_TEST_PYTHON/, 'Python tests must honor the workflow-selected interpreter');
+assert.match(main, /isSamePath\(filePath, app\.getPath\('userData'\)\)/, 'Trusted Open Folder must allow only the exact app-data directory');
 
 console.log(`Contract checks passed: ${preloadChannels.length} IPC channels, bounded external clients, packaged assets, Windows gates, and critical validators.`);

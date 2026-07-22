@@ -9,11 +9,16 @@ const viteBin = resolve(projectRoot, 'node_modules', 'vite', 'bin', 'vite.js');
 
 const delay = ms => new Promise(resolveDelay => setTimeout(resolveDelay, ms));
 
-async function waitForServer() {
+async function waitForServer(serverState) {
   for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (serverState.error) throw serverState.error;
+    if (serverState.exit) {
+      throw new Error(`Vite exited before readiness (code ${serverState.exit.code ?? 'null'}, signal ${serverState.exit.signal ?? 'none'})`);
+    }
     try {
       const response = await fetch(appUrl);
-      if (response.ok) return;
+      const spawnedServerIsReady = /\bready in\b|\bLocal:\s+http/i.test(serverState.output);
+      if (response.ok && spawnedServerIsReady) return;
     } catch {}
     await delay(100);
   }
@@ -27,11 +32,20 @@ async function run() {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let serverOutput = '';
-  server.stdout.on('data', chunk => { serverOutput += String(chunk); });
-  server.stderr.on('data', chunk => { serverOutput += String(chunk); });
+  const serverState = { output: '', exit: null, error: null };
+  server.stdout.on('data', chunk => {
+    serverOutput += String(chunk);
+    serverState.output = serverOutput;
+  });
+  server.stderr.on('data', chunk => {
+    serverOutput += String(chunk);
+    serverState.output = serverOutput;
+  });
+  server.once('exit', (code, signal) => { serverState.exit = { code, signal }; });
+  server.once('error', error => { serverState.error = error; });
 
   try {
-    await waitForServer();
+    await waitForServer(serverState);
     const audit = spawn(process.execPath, [resolve(projectRoot, 'take-screenshots.mjs')], {
       cwd: projectRoot,
       env: {
@@ -51,6 +65,9 @@ async function run() {
     } else if (/\b(?:warn(?:ing)?|error)\b/i.test(serverOutput)) {
       process.stderr.write(serverOutput);
     }
+  } catch (error) {
+    if (serverOutput) process.stderr.write(serverOutput);
+    throw error;
   } finally {
     server.kill('SIGTERM');
     await delay(100);

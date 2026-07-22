@@ -35,7 +35,11 @@ jobs:
         run: npm run runtime:win
 
       - name: Run full test suite
-        run: npm test
+        shell: powershell
+        run: |
+          $env:SIXFB_TEST_PYTHON = (Resolve-Path "python/.build-venv-win32-x64/Scripts/python.exe").Path
+          npm test
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Validate bundled runtime
         shell: powershell

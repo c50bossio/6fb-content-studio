@@ -50,7 +50,7 @@ Final repeatable gate:
 ```text
 npm test
   TypeScript: PASS
-  path-safety and clip-metadata unit tests: 9/9 PASS
+  path-safety and clip-metadata unit tests: 10/10 PASS
   IPC/contracts: 68 channels PASS
   documentation: 13 required paths, 31 source Markdown files PASS
   Python compile and failure preflights: PASS
@@ -70,6 +70,12 @@ exact-once metadata updates, uppercase `.MP4` handling, and video-stream duratio
 matching after accurate transactional re-encoding, including rejection when
 longer audio hides truncated video. It uses a disposable OS temp directory and
 removes it.
+
+The trusted Settings `Open Folder` path is limited to the exact canonical App
+Data directory; a unit test proves that its `config.json` and sibling paths do
+not inherit authorization. The Windows tag workflow selects the populated
+runtime-builder virtual environment for Python tests, and executable source
+preflights pass when pointed at that populated environment.
 
 Additional clean commands:
 
@@ -132,14 +138,16 @@ evidence identifiable.
   validation, Planner loading, Scheduler hover/modal, and mobile navigation.
 - Result: 0 console errors, 0 network errors, 0 overlays, 0 horizontal overflow,
   0 clipped-text controls, and 0 visible targets below 44 px.
-- The gate self-test injects a sub-44px target, `console.error`, and a failed
-  localhost request; `npm run qa:visual:self-test` passes only when the audit
-  records all three classes and exits nonzero.
+- The gate self-test first occupies the configured Vite port with an unrelated
+  HTTP 200 server and proves the audit fails rather than accepting it. It then
+  injects a sub-44px target, `console.error`, and a failed localhost request;
+  `npm run qa:visual:self-test` passes only when the audit records all three
+  classes and exits nonzero.
 - Contact-sheet/report hashes:
   - report: `21a5338d4b44478d353919705424ee47682401bfd8e1994b698a9581955b78bd`
-  - 375 px: `2aefe73db62142a2471c2f73afb79c701fe8f10bb9b0cc4b70bcb6db0302176b`
-  - 768 px: `ff2f22f853ef33fe94f777426a6317a8a0526b96a88d97fce5b33b3c3e27299f`
-  - 1440 px: `d352bda7e3d3b59c1adf64326f4b66ea30ed2f1735f8d50daedec6ed1518c4ed`
+  - 375 px: `986ef4c13e4f03852e2a93c81e1f12dd73f2192715259e2f3f21cd11951c518a`
+  - 768 px: `01df3e4d0a461e20d933042ce1f1f1c6c3d61834835f86ac774a6ee2aaff947f`
+  - 1440 px: `3fb1e739174da58dc02e12e7f18d61f018fbfa43f8c50fdb24e636a8f4a51aae`
 
 The phase completed within the ten-loop safety limit. No fix approach failed
 three times.
