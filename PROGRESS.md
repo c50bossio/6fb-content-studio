@@ -32,7 +32,8 @@ all workspace modes, and unsigned Windows preflight run `29940447111`. No
 `v1.5.46` tag, release, public installer, or updater publication exists.
 
 Because no exportable Windows signing certificate exists, the current candidate
-branch `codex/v1.5.46-windows-signing` prepares Azure Artifact Signing through
+branch `codex/v1.5.46-windows-signing` at `e12e29c3a1cc625751b2ccb70894777c50d0eb32`
+is open as draft pull request #29 and prepares Azure Artifact Signing through
 GitHub OIDC. It signs inside electron-builder, verifies every exact signed file,
 rejects unsigned and tampered fixtures, pins the expected publisher DN, and
 certifies staged and anonymously downloaded Windows assets plus updater metadata.
@@ -74,7 +75,8 @@ signature.
 - Completed: pull requests #27 and #28 merged; exact-main Windows run
   `29940447111` passed at `1ca93cf2abaf6b4be629c5203d8dbee3fc00b69a`.
 - In progress: Azure OIDC Windows-signing candidate, including fail-closed
-  per-artifact Authenticode verification and staged/public updater integrity.
+  per-artifact Authenticode verification and staged/public updater integrity;
+  draft pull request #29 is open and mergeable.
 - Blocked before any signing dispatch: the owner must approve paid Azure setup,
   complete legal identity validation, create a Public Trust signing profile and
   least-privilege federated identity, explicitly create/protect the GitHub
