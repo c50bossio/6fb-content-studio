@@ -21,6 +21,8 @@ jobs:
     steps:
       - name: Checkout release metadata
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Validate release tag and notes
         id: version
@@ -221,6 +223,8 @@ jobs:
     steps:
       - name: Checkout release notes
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Download staged release artifacts
         uses: actions/download-artifact@v8
@@ -327,6 +331,8 @@ jobs:
     steps:
       - name: Checkout release smoke
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Smoke staged macOS DMG
         env:
@@ -357,6 +363,8 @@ jobs:
     steps:
       - name: Checkout public release smoke
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Smoke public macOS DMG
         run: bash scripts/smoke-mac-release-dmg.sh "$GITHUB_REF_NAME"
