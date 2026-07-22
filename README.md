@@ -36,7 +36,10 @@ npm run runtime:win
 npm run package:win
 ```
 
-macOS and Windows releases are tag-triggered through `.github/workflows/`.
+The coordinated tag workflow in `.github/workflows/release.yml` builds both
+platforms, stages all eight artifacts, verifies the notarized macOS DMG, and
+only then publishes the release. The reusable Windows workflow also supports a
+non-publishing manual dry run before tagging.
 Creating a tag or publishing a release is an explicit human approval gate.
 
 `npm run qa:visual` starts an isolated renderer server, captures every screen at

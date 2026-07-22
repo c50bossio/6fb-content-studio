@@ -36,6 +36,25 @@ import yaml
 from pathlib import Path
 from datetime import datetime, timezone
 
+
+def _configure_utf8_stdio() -> None:
+    """Keep redirected Windows output from failing on pipeline status glyphs."""
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        reconfigure = getattr(stream, "reconfigure", None)
+        if not callable(reconfigure):
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (OSError, ValueError):
+            # Embedded hosts may expose a stream that cannot be reconfigured.
+            # The Electron bridge also forces UTF-8 through the child environment.
+            pass
+
+
+_configure_utf8_stdio()
+
+
 def _project_root() -> Path:
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
         return Path(sys._MEIPASS)

@@ -2,7 +2,6 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..');
 const failures = [];
@@ -67,17 +66,30 @@ for (const [name, command] of Object.entries(packageJson.scripts)) {
   assert(fs.existsSync(path.join(root, pathToCheck)), `npm script ${name} references missing path: ${target}`);
 }
 
-const markdownFiles = execFileSync('rg', [
-  '--files',
-  '-g', '*.md',
-  '-g', '!node_modules/**',
-  '-g', '!out/**',
-  '-g', '!release/**',
-  '-g', '!python/build/**',
-  '-g', '!python/runtime/**',
-  '-g', '!python/.build-venv/**',
-], { cwd: root, encoding: 'utf8' })
-  .trim().split(/\r?\n/).filter(Boolean);
+const excludedDirectories = new Set([
+  '.git',
+  'node_modules',
+  'out',
+  'release',
+  'python/build',
+  'python/dist',
+  'python/runtime',
+]);
+const markdownFiles = [];
+const collectMarkdown = (relativeDirectory = '') => {
+  const absoluteDirectory = path.join(root, relativeDirectory);
+  for (const entry of fs.readdirSync(absoluteDirectory, { withFileTypes: true })) {
+    const relativePath = path.join(relativeDirectory, entry.name).split(path.sep).join('/');
+    if (entry.isDirectory()) {
+      if (excludedDirectories.has(relativePath) || relativePath.startsWith('python/.build-venv')) continue;
+      collectMarkdown(relativePath);
+    } else if (entry.isFile() && entry.name.endsWith('.md')) {
+      markdownFiles.push(relativePath);
+    }
+  }
+};
+collectMarkdown();
+markdownFiles.sort();
 for (const markdownFile of markdownFiles) {
   const content = read(markdownFile);
   for (const match of content.matchAll(/\[[^\]]+\]\(([^)]+)\)/g)) {
