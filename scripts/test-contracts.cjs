@@ -25,6 +25,15 @@ const requiredSources = [
   'src/pages/ClipExtractor.tsx',
   'src/components/ScheduleModal.tsx',
   'src/components/InstagramPostModal.tsx',
+  'electron-builder.windows-release.cjs',
+  'scripts/create-windows-release-config.cjs',
+  'scripts/sign-windows-artifact.cjs',
+  'scripts/invoke-azure-signing.ps1',
+  'scripts/verify-windows-authenticode.ps1',
+  'scripts/test-windows-authenticode-verifier.ps1',
+  'scripts/test-windows-authenticode-tamper.ps1',
+  'scripts/download-windows-release-assets.ps1',
+  'scripts/verify-windows-release-metadata.cjs',
 ];
 const missingSources = requiredSources.filter(relativePath => !fs.existsSync(path.join(root, relativePath)));
 if (missingSources.length) {
@@ -51,6 +60,15 @@ const [
   clipExtractor,
   scheduleModal,
   instagramModal,
+  windowsReleaseConfig,
+  windowsReleaseConfigFactory,
+  windowsArtifactSigner,
+  azureSigningPowerShell,
+  windowsAuthenticodeVerifier,
+  windowsAuthenticodeNegativeTest,
+  windowsAuthenticodeTamperTest,
+  windowsReleaseDownloader,
+  windowsReleaseMetadataVerifier,
 ] = requiredSources.map(relativePath => fs.readFileSync(path.join(root, relativePath), 'utf8'));
 
 const uniqueSorted = values => [...new Set(values)].sort();
@@ -85,6 +103,12 @@ assert.doesNotMatch(docsTest, /execFileSync\(['"]rg['"]/, 'Documentation tests m
 assert.match(docsTest, /fs\.readdirSync\(absoluteDirectory, \{ withFileTypes: true \}\)/, 'Documentation tests must enumerate Markdown files portably');
 assert.match(windowsRelease, /workflow_call:/, 'Windows release validation must remain callable from the coordinated release workflow');
 assert.match(windowsRelease, /workflow_dispatch:/, 'Windows release validation must support a non-publishing pre-tag dry run');
+assert.match(windowsRelease, /AZURE_CLIENT_ID: \$\{\{ vars\.AZURE_CLIENT_ID \}\}[\s\S]*?AZURE_TENANT_ID: \$\{\{ vars\.AZURE_TENANT_ID \}\}[\s\S]*?AZURE_SUBSCRIPTION_ID: \$\{\{ vars\.AZURE_SUBSCRIPTION_ID \}\}/, 'Windows releases must use non-secret Azure OIDC identifiers');
+assert.match(windowsRelease, /environment: windows-signing/, 'Windows signing must use the protected signing environment');
+assert.match(windowsRelease, /permissions:\s+contents: read\s+id-token: write/, 'Reusable Windows signing must request only read contents and OIDC token permissions');
+assert.match(releaseWorkflow, /release-windows:[\s\S]*?permissions:\s+contents: read\s+id-token: write/, 'Coordinated releases must grant the Windows job OIDC token permission');
+assert.match(windowsRelease, /azure\/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43/, 'Azure login must be pinned to the reviewed v3 commit');
+assert.doesNotMatch(windowsRelease, /AZURE_CLIENT_SECRET|WINDOWS_CERTIFICATE|WIN_CSC_|CSC_LINK/, 'OIDC Windows signing must not depend on exportable certificates or client secrets');
 assert.match(windowsRelease, /RELEASE_VERSION_INPUT: \$\{\{ inputs\.version \}\}/, 'Workflow inputs must enter PowerShell through the environment, not source interpolation');
 assert.match(windowsRelease, /actions\/upload-artifact@v7/, 'Windows artifacts must use the current Node 24 staging action');
 assert.match(releaseWorkflow, /actions\/download-artifact@v8/, 'Coordinated publication must use the current Node 24 download action');
@@ -94,6 +118,33 @@ const releaseCheckoutCount = (releaseWorkflow.match(/uses: actions\/checkout@v6/
 const hardenedReleaseCheckoutCount = (releaseWorkflow.match(/uses: actions\/checkout@v6\s+with:\s+persist-credentials: false/g) || []).length;
 assert.equal(hardenedReleaseCheckoutCount, releaseCheckoutCount, 'Every coordinated release checkout must remove persisted credentials');
 assert.doesNotMatch(windowsRelease, /softprops\/action-gh-release/, 'The Windows workflow must never publish independently');
+assert.match(windowsRelease, /npm run package:win:release/, 'Windows release packaging must use the fail-closed signing config');
+assert.match(windowsReleaseConfig, /createWindowsReleaseConfig/, 'Electron-builder must load the isolated Windows release config factory');
+assert.match(windowsReleaseConfigFactory, /forceCodeSigning: true/, 'Windows release config must fail if any internal signing step is skipped');
+assert.match(windowsReleaseConfigFactory, /signingHashAlgorithms: \['sha256'\]/, 'Windows release config must sign with SHA256 only');
+assert.match(windowsReleaseConfigFactory, /publisherName: required\('WINDOWS_PUBLISHER_DN'/, 'Windows updater verification must pin the expected Azure signer DN');
+assert.match(windowsReleaseConfigFactory, /sign-windows-artifact\.cjs/, 'Windows releases must sign inside the electron-builder lifecycle');
+assert.doesNotMatch(windowsReleaseConfigFactory, /azureSignOptions/, 'OIDC signing must not use electron-builder EnvironmentCredential mode');
+assert.match(windowsArtifactSigner, /path\.join\(__dirname, 'invoke-azure-signing\.ps1'\)/, 'The signer must use the tracked Azure signing script');
+assert.match(windowsArtifactSigner, /spawn\([\s\S]*?'powershell\.exe'[\s\S]*?\[[\s\S]*?'-File'[\s\S]*?scriptPath/, 'The signer must invoke PowerShell with an argument array');
+assert.doesNotMatch(windowsArtifactSigner, /shell:\s*true/, 'The signer must not interpolate signing values through a shell');
+assert.match(azureSigningPowerShell, /TrustedSigning -RequiredVersion 0\.5\.8/, 'Azure signing must use the reviewed TrustedSigning module version');
+assert.match(azureSigningPowerShell, /ExcludeAzureCliCredential = \$false/, 'Azure signing must use the OIDC-authenticated Azure CLI credential');
+assert.match(azureSigningPowerShell, /Timeout = 300[\s\S]*?BatchSize = 0/, 'Azure signing must have a hard service timeout and one file per request');
+assert.match(azureSigningPowerShell, /Invoke-TrustedSigning[\s\S]*?verify-windows-authenticode\.ps1[\s\S]*?ExpectedPublisherDn/, 'Every electron-builder signing hook must immediately verify the exact signed artifact');
+assert.match(windowsAuthenticodeVerifier, /verify \/pa \/all \/tw \/v/, 'Windows signatures must pass Authenticode policy and timestamp verification');
+assert.match(windowsAuthenticodeVerifier, /SignatureStatus\]::Valid[\s\S]*?SignatureType\]::Authenticode[\s\S]*?TimeStamperCertificate/, 'Windows signatures must be valid Authenticode with a trusted timestamp');
+assert.match(windowsAuthenticodeVerifier, /ExpectedPublisherDn[\s\S]*?actualCanonicalDn/, 'Windows signatures must match the expected Azure signer DN');
+assert.match(windowsAuthenticodeNegativeTest, /Unsigned Authenticode negative test rejected as expected[\s\S]*?verifier accepted an unsigned executable/, 'Windows verification must prove an unsigned executable is rejected');
+assert.match(windowsAuthenticodeTamperTest, /WriteByte\(\$original -bxor 0xFF\)[\s\S]*?verifier accepted a tampered executable/, 'Windows verification must prove signed-byte tampering is rejected');
+assert.match(windowsAuthenticodeNegativeTest, /SignTool verification failed[\s\S]*?throw/, 'Unsigned negative proof must reject the expected signature failure, not any prerequisite error');
+assert.match(windowsAuthenticodeTamperTest, /verify-windows-authenticode\.ps1" -Path \$source[\s\S]*?SignTool verification failed/, 'Tamper proof must verify the signed source before accepting the expected failure');
+assert.match(windowsReleaseMetadataVerifier, /indices\.length !== 1[\s\S]*?matches\.length > 1[\s\S]*?filesIndices\.length !== 1[\s\S]*?files\.length, 1[\s\S]*?url: expectedName[\s\S]*?sha512: expectedSha512[\s\S]*?expectedPublisherDn/, 'Windows updater metadata must reject ambiguous duplicates and match the signer and exact files entry');
+assert.match(windowsReleaseDownloader, /TimeoutSec 30[\s\S]*?TimeoutSec 300/, 'Windows release downloads must have bounded metadata and asset timeouts');
+assert.match(windowsReleaseDownloader, /\.exe\.blockmap[\s\S]*?latest\.yml/, 'Windows release certification must download updater metadata and blockmap assets');
+assert.match(releaseWorkflow, /certify-staged-windows:[\s\S]*?EXPECTED_BLOCKMAP_SHA256[\s\S]*?EXPECTED_METADATA_SHA256[\s\S]*?--latest-only/, 'Staged Windows certification must prove remote updater metadata and blockmap identity');
+assert.match(releaseWorkflow, /certify-published-windows:[\s\S]*?EXPECTED_BLOCKMAP_SHA256[\s\S]*?EXPECTED_METADATA_SHA256[\s\S]*?--latest-only/, 'Public Windows certification must prove remote updater metadata and blockmap identity');
+assert.match(windowsRelease, /installer_sha256:[\s\S]*?portable_sha256:[\s\S]*?Record signed Windows hashes/, 'Windows release workflow must expose exact signed artifact hashes');
 assert.match(releaseWorkflow, /release-windows:[\s\S]*?uses: \.\/\.github\/workflows\/release-windows\.yml/, 'The tag workflow must call the Windows release validator');
 assert.match(releaseWorkflow, /concurrency:[\s\S]*?cancel-in-progress: false/, 'Release reruns must serialize without cancelling an active release');
 assert.match(releaseWorkflow, /validate-tag:[\s\S]*?\^v\[0-9\]\+/, 'Release tags must be validated before platform builds start');
@@ -104,9 +155,14 @@ assert.match(releaseWorkflow, /RELEASE_ID: \$\{\{ steps\.stage-draft\.outputs\.i
 assert.match(releaseWorkflow, /Verify exact draft asset manifest[\s\S]*?expected-assets\.txt[\s\S]*?actual-assets\.txt/, 'Draft verification must reject stale or missing release assets');
 assert.match(releaseWorkflow, /RELEASE_INCLUDE_DRAFT: '1'/, 'macOS certification must inspect the staged draft asset');
 assert.match(releaseWorkflow, /RELEASE_ID: \$\{\{ needs\.stage-release\.outputs\.release_id \}\}/, 'Staged macOS certification must use the exact draft release ID');
-assert.match(releaseWorkflow, /publish-release:[\s\S]*?needs: smoke-staged-mac[\s\S]*?gh release edit[\s\S]*?--repo "\$GITHUB_REPOSITORY"[\s\S]*?--draft=false/, 'Publication must happen only after staged macOS certification and target the explicit repository');
+assert.match(releaseWorkflow, /certify-staged-windows:[\s\S]*?RELEASE_ID: \$\{\{ needs\.stage-release\.outputs\.release_id \}\}[\s\S]*?verify-windows-authenticode\.ps1/, 'Staged Windows certification must verify exact draft assets');
+assert.match(releaseWorkflow, /certify-staged-windows:[\s\S]*?EXPECTED_INSTALLER_SHA256:[\s\S]*?Staged installer SHA-256 mismatch/, 'Staged Windows certification must match the signed build hashes');
+assert.match(releaseWorkflow, /publish-release:[\s\S]*?needs:[\s\S]*?- smoke-staged-mac[\s\S]*?- certify-staged-windows[\s\S]*?gh release edit[\s\S]*?--repo "\$GITHUB_REPOSITORY"[\s\S]*?--draft=false/, 'Publication must wait for both staged platform certifications and target the explicit repository');
 assert.match(releaseWorkflow, /smoke-published-mac:[\s\S]*?needs: publish-release[\s\S]*?smoke-mac-release-dmg\.sh/, 'Workflow success must include a public macOS download smoke');
-assert.doesNotMatch(releaseWorkflow.match(/smoke-published-mac:[\s\S]*$/)?.[0] || '', /GH_TOKEN:/, 'Public release smoke must prove anonymous availability');
+assert.match(releaseWorkflow, /certify-published-windows:[\s\S]*?needs:[\s\S]*?- publish-release[\s\S]*?download-windows-release-assets\.ps1[\s\S]*?verify-windows-authenticode\.ps1/, 'Workflow success must include an anonymous public Windows download certification');
+assert.match(releaseWorkflow, /certify-published-windows:[\s\S]*?EXPECTED_INSTALLER_SHA256:[\s\S]*?Public installer SHA-256 mismatch/, 'Public Windows certification must match the signed build hashes');
+assert.doesNotMatch(releaseWorkflow.match(/certify-published-windows:[\s\S]*$/)?.[0] || '', /GH_TOKEN:/, 'Public Windows release certification must prove anonymous availability');
+assert.match(windowsReleaseDownloader, /attempt -le 3[\s\S]*?Pow\(2, \$attempt\)/, 'Windows release downloads must use bounded retries with backoff');
 assert.match(pythonTest, /process\.env\.SIXFB_TEST_PYTHON/, 'Python tests must honor the workflow-selected interpreter');
 assert.match(pythonTest, /const candidates = requestedPython \? \[requestedPython\] : systemCandidates/, 'An explicitly selected Python interpreter must fail closed instead of falling back to the host');
 assert.match(pythonTest, /legacy_codepage_env\['PYTHONIOENCODING'\] = 'cp1252'/, 'Python tests must reproduce redirected Windows legacy-codepage output');

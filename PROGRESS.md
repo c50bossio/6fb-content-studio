@@ -25,15 +25,19 @@ issue on the final implementation head, and the observer cleared the subsequent
 handoff-only change. No tag, deployment, release, social post, or other
 production-runtime mutation was made.
 
-Proposed v1.5.46 release preparation is on
-`codex/v1.5.46-release-prep`, based on `origin/main`
-`821b1582d45941e74580a162dc6e7a3066116aef`. The preparation replaces
-independent platform publication with a coordinated, draft-first release: both
-platform jobs must pass, the draft must contain exactly eight non-empty assets,
-the staged macOS DMG must pass stapling/signature/Gatekeeper/version checks, and
-only then may the release become public. A final anonymous public-DMG smoke is
-part of workflow completion. No `v1.5.46` tag, release, public installer, or
-updater publication exists yet.
+The v1.5.46 release preparation and post-merge runtime fix are merged through
+pull requests #27 and #28. Exact `origin/main`
+`1ca93cf2abaf6b4be629c5203d8dbee3fc00b69a` passed the complete local suite,
+all workspace modes, and unsigned Windows preflight run `29940447111`. No
+`v1.5.46` tag, release, public installer, or updater publication exists.
+
+Because no exportable Windows signing certificate exists, the current candidate
+branch `codex/v1.5.46-windows-signing` prepares Azure Artifact Signing through
+GitHub OIDC. It signs inside electron-builder, verifies every exact signed file,
+rejects unsigned and tampered fixtures, pins the expected publisher DN, and
+certifies staged and anonymously downloaded Windows assets plus updater metadata.
+This candidate has local proof only; it has not performed or claimed an Azure
+signature.
 
 ## Release preparation (2026-07-22)
 
@@ -43,7 +47,9 @@ updater publication exists yet.
   concurrency, exact draft-asset verification, staged-DMG smoke, explicit draft
   promotion, and anonymous public-download smoke.
 - Completed: converted the Windows workflow to a reusable, non-publishing job
-  with a manual pre-tag dry-run path; removed independent Windows publication.
+  and removed independent Windows publication. Its historical pre-signing mode
+  supported unsigned dry runs; the current candidate manual path performs paid
+  signing and is not a dry run.
 - Completed: Windows-host run `29937539545` passed on exact code commit
   `95a34de2faf8cf53d42a0318580a79601502fa23`: runtime rebuild, full suite,
   strict source and frozen UTF-8 probes, bundled-runtime validation, v1.5.46
@@ -65,12 +71,17 @@ updater publication exists yet.
   disables persisted credentials, enforced by a complete-count contract. The
   reusable Windows workflow and application/runtime code remain identical to
   Windows-tested commit `95a34de2faf8cf53d42a0318580a79601502fa23`.
-- Blocked for tagging: merge the preparation change, run and record the Windows
-  workflow on the exact final main commit, and decide whether v1.5.46 may ship
-  with unsigned Windows installers or requires Authenticode signing.
-- Next: review and merge the preparation change, re-pin exact `origin/main`, run
-  the non-publishing Windows-host preflight, then request separate explicit tag
-  approval. Do not tag or publish during preparation.
+- Completed: pull requests #27 and #28 merged; exact-main Windows run
+  `29940447111` passed at `1ca93cf2abaf6b4be629c5203d8dbee3fc00b69a`.
+- In progress: Azure OIDC Windows-signing candidate, including fail-closed
+  per-artifact Authenticode verification and staged/public updater integrity.
+- Blocked before any signing dispatch: the owner must approve paid Azure setup,
+  complete legal identity validation, create a Public Trust signing profile and
+  least-privilege federated identity, explicitly create/protect the GitHub
+  `windows-signing` environment, and configure its seven issued variables.
+- Next after that owner-controlled setup: run one approved signing validation,
+  review and merge the candidate, then repeat the full suite and signed Windows
+  workflow on exact final `origin/main`. Tagging remains a later explicit gate.
 
 ## Last session (2026-07-21)
 
@@ -151,7 +162,7 @@ updater publication exists yet.
 
 ## Open questions
 
-- Will v1.5.46 ship with the current unsigned Windows artifacts, or must
-  Authenticode signing and verification be added first?
+- Will the owner approve the paid Azure Artifact Signing account and complete
+  its legal identity validation so Authenticode proof can be executed?
 - Independent public-DMG launch/runtime and downloaded Windows installer and
   portable-app acceptance remain separate certification gates after publication.

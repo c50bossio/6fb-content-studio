@@ -10,7 +10,8 @@ Last updated: 2026-07-22
   validates both platforms, stages all eight assets in a draft, smoke-checks
   the notarized macOS DMG from that draft, and only then publishes.
 - `.github/workflows/release-windows.yml` is a reusable, non-publishing Windows
-  build/test/package workflow with a manual pre-tag dry-run entry point.
+  build/test/package workflow. On the signing candidate, its manual entry point
+  performs paid Azure signing and is not a side-effect-free dry run.
 - Generated package output belongs in ignored `release/`.
 - Pull request #18 merged to `main` as
   `9b792a1e9aac312c5599dbff7220e62103e432f5` on 2026-07-21.
@@ -73,10 +74,21 @@ Last updated: 2026-07-22
   shell, and workspace checks pass. The post-Windows delta is limited to this
   coordinator hardening and its contract; the reusable Windows workflow and
   application/runtime code remain those tested in run `29937539545`.
-- The current Windows packaging path does not configure or claim Authenticode
-  signing. Owner acceptance or a signing change is required before tagging;
-  workflow smoke and independent downloaded-installer acceptance remain
-  distinct from signature trust.
+- Pull requests #27 and #28 are merged. Exact `origin/main`
+  `1ca93cf2abaf6b4be629c5203d8dbee3fc00b69a` passed local certification and
+  unsigned Windows preflight run `29940447111`.
+- No exportable Authenticode PFX is available. Candidate branch
+  `codex/v1.5.46-windows-signing` therefore uses Azure Artifact Signing with
+  GitHub OIDC and no client secret or certificate file.
+- The candidate signs each Windows EXE selected by electron-builder's lifecycle and
+  immediately requires a valid Authenticode signature, trusted RFC3161
+  timestamp, code-signing EKU, and the exact issued publisher DN. Final,
+  staged-draft, and anonymous-public checks also bind the installer, portable
+  app, blockmap, and `latest.yml` to the exact signed-build hashes.
+- The signing candidate has not been exercised against Azure. GitHub currently
+  has no `windows-signing` environment or Azure variables, and this host has no
+  authenticated Azure inventory. Do not dispatch: GitHub can auto-create a
+  missing environment without the intended owner protections.
 
 ## Open questions
 
@@ -84,6 +96,8 @@ Last updated: 2026-07-22
   `v1.5.46` tag target?
 - Will v1.5.46 receive an independent Windows-host installer and portable-app
   launch certification in addition to the Windows workflow smoke?
+- Will the owner approve paid Azure Artifact Signing setup and complete portal
+  identity validation? Until then, no signed Windows artifact can be claimed.
 
 ## Recent decisions
 
@@ -91,6 +105,10 @@ Last updated: 2026-07-22
 - Treat tagging and publishing as explicit human approval gates.
 - Keep unsigned local, signed local, workflow-built, and externally published
   artifact claims separate.
+- Use OIDC with a protected `windows-signing` environment; do not introduce an
+  exportable certificate or `AZURE_CLIENT_SECRET`. Bind the Entra federated
+  credential to `repo:c50bossio/6fb-content-studio:environment:windows-signing`
+  and grant only Certificate Profile Signer at the profile scope.
 - Treat CodeRabbit's post-fix quota failure as an optional external-capacity
   limit, not a code failure; do not weaken required local or post-merge verification.
 - Record the absence of an independent Windows-host launch smoke explicitly

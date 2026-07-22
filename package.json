@@ -25,6 +25,7 @@
     "package:mac": "node scripts/assert-packaged-runtime.cjs darwin-arm64 && electron-vite build && electron-builder --mac",
     "package:mac:release": "node scripts/assert-packaged-runtime.cjs darwin-arm64 && electron-vite build && electron-builder --mac --config.forceCodeSigning=true",
     "package:win": "node scripts/assert-packaged-runtime.cjs win32-x64 && electron-vite build && electron-builder --win --x64",
+    "package:win:release": "node scripts/assert-packaged-runtime.cjs win32-x64 && electron-vite build && electron-builder --config electron-builder.windows-release.cjs --win --x64 --publish never",
     "runtime:mac": "bash scripts/build-pipeline-runtime.sh",
     "runtime:win": "powershell -ExecutionPolicy Bypass -File scripts/build-pipeline-runtime.ps1"
   },

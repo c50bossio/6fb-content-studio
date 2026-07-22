@@ -7,19 +7,43 @@ on:
         description: Release version with or without a leading v
         required: true
         type: string
+    outputs:
+      installer_sha256:
+        description: SHA-256 of the signed NSIS installer
+        value: ${{ jobs.release-windows.outputs.installer_sha256 }}
+      portable_sha256:
+        description: SHA-256 of the signed portable executable
+        value: ${{ jobs.release-windows.outputs.portable_sha256 }}
+      publisher_dn:
+        description: Public subject DN of the Azure signing profile
+        value: ${{ jobs.release-windows.outputs.publisher_dn }}
+      blockmap_sha256:
+        description: SHA-256 of the signed installer's blockmap
+        value: ${{ jobs.release-windows.outputs.blockmap_sha256 }}
+      metadata_sha256:
+        description: SHA-256 of latest.yml for the signed installer
+        value: ${{ jobs.release-windows.outputs.metadata_sha256 }}
   workflow_dispatch:
     inputs:
       version:
-        description: Non-publishing package version to validate
+        description: Paid, non-publishing signed package version to validate
         required: true
         type: string
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   release-windows:
-    runs-on: windows-latest
+    runs-on: windows-2025
+    environment: windows-signing
+    outputs:
+      installer_sha256: ${{ steps.windows-hashes.outputs.installer_sha256 }}
+      portable_sha256: ${{ steps.windows-hashes.outputs.portable_sha256 }}
+      publisher_dn: ${{ steps.windows-hashes.outputs.publisher_dn }}
+      blockmap_sha256: ${{ steps.windows-hashes.outputs.blockmap_sha256 }}
+      metadata_sha256: ${{ steps.windows-hashes.outputs.metadata_sha256 }}
     env:
       PYTHONUTF8: '1'
       PYTHONIOENCODING: 'utf-8'
@@ -72,10 +96,69 @@ jobs:
           .\python\runtime\win32-x64\bin\ffprobe.exe -version
           Assert-NativeSuccess "ffprobe version"
 
+      - name: Validate Azure signing configuration
+        shell: powershell
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          AZURE_ARTIFACT_SIGNING_ENDPOINT: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          AZURE_ARTIFACT_SIGNING_ACCOUNT_NAME: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT_NAME }}
+          AZURE_ARTIFACT_SIGNING_PROFILE_NAME: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE_NAME }}
+          WINDOWS_PUBLISHER_DN: ${{ vars.WINDOWS_PUBLISHER_DN }}
+        run: |
+          $required = @(
+            "AZURE_CLIENT_ID",
+            "AZURE_TENANT_ID",
+            "AZURE_SUBSCRIPTION_ID",
+            "AZURE_ARTIFACT_SIGNING_ENDPOINT",
+            "AZURE_ARTIFACT_SIGNING_ACCOUNT_NAME",
+            "AZURE_ARTIFACT_SIGNING_PROFILE_NAME",
+            "WINDOWS_PUBLISHER_DN"
+          )
+          foreach ($name in $required) {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              Write-Error "Missing required Azure signing configuration: $name"
+              exit 1
+            }
+          }
+          foreach ($name in @("AZURE_CLIENT_ID", "AZURE_TENANT_ID", "AZURE_SUBSCRIPTION_ID")) {
+            if ([Environment]::GetEnvironmentVariable($name) -notmatch '^[0-9a-fA-F-]{36}$') {
+              Write-Error "Invalid Azure identifier: $name"
+              exit 1
+            }
+          }
+          node -e "require('./electron-builder.windows-release.cjs')"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Test Authenticode verifier rejects unsigned files
+        shell: powershell
+        env:
+          WINDOWS_PUBLISHER_DN: ${{ vars.WINDOWS_PUBLISHER_DN }}
+        run: .\scripts\test-windows-authenticode-verifier.ps1 -ExpectedPublisherDn $env:WINDOWS_PUBLISHER_DN
+
+      - name: Install pinned TrustedSigning module
+        shell: powershell
+        timeout-minutes: 10
+        run: |
+          Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force -Scope CurrentUser
+          Install-Module -Name TrustedSigning -RequiredVersion 0.5.8 -Force -Repository PSGallery -Scope CurrentUser
+
+      - name: Azure login with GitHub OIDC
+        uses: azure/login@532459ea530d8321f2fb9bb10d1e0bcf23869a43
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
       - name: Package Windows installer
         shell: powershell
         env:
           RELEASE_VERSION_INPUT: ${{ inputs.version }}
+          AZURE_ARTIFACT_SIGNING_ENDPOINT: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+          AZURE_ARTIFACT_SIGNING_ACCOUNT_NAME: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT_NAME }}
+          AZURE_ARTIFACT_SIGNING_PROFILE_NAME: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE_NAME }}
+          WINDOWS_PUBLISHER_DN: ${{ vars.WINDOWS_PUBLISHER_DN }}
         run: |
           function Assert-NativeSuccess([string]$Command) {
             if ($LASTEXITCODE -ne 0) { throw "$Command failed with exit code $LASTEXITCODE" }
@@ -87,12 +170,12 @@ jobs:
           }
           npm version $version --no-git-tag-version --allow-same-version
           Assert-NativeSuccess "npm version"
-          npm run package:win -- --publish never
+          npm run package:win:release
           Assert-NativeSuccess "Windows package"
-          $installer = Get-ChildItem -Path release -File -Filter "*.exe" | Where-Object { $_.Name -match "Setup" } | Select-Object -First 1
-          $portable = Get-ChildItem -Path release -File -Filter "*.exe" | Where-Object { $_.Name -notmatch "Setup" } | Select-Object -First 1
-          $blockmap = Get-ChildItem -Path release -File -Filter "*.blockmap" | Select-Object -First 1
-          $latest = Get-ChildItem -Path release -File -Filter "latest.yml" | Select-Object -First 1
+          $installer = Get-Item -LiteralPath "release/6FB-Content-Studio-Setup-$version.exe" -ErrorAction SilentlyContinue
+          $portable = Get-Item -LiteralPath "release/6FB-Content-Studio-$version.exe" -ErrorAction SilentlyContinue
+          $blockmap = Get-Item -LiteralPath "release/6FB-Content-Studio-Setup-$version.exe.blockmap" -ErrorAction SilentlyContinue
+          $latest = Get-Item -LiteralPath "release/latest.yml" -ErrorAction SilentlyContinue
 
           if (-not $installer) { Write-Error "Missing Windows installer artifact"; exit 1 }
           if (-not $portable) { Write-Error "Missing Windows portable artifact"; exit 1 }
@@ -101,6 +184,50 @@ jobs:
 
           $utf8NoBom = New-Object System.Text.UTF8Encoding $false
           [System.IO.File]::AppendAllText($env:GITHUB_ENV, "VERSION=$version`n", $utf8NoBom)
+
+      - name: Verify Windows Authenticode signatures
+        shell: powershell
+        env:
+          WINDOWS_PUBLISHER_DN: ${{ vars.WINDOWS_PUBLISHER_DN }}
+        run: |
+          $paths = @(
+            "release/win-unpacked/6FB Content Studio.exe",
+            "release/6FB-Content-Studio-Setup-$env:VERSION.exe",
+            "release/6FB-Content-Studio-$env:VERSION.exe"
+          )
+          .\scripts\verify-windows-authenticode.ps1 -Path $paths -ExpectedPublisherDn $env:WINDOWS_PUBLISHER_DN
+          node scripts/verify-windows-release-metadata.cjs `
+            "release/win-unpacked/resources/app-update.yml" `
+            "release/latest.yml" `
+            "release/6FB-Content-Studio-Setup-$env:VERSION.exe" `
+            "$env:VERSION" `
+            "$env:WINDOWS_PUBLISHER_DN"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\scripts\test-windows-authenticode-tamper.ps1 `
+            -SignedArtifactPath "release/6FB-Content-Studio-Setup-$env:VERSION.exe" `
+            -ExpectedPublisherDn $env:WINDOWS_PUBLISHER_DN
+
+      - name: Record signed Windows hashes
+        id: windows-hashes
+        shell: powershell
+        run: |
+          $installer = (Get-FileHash -LiteralPath "release/6FB-Content-Studio-Setup-$env:VERSION.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $portable = (Get-FileHash -LiteralPath "release/6FB-Content-Studio-$env:VERSION.exe" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $blockmap = (Get-FileHash -LiteralPath "release/6FB-Content-Studio-Setup-$env:VERSION.exe.blockmap" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $metadata = (Get-FileHash -LiteralPath "release/latest.yml" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $publisherDn = $env:WINDOWS_PUBLISHER_DN
+          $utf8NoBom = New-Object System.Text.UTF8Encoding $false
+          [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "installer_sha256=$installer`n", $utf8NoBom)
+          [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "portable_sha256=$portable`n", $utf8NoBom)
+          [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "publisher_dn=$publisherDn`n", $utf8NoBom)
+          [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "blockmap_sha256=$blockmap`n", $utf8NoBom)
+          [System.IO.File]::AppendAllText($env:GITHUB_OUTPUT, "metadata_sha256=$metadata`n", $utf8NoBom)
+          Write-Host "Signed installer SHA-256: $installer"
+          Write-Host "Signed portable SHA-256: $portable"
+          Write-Host "Signed installer blockmap SHA-256: $blockmap"
+          Write-Host "Signed updater metadata SHA-256: $metadata"
+        env:
+          WINDOWS_PUBLISHER_DN: ${{ vars.WINDOWS_PUBLISHER_DN }}
 
       - name: Smoke Windows app launch
         shell: powershell

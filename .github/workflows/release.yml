@@ -209,6 +209,9 @@ jobs:
   release-windows:
     needs: validate-tag
     uses: ./.github/workflows/release-windows.yml
+    permissions:
+      contents: read
+      id-token: write
     with:
       version: ${{ needs.validate-tag.outputs.version }}
 
@@ -343,8 +346,59 @@ jobs:
           RELEASE_INCLUDE_DRAFT: '1'
         run: bash scripts/smoke-mac-release-dmg.sh "$GITHUB_REF_NAME"
 
+  certify-staged-windows:
+    needs:
+      - stage-release
+      - release-windows
+    runs-on: windows-2025
+
+    steps:
+      - name: Checkout release smoke
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Verify staged Windows executables
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          RELEASE_ID: ${{ needs.stage-release.outputs.release_id }}
+          WINDOWS_PUBLISHER_DN: ${{ needs.release-windows.outputs.publisher_dn }}
+          EXPECTED_INSTALLER_SHA256: ${{ needs.release-windows.outputs.installer_sha256 }}
+          EXPECTED_PORTABLE_SHA256: ${{ needs.release-windows.outputs.portable_sha256 }}
+          EXPECTED_BLOCKMAP_SHA256: ${{ needs.release-windows.outputs.blockmap_sha256 }}
+          EXPECTED_METADATA_SHA256: ${{ needs.release-windows.outputs.metadata_sha256 }}
+        run: |
+          $destination = Join-Path $env:RUNNER_TEMP "staged-windows"
+          .\scripts\download-windows-release-assets.ps1 `
+            -Tag $env:GITHUB_REF_NAME `
+            -ReleaseId $env:RELEASE_ID `
+            -OutputDirectory $destination
+          $version = $env:GITHUB_REF_NAME.TrimStart("v")
+          $paths = @(
+            (Join-Path $destination "6FB-Content-Studio-Setup-$version.exe"),
+            (Join-Path $destination "6FB-Content-Studio-$version.exe")
+          )
+          .\scripts\verify-windows-authenticode.ps1 -Path $paths -ExpectedPublisherDn $env:WINDOWS_PUBLISHER_DN
+          node scripts/verify-windows-release-metadata.cjs `
+            --latest-only `
+            (Join-Path $destination "latest.yml") `
+            $paths[0] `
+            $version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $installerHash = (Get-FileHash -LiteralPath $paths[0] -Algorithm SHA256).Hash.ToLowerInvariant()
+          $portableHash = (Get-FileHash -LiteralPath $paths[1] -Algorithm SHA256).Hash.ToLowerInvariant()
+          $blockmapHash = (Get-FileHash -LiteralPath (Join-Path $destination "6FB-Content-Studio-Setup-$version.exe.blockmap") -Algorithm SHA256).Hash.ToLowerInvariant()
+          $metadataHash = (Get-FileHash -LiteralPath (Join-Path $destination "latest.yml") -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($installerHash -ne $env:EXPECTED_INSTALLER_SHA256) { throw "Staged installer SHA-256 mismatch" }
+          if ($portableHash -ne $env:EXPECTED_PORTABLE_SHA256) { throw "Staged portable SHA-256 mismatch" }
+          if ($blockmapHash -ne $env:EXPECTED_BLOCKMAP_SHA256) { throw "Staged blockmap SHA-256 mismatch" }
+          if ($metadataHash -ne $env:EXPECTED_METADATA_SHA256) { throw "Staged metadata SHA-256 mismatch" }
+
   publish-release:
-    needs: smoke-staged-mac
+    needs:
+      - smoke-staged-mac
+      - certify-staged-windows
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -370,3 +424,49 @@ jobs:
 
       - name: Smoke public macOS DMG
         run: bash scripts/smoke-mac-release-dmg.sh "$GITHUB_REF_NAME"
+
+  certify-published-windows:
+    needs:
+      - publish-release
+      - release-windows
+    runs-on: windows-2025
+
+    steps:
+      - name: Checkout public release smoke
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Verify anonymous public Windows executables
+        shell: powershell
+        env:
+          WINDOWS_PUBLISHER_DN: ${{ needs.release-windows.outputs.publisher_dn }}
+          EXPECTED_INSTALLER_SHA256: ${{ needs.release-windows.outputs.installer_sha256 }}
+          EXPECTED_PORTABLE_SHA256: ${{ needs.release-windows.outputs.portable_sha256 }}
+          EXPECTED_BLOCKMAP_SHA256: ${{ needs.release-windows.outputs.blockmap_sha256 }}
+          EXPECTED_METADATA_SHA256: ${{ needs.release-windows.outputs.metadata_sha256 }}
+        run: |
+          $destination = Join-Path $env:RUNNER_TEMP "public-windows"
+          .\scripts\download-windows-release-assets.ps1 `
+            -Tag $env:GITHUB_REF_NAME `
+            -OutputDirectory $destination
+          $version = $env:GITHUB_REF_NAME.TrimStart("v")
+          $paths = @(
+            (Join-Path $destination "6FB-Content-Studio-Setup-$version.exe"),
+            (Join-Path $destination "6FB-Content-Studio-$version.exe")
+          )
+          .\scripts\verify-windows-authenticode.ps1 -Path $paths -ExpectedPublisherDn $env:WINDOWS_PUBLISHER_DN
+          node scripts/verify-windows-release-metadata.cjs `
+            --latest-only `
+            (Join-Path $destination "latest.yml") `
+            $paths[0] `
+            $version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $installerHash = (Get-FileHash -LiteralPath $paths[0] -Algorithm SHA256).Hash.ToLowerInvariant()
+          $portableHash = (Get-FileHash -LiteralPath $paths[1] -Algorithm SHA256).Hash.ToLowerInvariant()
+          $blockmapHash = (Get-FileHash -LiteralPath (Join-Path $destination "6FB-Content-Studio-Setup-$version.exe.blockmap") -Algorithm SHA256).Hash.ToLowerInvariant()
+          $metadataHash = (Get-FileHash -LiteralPath (Join-Path $destination "latest.yml") -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($installerHash -ne $env:EXPECTED_INSTALLER_SHA256) { throw "Public installer SHA-256 mismatch" }
+          if ($portableHash -ne $env:EXPECTED_PORTABLE_SHA256) { throw "Public portable SHA-256 mismatch" }
+          if ($blockmapHash -ne $env:EXPECTED_BLOCKMAP_SHA256) { throw "Public blockmap SHA-256 mismatch" }
+          if ($metadataHash -ne $env:EXPECTED_METADATA_SHA256) { throw "Public metadata SHA-256 mismatch" }
