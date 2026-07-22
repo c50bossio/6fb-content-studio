@@ -56,8 +56,12 @@ Last updated: 2026-07-22
   workflow can make the release public only after both artifact sets exist and
   the staged macOS DMG passes stapling, signature, Gatekeeper, and version
   checks. The tracked release-note file is the public release body.
-- At v1.5.46 preparation time, no `v1.5.46` tag, GitHub Release, workflow run,
-  or public artifact exists.
+- No `v1.5.46` tag, GitHub Release, or public artifact exists. Non-publishing
+  Windows run `29935424714` passed on exact branch head
+  `4a8eeda9b3b94d81cd0c6b49ae02799bf670c2d8`, including runtime build, full
+  suite, v1.5.46 package, packaged-app launch/system-health smoke, and staging
+  of four files. Detailed loop evidence is in
+  `delivery/evidence/2026-07-22-v1.5.46-release-prep.md`.
 - The current Windows packaging path does not configure or claim Authenticode
   signing. Owner acceptance or a signing change is required before tagging;
   workflow smoke and independent downloaded-installer acceptance remain

@@ -32,8 +32,8 @@ independent platform publication with a coordinated, draft-first release: both
 platform jobs must pass, the draft must contain exactly eight non-empty assets,
 the staged macOS DMG must pass stapling/signature/Gatekeeper/version checks, and
 only then may the release become public. A final anonymous public-DMG smoke is
-part of workflow completion. No `v1.5.46` tag, release, workflow run, installer,
-or updater publication exists yet.
+part of workflow completion. No `v1.5.46` tag, release, public installer, or
+updater publication exists yet.
 
 ## Release preparation (2026-07-22)
 
@@ -44,6 +44,14 @@ or updater publication exists yet.
   promotion, and anonymous public-download smoke.
 - Completed: converted the Windows workflow to a reusable, non-publishing job
   with a manual pre-tag dry-run path; removed independent Windows publication.
+- Completed: Windows-host run `29935424714` passed on exact branch head
+  `4a8eeda9b3b94d81cd0c6b49ae02799bf670c2d8`: runtime build, full suite,
+  bundled-runtime validation, v1.5.46 package, packaged-app launch/system-health
+  smoke, and four-file artifact staging all passed.
+- Completed: the Windows loop found and fixed PowerShell `-p` argument binding
+  and the documentation test's missing-ripgrep dependency without skipping or
+  weakening either check; both failed runs and the clean third run are recorded
+  in `delivery/evidence/2026-07-22-v1.5.46-release-prep.md`.
 - Completed: local full suite, dependency audit, workflow YAML parse, shell
   syntax, documentation contracts, and normal/strict/portable workspace
   validators all pass on the preparation branch.
