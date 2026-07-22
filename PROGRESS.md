@@ -32,9 +32,10 @@ all workspace modes, and unsigned Windows preflight run `29940447111`. No
 `v1.5.46` tag, release, public installer, or updater publication exists.
 
 Because no exportable Windows signing certificate exists, the current candidate
-branch `codex/v1.5.46-windows-signing` at `e12e29c3a1cc625751b2ccb70894777c50d0eb32`
-is open as draft pull request #29 and prepares Azure Artifact Signing through
-GitHub OIDC. It signs inside electron-builder, verifies every exact signed file,
+branch `codex/v1.5.46-windows-signing` contains reviewed implementation commit
+`e12e29c3a1cc625751b2ccb70894777c50d0eb32`, is open as draft pull request #29,
+and prepares Azure Artifact Signing through GitHub OIDC. It signs inside
+electron-builder, verifies every exact signed file,
 rejects unsigned and tampered fixtures, pins the expected publisher DN, and
 certifies staged and anonymously downloaded Windows assets plus updater metadata.
 This candidate has local proof only; it has not performed or claimed an Azure
