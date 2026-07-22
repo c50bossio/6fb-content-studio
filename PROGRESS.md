@@ -21,8 +21,10 @@ first automated review's three actionable findings and 10 of the subsequent 11
 CodeRabbit findings are repaired and verified locally. The remaining 44 px CSS
 suggestion was deliberately retained because the acceptance contract and clean
 all-width screenshots require every visible interaction target to remain at
-least 44 px. The final follow-up is not yet pushed. No merge, tag, deployment,
-release, social post, or other production mutation was made.
+least 44 px. The final verified follow-up is committed and pushed at
+`9efa6a05a3dd4599704d95c69e00abb3f33a0a61`; pull request #25 is open and
+mergeable, with its external CodeRabbit check pending. No merge, tag,
+deployment, release, social post, or other production mutation was made.
 
 ## Last session (2026-07-21)
 
@@ -64,9 +66,8 @@ release, social post, or other production mutation was made.
 - Blocked: no local code or instruction blocker. Independent Windows-host
   execution and a fresh `v1.5.45` installer certification were outside this
   macOS local audit and are not claimed.
-- Next: commit and push the verified follow-up, run final automated/independent
-  re-review, and stop before merge, tag, deployment, or release without explicit
-  approval.
+- Next: review any new external pull-request feedback, then stop before merge,
+  tag, deployment, or release without explicit approval.
 
 ## Decisions made
 
