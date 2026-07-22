@@ -7,10 +7,13 @@ Last updated: 2026-07-22
 
 ## Current status
 
-Public release `v1.5.45` is available from merged `origin/main` commit
-`14be3d825f28f91edfaf18cdaf6d334e545aeeb2`; both platform workflows succeeded
-and eight assets are public. The most recent independent public-DMG signature,
-launch, and real-Mac workflow certification remains `v1.5.44`.
+Public release `v1.5.46` is available for macOS arm64 from annotated tag
+`v1.5.46`, which resolves to exact merged `origin/main` commit
+`f81b63b7b9400fb76cd37d399f366b9a3fbb2aed`. Production workflow run
+`29950002444` passed all six jobs. Exactly four Mac assets are public; an
+independent anonymous DMG download matched its published SHA-256, passed
+stapling, strict signature, Gatekeeper, version, and disposable-profile launch
+checks. Windows remains unpublished and deferred pending Mac adoption.
 
 The reviewed complete-project audit is merged to `origin/main` at
 `5a179c49b181aa401f624825413600209f06d296` through pull request #25.
@@ -32,15 +35,13 @@ passed, but the owner subsequently chose macOS arm64 as the only near-term
 distribution platform. Windows and its signing cost are deferred until Mac
 adoption justifies the additional platform.
 
-The macOS-only release change is merged through pull request #30 at exact
-`origin/main` commit `e1fe4a9d94adb1aa59618a14dfd888257467fe5d`.
-Its tree matches final reviewed pull-request head
-`c9902ef3e34da4fe143594036a2477d5e31e8051`. The release contract requires
-exactly four Mac artifacts, staged-DMG certification before publication, and an
-anonymous public-DMG smoke afterward. Draft Azure-signing pull request #29 was
-closed without merge. The signed-in Azure tenant showed zero subscriptions at
-the decision point, and no Artifact Signing or repository signing setup occurred.
-No `v1.5.46` tag, release, public installer, or updater publication exists.
+The macOS-only release change merged through pull request #30 at release-code
+anchor `e1fe4a9d94adb1aa59618a14dfd888257467fe5d`; pull request #31 added only
+the verified handoff record before final tag target
+`f81b63b7b9400fb76cd37d399f366b9a3fbb2aed`. Draft Azure-signing pull request
+#29 was closed without merge. The signed-in Azure tenant showed zero
+subscriptions at the decision point, and no Artifact Signing or repository
+signing setup occurred. Azure and Windows signing were not used for v1.5.46.
 
 ## Release preparation (2026-07-22)
 
@@ -88,16 +89,24 @@ No `v1.5.46` tag, release, public installer, or updater publication exists.
   audit, Actionlint 1.7.12, shell syntax, negative public-manifest probes, and
   normal/strict/portable workspace validation on that exact clean
   `origin/main`. All passed; the dependency audit reported zero vulnerabilities.
-- Completed: confirmed the six required Apple/GitHub Actions secret names are
-  present without reading their values, and confirmed `v1.5.46` remains unused
-  locally and on GitHub.
-- Blocked for tagging: at approval time, re-fetch and record exact live
-  `origin/main`, confirm it contains verified release-code anchor
-  `e1fe4a9d94adb1aa59618a14dfd888257467fe5d` with no later runtime or release
-  workflow change, and obtain separate explicit owner approval.
-- Next: stop before tagging. After that re-pin and approval, push only the
-  approved annotated tag and monitor the Mac-only signing, notarization,
-  staged-DMG, publication, and anonymous public-download gates.
+- Completed: confirmed the six required Apple/GitHub Actions secret names were
+  present without reading values, re-pinned exact live `origin/main`, and
+  received explicit owner approval for annotated tag `v1.5.46`.
+- Completed: pushed the annotated tag at exact
+  `f81b63b7b9400fb76cd37d399f366b9a3fbb2aed`; production run `29950002444`
+  passed tag validation, runtime build, full suite, signing, notarization,
+  exact draft staging, staged-DMG smoke, publication, anonymous manifest, and
+  public-DMG smoke.
+- Completed: independently downloaded the public 417,493,620-byte DMG,
+  matched SHA-256
+  `d1f1b1aad04ba25a70a945b7286f67e4d7da718d100b6cf47fcf860f2b48bde8`,
+  passed stapling, strict signature, Gatekeeper, version `1.5.46`, and launched
+  the renderer from a disposable profile. Updater metadata hash-matched and
+  references only the arm64 ZIP.
+- Blocked: no release blocker remains. Windows publication remains a separate
+  future decision based on measured Mac adoption.
+- Next: monitor Mac adoption and support signals; do not create a Windows
+  release without a new explicit product and signing decision.
 
 ## Last session (2026-07-21)
 
@@ -142,8 +151,9 @@ No `v1.5.46` tag, release, public installer, or updater publication exists.
 - Blocked: no local code or instruction blocker. Independent Windows-host
   execution and a fresh `v1.5.45` installer certification were outside this
   macOS local audit and are not claimed.
-- Next: stop before tagging, deployment, release publication, scheduler runs,
-  or social posting until the owner explicitly approves that separate gate.
+- Superseded: that audit session stopped before tagging or publication. The
+  current status above records the later approved v1.5.46 release; scheduler
+  runs and social posting remain separate and were not performed.
 
 ## Decisions made
 
@@ -181,5 +191,3 @@ No `v1.5.46` tag, release, public installer, or updater publication exists.
 ## Open questions
 
 - What measurable Mac adoption threshold should trigger reconsidering Windows?
-- Independent public-DMG launch/runtime remains a separate post-publication
-  certification gate.

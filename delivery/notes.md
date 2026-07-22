@@ -16,17 +16,17 @@ Last updated: 2026-07-22
 - Pull request #18 merged to `main` as
   `9b792a1e9aac312c5599dbff7220e62103e432f5` on 2026-07-21.
 - Annotated tag `v1.5.43` resolves to that exact merge commit.
-- `v1.5.43` and `v1.5.44` are superseded by `v1.5.45` as the current non-draft,
-  non-prerelease public release.
-- The macOS and Windows release workflows both completed successfully on the
-  exact tagged commit and published all eight expected assets.
-- Independent public-download certification verified the DMG and updater ZIP
+- `v1.5.43`, `v1.5.44`, and `v1.5.45` are superseded by `v1.5.46` as the current
+  non-draft, non-prerelease public release.
+- For v1.5.43, the macOS and Windows release workflows both completed
+  successfully on the exact tagged commit and published all eight expected assets.
+- Independent v1.5.43 public-download certification verified the DMG and updater ZIP
   checksums, updater metadata, notarization stapling, strict code signature,
   Gatekeeper acceptance, application identity, embedded runtime, FFmpeg,
   FFprobe, and MLX Metal library.
-- Independent Windows-host execution was not part of this macOS closeout. The
-  Windows claim is limited to successful workflow execution, published assets,
-  and public checksum evidence.
+- Independent Windows-host execution was not part of the v1.5.43 macOS
+  closeout. That historical Windows claim is limited to successful workflow
+  execution, published assets, and public checksum evidence.
 - Pull request #21 merged to `main` as
   `1949b06bb9f140210b2c94a93d2de899fe73e10f` on 2026-07-21.
 - Annotated tag `v1.5.44` resolves to that exact merge commit. The release was
@@ -43,26 +43,30 @@ Last updated: 2026-07-22
 - macOS workflow run `29867007398` and Windows workflow run `29867008468`
   completed successfully for that exact commit. The public release contains all
   eight expected macOS and Windows assets and updater metadata.
-- This audit verified the live release metadata and workflow conclusions but did
-  not independently download and certify the 417 MB `v1.5.45` DMG. The most
-  recent independent DMG launch/signature certification remains `v1.5.44`.
+- This audit did not independently download the 417 MB `v1.5.45` DMG. The most
+  recent independent DMG launch/signature certification is now `v1.5.46`.
 - Historical `v1.5.46` preparation baseline is exact `origin/main` commit
   `1ca93cf2abaf6b4be629c5203d8dbee3fc00b69a`, which includes pull requests #25
   through #28. Pull request #30 merged the macOS-only change as exact
   `origin/main` commit `e1fe4a9d94adb1aa59618a14dfd888257467fe5d`.
   Its tree matches final reviewed head
   `c9902ef3e34da4fe143594036a2477d5e31e8051`; this is the verified release-code
-  anchor. The exact tag target must be resolved from live `origin/main` at
-  approval time and must have no later runtime or release workflow change.
+  anchor. The exact tag target was then resolved from live `origin/main` as
+  `f81b63b7b9400fb76cd37d399f366b9a3fbb2aed`; later changes before tagging
+  were limited to the reviewed handoff documents.
 - `delivery/checklists/v1.5.46-release-readiness.md` and
   `delivery/release-notes/v1.5.46.md` define the release candidate gates and
-  draft copy. They do not authorize or claim a tag or publication.
-- v1.5.46 is now macOS arm64 only. The coordinated workflow can make the release
-  public only after exactly four Mac artifacts exist and the staged DMG passes
+  public copy. The checklist now records completed tag and publication gates.
+- v1.5.46 is public for macOS arm64 only. Coordinated run `29950002444` passed
+  all six jobs and published exactly four Mac artifacts after staged-DMG
   stapling, signature, Gatekeeper, and version checks. The tracked release-note
   file is the public release body.
-- No `v1.5.46` tag, GitHub Release, or public artifact exists. Non-publishing
-  Windows run `29937539545` is the first clean semantic preflight and passed on
+- Annotated tag `v1.5.46` resolves to exact approved commit
+  `f81b63b7b9400fb76cd37d399f366b9a3fbb2aed`. The public release was published
+  at 2026-07-22 19:29:54 UTC. Independent anonymous download certification
+  matched the DMG and updater-metadata digests, passed notarization stapling,
+  strict app signature, Gatekeeper, version, and disposable-profile launch.
+- Non-publishing Windows run `29937539545` is the first clean semantic preflight and passed on
   exact code commit `95a34de2faf8cf53d42a0318580a79601502fa23`, including
   runtime build, strict source and frozen UTF-8 probes, full suite, v1.5.46
   package, packaged-app launch/system-health smoke, and upload of four files.
@@ -90,8 +94,11 @@ Last updated: 2026-07-22
   Actionlint 1.7.12, shell syntax, exact-four-asset and negative mutation probes,
   and normal/strict/portable workspace validation in a clean detached worktree.
   The six required workflow secret names were present without reading values.
-  No main-branch workflow ran for the merge, so this exact-main local proof is
-  the current pre-tag certification source.
+  No main-branch workflow ran for the merge, so this exact-main local proof was
+  the pre-tag certification source before the successful production tag run.
+- Public asset sizes and SHA-256 digests are recorded in
+  `delivery/evidence/2026-07-22-v1.5.46-public-release.md`. No Windows asset or
+  general `latest.yml` is present; `latest-mac.yml` points only to the arm64 ZIP.
 
 ## Open questions
 
