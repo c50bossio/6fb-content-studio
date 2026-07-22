@@ -46,10 +46,14 @@ Last updated: 2026-07-22
 - This audit verified the live release metadata and workflow conclusions but did
   not independently download and certify the 417 MB `v1.5.45` DMG. The most
   recent independent DMG launch/signature certification remains `v1.5.44`.
-- Prepared `v1.5.46` baseline is exact `origin/main` commit
+- Historical `v1.5.46` preparation baseline is exact `origin/main` commit
   `1ca93cf2abaf6b4be629c5203d8dbee3fc00b69a`, which includes pull requests #25
-  through #28. The final tag target must be the exact verified `origin/main`
-  commit after the macOS-only change is reviewed and merged.
+  through #28. Pull request #30 merged the macOS-only change as exact
+  `origin/main` commit `e1fe4a9d94adb1aa59618a14dfd888257467fe5d`.
+  Its tree matches final reviewed head
+  `c9902ef3e34da4fe143594036a2477d5e31e8051`; this is the verified release-code
+  anchor. The exact tag target must be resolved from live `origin/main` at
+  approval time and must have no later runtime or release workflow change.
 - `delivery/checklists/v1.5.46-release-readiness.md` and
   `delivery/release-notes/v1.5.46.md` define the release candidate gates and
   draft copy. They do not authorize or claim a tag or publication.
@@ -81,11 +85,16 @@ Last updated: 2026-07-22
 - The signed-in Azure tenant showed zero subscriptions at the decision point.
   No Artifact Signing resource, repository signing setup, signing workflow, tag,
   GitHub Release, or public v1.5.46 artifact was created during that exploration.
+- Exact merged main `e1fe4a9d94adb1aa59618a14dfd888257467fe5d`
+  passed a fresh macOS runtime rebuild, full suite, zero-vulnerability audit,
+  Actionlint 1.7.12, shell syntax, exact-four-asset and negative mutation probes,
+  and normal/strict/portable workspace validation in a clean detached worktree.
+  The six required workflow secret names were present without reading values.
+  No main-branch workflow ran for the merge, so this exact-main local proof is
+  the current pre-tag certification source.
 
 ## Open questions
 
-- What exact post-preparation `origin/main` commit will be approved as the
-  `v1.5.46` tag target?
 - What adoption threshold should trigger reconsidering a Windows release?
 
 ## Recent decisions
