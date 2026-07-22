@@ -1,14 +1,14 @@
-# Proposal: Windows reconsideration threshold
+# Decision: Windows reconsideration threshold
 
 Date: 2026-07-22
 
-Status: pending explicit owner approval
+Status: approved through pull request #35
 
-## Proposed decision
+## Decision
 
-Use a provisional evidence gate to decide when Windows deserves a fresh
-business, signing, certification, and support review. Reconsider Windows when
-either the standard adoption gate or the direct-demand override is met.
+Use the following provisional evidence gate to decide when Windows deserves a
+fresh business, signing, certification, and support review. Reconsider Windows
+when either the standard adoption gate or the direct-demand override is met.
 
 ### Standard adoption gate
 
@@ -54,13 +54,13 @@ a tag, a GitHub Release change, updater publication, or customer distribution.
 ## Why these thresholds
 
 This is a bottom-up pilot review trigger, not an industry benchmark or evidence
-of product-market fit. Twenty verified activations creates a small but
+of product-market fit. Twenty verified activations create a small but
 non-trivial Mac cohort; a 50% activation floor and 80% outcome-coverage floor
 prevent selection and missing-data false greens. Requiring 10 mature
 participants and 50% four-week retention demands some evidence of repeat value,
 not downloads, but the estimate remains noisy: at the minimum sample it is only
 5 retained people. Every review must report retained count and rate together.
-Five current Windows commitments supplies platform-specific demand, while the
+Five current Windows commitments supply platform-specific demand, while the
 10-person override recognizes unusually strong direct demand. The blocker
 guardrails prevent platform expansion while the core Mac experience is unstable.
 
@@ -75,7 +75,7 @@ recorded before evaluating the next window.
 ## Metric source
 
 Definitions, exclusions, privacy rules, and cadence are controlled by
-`product/briefs/mac-adoption-measurement.md`. Aggregate observations belong in
+`../briefs/mac-adoption-measurement.md`. Aggregate observations belong in
 `product/research/`; participant identities remain in an owner-controlled
 source outside the repository.
 

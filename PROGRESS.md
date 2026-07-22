@@ -105,23 +105,23 @@ signing setup occurred. Azure and Windows signing were not used for v1.5.46.
   references only the arm64 ZIP.
 - Blocked: no release blocker remains. Windows publication remains a separate
   future decision based on measured Mac adoption.
-- Drafted: a proposed framework for frozen-cohort activation, four-week retained
-  creation, outcome coverage, qualified Windows demand, blocker guardrails,
+- Completed and owner-approved through pull request #35: a framework for
+  frozen-cohort activation, four-week retained creation, outcome coverage,
+  qualified Windows demand, blocker guardrails,
   privacy boundaries, and an aggregate-only scorecard. Current adoption values
   remain not measured; GitHub downloads are distribution context only.
-- Proposal pending owner approval: open a Windows business/signing review after
+- Decision: open a Windows business/signing review after
   the standard gate (20 verified mature-cohort activations, at least 50%
   activation, at least 80% outcome coverage, at least 10 four-week-eligible
   participants with at least 50% retention, 5 qualified Windows commitments in
   30 days, and clean guardrails) or a weekly 10-commitment direct-demand
   override that is exempt from Mac-cohort maturity. Neither gate would authorize
   a Windows release.
-- Blocked for measurement: the numeric gate is not approved, and no
-  owner-controlled pilot roster or weekly check-in source is recorded. Unknown
-  adoption values must remain not measured.
-- Next: approve or revise the proposed gate, then establish the external pilot
-  roster and first reviewed invitations. Do not add telemetry, contact
-  customers, or create a Windows release without separate approval.
+- Blocked for measurement: no owner-controlled pilot roster or weekly check-in
+  source is recorded. Unknown adoption values must remain not measured.
+- Next: establish the external pilot roster and first reviewed invitations. Do
+  not add telemetry, contact customers, or create a Windows release without
+  separate approval.
 
 ## Last session (2026-07-21)
 
@@ -202,8 +202,10 @@ signing setup occurred. Azure and Windows signing were not used for v1.5.46.
   feedback or usage evidence is yet recorded.
 - Ship the near-term product for macOS arm64 only. Defer Windows distribution,
   support, and Authenticode signing until Mac adoption supplies evidence for it.
+- Use the approved provisional frozen-cohort activation, four-week retention,
+  outcome coverage, Windows demand, and blocker guardrails for the Mac pilot.
+  Keep Windows reconsideration separate from signing spend and release approval.
 
 ## Open questions
 
 - Who owns the non-repository pilot roster and weekly participant check-in?
-- Will the owner approve or revise the proposed numeric review gate?
