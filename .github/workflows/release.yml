@@ -70,6 +70,8 @@ jobs:
         run: npm run runtime:mac
 
       - name: Run full test suite
+        env:
+          SIXFB_TEST_PYTHON: ${{ github.workspace }}/python/.build-venv/bin/python
         run: npm test
 
       - name: Validate bundled runtime
