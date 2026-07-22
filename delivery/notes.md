@@ -67,6 +67,12 @@ Last updated: 2026-07-22
   negative paths because Windows `charmap` failures satisfied exit-code-only
   assertions. Python stdio, Electron pipe decoding, Windows CI, and source and
   frozen regression tests now enforce valid UTF-8 and exact intended errors.
+- Exact final release-coordinator code commit
+  `b06b0947fab202eb31099567e9dc32a340bb56eb` disables persisted credentials in
+  every checkout. Its complete local suite, dependency audit, actionlint, YAML,
+  shell, and workspace checks pass. The post-Windows delta is limited to this
+  coordinator hardening and its contract; the reusable Windows workflow and
+  application/runtime code remain those tested in run `29937539545`.
 - The current Windows packaging path does not configure or claim Authenticode
   signing. Owner acceptance or a signing change is required before tagging;
   workflow smoke and independent downloaded-installer acceptance remain

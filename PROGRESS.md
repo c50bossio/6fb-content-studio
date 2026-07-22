@@ -60,7 +60,11 @@ updater publication exists yet.
 - Completed: local full suite, source and rebuilt frozen UTF-8 probes, dependency
   audit, actionlint, workflow YAML parse, shell syntax, documentation contracts,
   and normal/strict/portable workspace validators all pass on the exact tested
-  code commit. Independent code review found no actionable defect.
+  final coordinator code commit
+  `b06b0947fab202eb31099567e9dc32a340bb56eb`. Every release checkout now
+  disables persisted credentials, enforced by a complete-count contract. The
+  reusable Windows workflow and application/runtime code remain identical to
+  Windows-tested commit `95a34de2faf8cf53d42a0318580a79601502fa23`.
 - Blocked for tagging: merge the preparation change, run and record the Windows
   workflow on the exact final main commit, and decide whether v1.5.46 may ship
   with unsigned Windows installers or requires Authenticode signing.
