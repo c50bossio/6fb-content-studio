@@ -12,6 +12,7 @@ const requiredSources = [
   'scripts/build-pipeline-runtime.ps1',
   '.github/workflows/release.yml',
   '.github/workflows/release-windows.yml',
+  'scripts/test-docs.cjs',
   'scripts/test-python.cjs',
   'scripts/validate-workspace.cjs',
   'take-screenshots.mjs',
@@ -36,6 +37,7 @@ const [
   windowsRuntimeBuilder,
   releaseWorkflow,
   windowsRelease,
+  docsTest,
   pythonTest,
   workspaceValidator,
   screenshotHarness,
@@ -76,6 +78,8 @@ assert.match(windowsRuntimeBuilder, /if \(\$LASTEXITCODE -ne 0\)/, 'Windows runt
 assert.match(windowsRuntimeBuilder, /Invoke-NativeCommand -FilePath "node" -ArgumentList @\("-p"/, 'PowerShell must pass Node print flags as explicit native arguments');
 assert.match(windowsRuntimeBuilder, /IsNullOrWhiteSpace\(\$FfmpegStatic\)/, 'Windows runtime discovery must reject empty ffmpeg paths before Test-Path');
 assert.match(windowsRelease, /name: Run full test suite[\s\S]*?SIXFB_TEST_PYTHON[\s\S]*?npm test/, 'Windows releases must test with the populated runtime venv');
+assert.doesNotMatch(docsTest, /execFileSync\(['"]rg['"]/, 'Documentation tests must not require ripgrep on Windows runners');
+assert.match(docsTest, /fs\.readdirSync\(absoluteDirectory, \{ withFileTypes: true \}\)/, 'Documentation tests must enumerate Markdown files portably');
 assert.match(windowsRelease, /workflow_call:/, 'Windows release validation must remain callable from the coordinated release workflow');
 assert.match(windowsRelease, /workflow_dispatch:/, 'Windows release validation must support a non-publishing pre-tag dry run');
 assert.match(windowsRelease, /RELEASE_VERSION_INPUT: \$\{\{ inputs\.version \}\}/, 'Workflow inputs must enter PowerShell through the environment, not source interpolation');
