@@ -287,13 +287,13 @@ function NewPostModal({ draft, onClose, onSave }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="w-[440px] bg-[#111] border border-[#222] rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+      <div role="dialog" aria-modal="true" aria-labelledby="schedule-post-title" className="w-[440px] max-w-[calc(100vw-24px)] bg-[#111] border border-[#222] rounded-2xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#1c1c1c]">
           <div>
-            <h2 className="text-sm font-bold text-white">Schedule Post</h2>
+            <h2 id="schedule-post-title" className="text-sm font-bold text-white">Schedule Post</h2>
             {draft && <p className="mt-0.5 text-[10px] text-[#00C851]">From {draft.source === 'editor-export' ? 'Video Editor export' : 'Clip Extractor'}</p>}
           </div>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center text-[#444] hover:text-white transition-colors">
+          <button aria-label="Close schedule dialog" onClick={onClose} className="w-7 h-7 flex items-center justify-center text-[#444] hover:text-white transition-colors">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
             </svg>
@@ -505,8 +505,7 @@ export default function Scheduler({
       setSelectedPost(null);
     } else {
       // Non-IG: open in browser
-      const urls: Record<string, string> = { tiktok: 'https://www.tiktok.com/upload', youtube: 'https://studio.youtube.com/', linkedin: 'https://www.linkedin.com/feed/' };
-      (window as any).electronAPI.openPath(urls[post.platform] || 'https://www.instagram.com/');
+      void window.electronAPI.postToSocial(post.platform, { caption: post.caption, mediaPath: post.mediaPath });
     }
   };
 
@@ -575,14 +574,14 @@ export default function Scheduler({
       )}
 
       {/* Header */}
-      <div className="shrink-0 border-b border-[#1a1a1a] px-5 py-3.5 flex items-center gap-4">
+      <div className="shrink-0 border-b border-[#1a1a1a] px-3 sm:px-5 py-3.5 flex flex-wrap items-center gap-3 sm:gap-4">
         <div className="flex-1">
           <h1 className="text-sm font-bold text-white">Content Calendar</h1>
           <p className="text-[10px] text-[#444] mt-0.5">Plan and schedule your posts</p>
         </div>
 
         {/* Quick stats */}
-        <div className="flex items-center gap-4">
+        <div className="order-3 sm:order-none w-full sm:w-auto flex items-center justify-around sm:justify-start gap-4">
           {streak > 0 && (
             <div className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 border border-amber-500/20 rounded-xl">
               <span className="text-base">🔥</span>
@@ -629,7 +628,7 @@ export default function Scheduler({
       </div>
 
       {/* View tabs + nav */}
-      <div className="shrink-0 border-b border-[#1a1a1a] px-5 py-2 flex items-center gap-3">
+      <div className="shrink-0 border-b border-[#1a1a1a] px-3 sm:px-5 py-2 flex flex-wrap items-center gap-3">
         <div className="flex bg-[#141414] rounded-lg border border-[#1e1e1e] p-0.5">
           {(['month', 'week', 'queue'] as const).map(v => (
             <button key={v} onClick={() => setView(v)}
@@ -643,7 +642,7 @@ export default function Scheduler({
 
         {/* Month navigation */}
         {view === 'month' && (
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center justify-between sm:justify-start gap-2 ml-auto max-sm:w-full">
             <button onClick={() => setMonthOffset(o => o - 1)}
               className="w-7 h-7 flex items-center justify-center rounded-lg border border-[#1e1e1e] text-[#444] hover:text-white hover:border-[#333] transition-colors">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3"><polyline points="15 18 9 12 15 6"/></svg>

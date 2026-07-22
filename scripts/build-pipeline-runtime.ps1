@@ -1,6 +1,17 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+function Invoke-NativeCommand {
+  param(
+    [Parameter(Mandatory = $true)][string]$FilePath,
+    [Parameter(ValueFromRemainingArguments = $true)][string[]]$ArgumentList
+  )
+  & $FilePath @ArgumentList
+  if ($LASTEXITCODE -ne 0) {
+    throw "Native command failed with exit code ${LASTEXITCODE}: $FilePath $($ArgumentList -join ' ')"
+  }
+}
+
 $RootDir = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $PythonBin = if ($env:PYTHON_BIN) { $env:PYTHON_BIN } else { "python" }
 
@@ -27,8 +38,8 @@ $RuntimePipelineDir = Join-Path $RuntimeDir "pipeline"
 
 Push-Location $RootDir
 try {
-  $FfmpegStatic = (& node -p "require('ffmpeg-static')").Trim()
-  $FfprobeStatic = (& node -p "require('ffprobe-static').path").Trim()
+  $FfmpegStatic = (Invoke-NativeCommand node -p "require('ffmpeg-static')" | Out-String).Trim()
+  $FfprobeStatic = (Invoke-NativeCommand node -p "require('ffprobe-static').path" | Out-String).Trim()
 
   if (-not (Test-Path $FfmpegStatic -PathType Leaf)) {
     Write-Error "ffmpeg-static binary not found. Run npm install first."
@@ -40,42 +51,34 @@ try {
     exit 1
   }
 
-  & $PythonBin -m venv $VenvDir
+  Invoke-NativeCommand $PythonBin -m venv $VenvDir
   $VenvPython = Join-Path $VenvDir "Scripts/python.exe"
   $VenvPyinstaller = Join-Path $VenvDir "Scripts/pyinstaller.exe"
 
-  & $VenvPython -m pip install --upgrade pip setuptools wheel
-  & $VenvPython -m pip install pyinstaller
-  & $VenvPython -m pip install -r (Join-Path $ToolsDir "clip_extractor/requirements.txt")
+  Invoke-NativeCommand $VenvPython -m pip install --upgrade pip "setuptools<82" wheel
+  Invoke-NativeCommand $VenvPython -m pip install pyinstaller
+  Invoke-NativeCommand $VenvPython -m pip install -r (Join-Path $ToolsDir "clip_extractor/requirements.txt")
+  Invoke-NativeCommand $VenvPython -m pip check
 
   Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $BuildDir, $DistDir, $RuntimeDir
   New-Item -ItemType Directory -Force $RuntimeBinDir, $RuntimePipelineDir | Out-Null
 
-  & $VenvPyinstaller `
-    --noconfirm `
-    --clean `
-    --onedir `
-    --name 6fb-pipeline `
-    --distpath $DistDir `
-    --workpath $BuildDir `
-    --specpath $BuildDir `
-    --paths $ToolsDir `
-    --exclude-module torch `
-    --exclude-module torchvision `
-    --exclude-module torchaudio `
-    --exclude-module tensorflow `
-    --exclude-module jax `
-    --hidden-import clip_extractor.__main__ `
-    --collect-all mediapipe `
-    --collect-all cv2 `
-    --collect-all faster_whisper `
-    --collect-all ctranslate2 `
-    --collect-all tokenizers `
-    --collect-all av `
-    --collect-all huggingface_hub `
-    --add-data "$ToolsDir/clip_extractor/config.yaml;clip_extractor" `
-    --add-data "$ToolsDir/clip_extractor/models;clip_extractor/models" `
+  $PyinstallerArgs = @(
+    "--noconfirm", "--clean", "--onedir", "--name", "6fb-pipeline",
+    "--distpath", $DistDir, "--workpath", $BuildDir, "--specpath", $BuildDir,
+    "--paths", $ToolsDir,
+    "--exclude-module", "torch", "--exclude-module", "torchvision",
+    "--exclude-module", "torchaudio", "--exclude-module", "tensorflow",
+    "--exclude-module", "jax", "--hidden-import", "clip_extractor.__main__",
+    "--collect-all", "mediapipe", "--collect-all", "cv2",
+    "--collect-all", "faster_whisper", "--collect-all", "ctranslate2",
+    "--collect-all", "tokenizers", "--collect-all", "av",
+    "--collect-all", "huggingface_hub",
+    "--add-data", "$ToolsDir/clip_extractor/config.yaml;clip_extractor",
+    "--add-data", "$ToolsDir/clip_extractor/models;clip_extractor/models",
     "$ToolsDir/pipeline/full_pipeline.py"
+  )
+  Invoke-NativeCommand $VenvPyinstaller @PyinstallerArgs
 
   Copy-Item -Recurse -Force (Join-Path $DistDir "6fb-pipeline") $RuntimePipelineDir
   Copy-Item -Force $FfmpegStatic (Join-Path $RuntimeBinDir "ffmpeg.exe")

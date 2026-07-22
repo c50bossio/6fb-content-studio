@@ -7,43 +7,46 @@ Last updated: 2026-07-21
 
 ## Current status
 
-The folder-app operating layer is complete and validated around the existing
-application without moving or renaming runtime source paths. The dependency and
-macOS MLX runtime remediations were merged through pull request #18 at commit
-`9b792a1e9aac312c5599dbff7220e62103e432f5`.
+Public release `v1.5.45` is available from merged `origin/main` commit
+`14be3d825f28f91edfaf18cdaf6d334e545aeeb2`; both platform workflows succeeded
+and eight assets are public. The most recent independent public-DMG signature,
+launch, and real-Mac workflow certification remains `v1.5.44`.
 
-Guided Plan-to-Post shipped in public release `v1.5.44` from merged
-`origin/main` commit `1949b06bb9f140210b2c94a93d2de899fe73e10f`. Both macOS
-and Windows release workflows completed successfully and all eight expected
-public assets are available. A fresh macOS arm64 download matched the published
-SHA-256, passed DMG stapling and strict code-signature verification, and launched
-from an isolated profile as version `1.5.44`. The visible Plan-to-Clips handoff
-and the native-picker-to-Scheduler local draft flow also passed without
-content-generation or social-posting calls. There is no active release or
-real-Mac acceptance blocker.
+The current `codex/complete-project-audit` worktree contains the reviewed
+complete-project audit candidate on exact `origin/main`. Functionality,
+responsive UI, instruction routing, folder-app validators, the rebuilt macOS
+pipeline runtime, and isolated production Electron IPC pass locally. The
+candidate is ready for its commit and draft pull request. No merge, tag,
+deployment, release, social post, or other production mutation was made.
 
 ## Last session (2026-07-21)
 
-- Completed: merged pull request #18; reran the audit, build, runtime, and
-  packaged-runtime gates on exact merged `origin/main`; created and pushed
-  annotated tag `v1.5.43`; completed both release workflows; verified the eight
-  public assets and updater metadata; independently downloaded and certified
-  the macOS release; and recorded the release evidence under `/delivery`.
-- Completed: Guided Plan-to-Post implementation on
-  `codex/guided-plan-to-post-implementation`. Renderer handoffs, local media
-  validation, local-only handoff queue loading, no-stale-navigation reset, and
-  the packaged pipeline → editor export → exactly-one-local-schedule path are
-  verified.
-- Completed: merged pull request #21, tagged and published `v1.5.44`, and
-  completed the macOS and Windows release workflows. The public macOS DMG was
-  downloaded, checksum-verified, mounted read-only, notarization-validated,
-  signature-verified, and launched as an isolated `1.5.44` instance.
-- Completed: visible local-fallback Plan-to-Clips acceptance in the published
-  app, followed by native video selection and a far-future local Scheduler draft
-  saved through the released UI and removed after verification. No social post,
-  browser-open fallback, remote queue, or content-generation API call was made.
-- Blocked: nothing.
-- Next: collect direct barber feedback for the next product cycle.
+- Completed: full source discovery and critical-flow map; security, IPC,
+  scheduler, editor-render, external-timeout, and profile-isolation repairs;
+  repeatable test contracts; and disposable real media-pipeline proof.
+- Completed: 47-screen responsive and interaction-state matrix at 375, 768, and
+  1440 px with zero layout, target-size, overlay, console, or network findings.
+- Completed: folder-app normal/strict/portable validation; 5 positive and 5
+  negative trigger tests; documentation/link/command contracts; missing-tool
+  failure behavior; and correction of stale `v1.5.45` release truth.
+- Completed: fail-closed Remotion prerequisite handling, clean CLI error output,
+  macOS runtime rebuild, and bundled-binary verification.
+- Completed: parallel adversarial code/proof review and observer oversight;
+  closed renderer settings-file disclosure, symlink escape, broad output-folder
+  read authorization, invalid re-trim, false-green visual gate, packaged Setup
+  asset, Windows native-command masking, and failed-stage CLI exit defects.
+- Completed: 9 unit tests, 68 IPC contracts, 31 documentation files, production
+  build, isolated Electron IPC smoke, visual-gate negative self-test, and a
+  clean 47-screen final matrix with zero layout/console/network findings.
+- Completed: pinned exact-file approvals that resist symlink retargeting and are
+  revoked immediately by app reset; transactional concurrent trim locking,
+  accurate re-encoding, playable-output probing, and metadata rollback; and
+  fail-closed Python stage, posting, research, format, and clip-count behavior.
+- Blocked: no local code or instruction blocker. Independent Windows-host
+  execution and a fresh `v1.5.45` installer certification were outside this
+  macOS local audit and are not claimed.
+- Next: commit the reviewed candidate and open a draft pull request for human/CI
+  review; stop before merge, tag, deployment, or release.
 
 ## Decisions made
 
@@ -55,6 +58,18 @@ real-Mac acceptance blocker.
   output or a release-only source-version change.
 - Treat local unsigned, local signed, workflow-built, and publicly downloadable
   artifacts as separate evidence levels.
+- Keep the optional Remotion composition path fail-closed until its separate
+  workspace is intentionally installed; the shipping Electron path stays on
+  the verified FFmpeg runtime.
+- Use project-owned `npm run qa:visual` and workspace-validator commands so
+  verification has no undocumented setup steps.
+- Keep generated screenshots in ignored `out/qa`; record exact hashes and local
+  paths in tracked audit evidence rather than moving generated output into source.
+- Permit renderer media reads only from the real app-owned clips tree or exact
+  main-process-approved files. Output-directory approval never grants descendant
+  read access, and persisted media grants are written only by trusted handlers.
+  Legacy external assets saved before canonical approval pinning are never
+  silently reapproved and may require one native file-picker re-selection.
 - Skip the quota-limited post-fix CodeRabbit wait by explicit owner decision;
   the actionable review threads were resolved and the remaining required local,
   merge, workflow, and public-release gates passed.
@@ -64,5 +79,5 @@ real-Mac acceptance blocker.
 
 ## Open questions
 
-- Which workflow has the strongest recent direct barber feedback or usage
-  evidence to support that choice?
+- None for local implementation. Merge, tagging, deployment, release, and fresh
+  Windows/public-installer certification remain explicit later gates.

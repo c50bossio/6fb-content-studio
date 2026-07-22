@@ -39,9 +39,10 @@ if [[ ! -x "$FFPROBE_STATIC" ]]; then
 fi
 
 "$PYTHON_BIN" -m venv "$VENV_DIR"
-"$VENV_DIR/bin/python" -m pip install --upgrade pip setuptools wheel
+"$VENV_DIR/bin/python" -m pip install --upgrade pip 'setuptools<82' wheel
 "$VENV_DIR/bin/python" -m pip install pyinstaller
 "$VENV_DIR/bin/python" -m pip install -r "$TOOLS_DIR/clip_extractor/requirements.txt"
+"$VENV_DIR/bin/python" -m pip check
 
 MLX_METALLIB="$("$VENV_DIR/bin/python" - <<'PY'
 import importlib.util

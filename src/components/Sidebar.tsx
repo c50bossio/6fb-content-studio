@@ -88,13 +88,25 @@ const ENGINE_ITEMS: { page: Page; label: string; ready: boolean; subtitle?: stri
 
 export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
   const [appVersion, setAppVersion] = useState('...');
+  const [mobileOpen, setMobileOpen] = useState(false);
   useEffect(() => {
     (window as any).electronAPI?.getAppVersion?.().then((v: string) => setAppVersion(v)).catch(() => {});
   }, []);
 
-  return (
-    <aside className="w-[220px] h-full bg-6fb-card border-r border-6fb-border flex flex-col pt-4 shrink-0">
-      <button onClick={() => onNavigate('dashboard')} className="px-5 mb-6 text-left hover:opacity-80 transition-opacity">
+  const navigate = (page: Page) => {
+    onNavigate(page);
+    setMobileOpen(false);
+  };
+  const currentLabel = [
+    { page: 'dashboard' as Page, label: 'Dashboard' },
+    ...ENGINE_ITEMS,
+    ...GLOBAL_ITEMS,
+    { page: 'settings' as Page, label: 'Settings' },
+  ].find(item => item.page === currentPage)?.label || 'Content Studio';
+
+  const content = () => (
+    <>
+      <button onClick={() => navigate('dashboard')} className="px-5 mb-6 text-left hover:opacity-80 transition-opacity">
         <div className="flex items-center gap-3">
           {/* 6FB logo */}
           <div className="w-9 h-9 rounded-lg bg-black border border-6fb-border flex items-center justify-center shrink-0 overflow-hidden">
@@ -110,7 +122,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
       <nav className="flex-1 px-3 space-y-0.5">
         {/* Dashboard */}
         <button
-          onClick={() => onNavigate('dashboard')}
+          onClick={() => navigate('dashboard')}
           className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all mb-3 ${
             currentPage === 'dashboard' ? 'bg-6fb-green/10 text-6fb-green' : 'text-6fb-text-secondary hover:text-white hover:bg-white/5'
           }`}
@@ -127,7 +139,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
             return (
               <button
                 key={item.page}
-                onClick={() => onNavigate(item.page)}
+                onClick={() => navigate(item.page)}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all ${
                   active ? 'bg-6fb-green/10 text-6fb-green' : 'text-6fb-text-secondary hover:text-white hover:bg-white/5'
                 }`}
@@ -159,7 +171,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
             return (
               <button
                 key={item.page}
-                onClick={() => onNavigate(item.page)}
+                onClick={() => navigate(item.page)}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] font-medium transition-all ${
                   active ? 'bg-6fb-green/10 text-6fb-green' : 'text-6fb-text-secondary hover:text-white hover:bg-white/5'
                 }`}
@@ -179,7 +191,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
 
       <div className="px-4 py-4 border-t border-6fb-border">
         <button
-          onClick={() => onNavigate('settings')}
+          onClick={() => navigate('settings')}
           className={`flex items-center gap-2.5 text-xs transition-colors w-full ${
             currentPage === 'settings' ? 'text-6fb-green' : 'text-6fb-text-muted hover:text-white'
           }`}
@@ -189,6 +201,48 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
         </button>
         <p className="text-[9px] text-6fb-text-muted mt-2.5">v{appVersion}</p>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      <header className="lg:hidden fixed inset-x-0 top-0 z-40 h-14 bg-6fb-card border-b border-6fb-border flex items-center gap-3 px-3">
+        <button
+          type="button"
+          aria-label="Open navigation"
+          aria-expanded={mobileOpen}
+          onClick={() => setMobileOpen(true)}
+          className="w-11 h-11 rounded-lg flex items-center justify-center text-white hover:bg-white/5 focus:outline-none focus:ring-2 focus:ring-6fb-green/60"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" className="w-5 h-5" aria-hidden="true">
+            <line x1="4" y1="7" x2="20" y2="7" />
+            <line x1="4" y1="12" x2="20" y2="12" />
+            <line x1="4" y1="17" x2="20" y2="17" />
+          </svg>
+        </button>
+        <img src={logoSrc} alt="" className="w-8 h-8 object-contain" />
+        <div className="min-w-0">
+          <p className="text-[10px] uppercase tracking-widest text-6fb-text-muted">Content Studio</p>
+          <p className="text-sm font-semibold text-white truncate">{currentLabel}</p>
+        </div>
+      </header>
+
+      <div className={`lg:hidden fixed inset-0 z-50 ${mobileOpen ? 'pointer-events-auto' : 'pointer-events-none'}`} aria-hidden={!mobileOpen} inert={!mobileOpen}>
+        <button
+          type="button"
+          aria-label="Close navigation"
+          tabIndex={mobileOpen ? 0 : -1}
+          onClick={() => setMobileOpen(false)}
+          className={`absolute inset-0 w-full h-full bg-black/70 transition-opacity ${mobileOpen ? 'opacity-100' : 'opacity-0'}`}
+        />
+        <aside className={`absolute inset-y-0 left-0 w-[min(320px,calc(100vw-48px))] bg-6fb-card border-r border-6fb-border flex flex-col pt-4 transition-transform duration-200 ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+          {content()}
+        </aside>
+      </div>
+
+      <aside className="hidden lg:flex w-[220px] h-full bg-6fb-card border-r border-6fb-border flex-col pt-4 shrink-0">
+        {content()}
+      </aside>
+    </>
   );
 }

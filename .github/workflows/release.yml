@@ -30,6 +30,9 @@ jobs:
       - name: Build bundled Python runtime
         run: npm run runtime:mac
 
+      - name: Run full test suite
+        run: npm test
+
       - name: Validate bundled runtime
         run: |
           node scripts/assert-packaged-runtime.cjs darwin-arm64

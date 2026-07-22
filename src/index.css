@@ -3,6 +3,20 @@
 @tailwind utilities;
 
 @layer base {
+  button,
+  a[href],
+  input,
+  select,
+  textarea,
+  [role='button'] {
+    min-height: 44px;
+  }
+
+  button,
+  [role='button'] {
+    min-width: 44px;
+  }
+
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;

@@ -48,10 +48,10 @@ A lightweight human-and-agent operating workspace for planning, building, verify
 
 ## Change policy
 Edit this file deliberately. From the repository root, re-run the folder-app
-workspace doctor. This requires the folder-app skill to be installed and
-`FOLDER_APP_SKILL_DIR` to point to the directory containing
-`workspace_doctor.py`:
+workspace doctor. The project command uses the default folder-app skill path
+and prints an exact remediation when that prerequisite is missing:
 
 ```bash
-python3 "$FOLDER_APP_SKILL_DIR/workspace_doctor.py" .
+npm run validate:workspace:strict
+npm run validate:workspace:portable
 ```

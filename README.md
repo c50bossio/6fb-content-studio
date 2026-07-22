@@ -18,6 +18,7 @@ remain in the existing ignored output directories.
 
 ```bash
 npm ci
+npm test
 npm run dev
 ```
 
@@ -25,6 +26,10 @@ Useful verification and packaging commands:
 
 ```bash
 npm run build
+npm run qa:visual
+npm run qa:visual:self-test
+npm run validate:workspace:strict
+npm run validate:workspace:portable
 npm run runtime:mac
 npm run package:mac
 npm run runtime:win
@@ -33,6 +38,13 @@ npm run package:win
 
 macOS and Windows releases are tag-triggered through `.github/workflows/`.
 Creating a tag or publishing a release is an explicit human approval gate.
+
+`npm run qa:visual` starts an isolated renderer server, captures every screen at
+375, 768, and 1440 px, and fails on overflow, clipped controls, undersized touch
+targets, error overlays, console errors, or failed/4xx/5xx network activity.
+`npm run qa:visual:self-test` injects all three finding classes and proves the
+gate exits nonzero. Google Chrome is the default; set `CHROME_PATH` when a
+Chromium-compatible browser is installed elsewhere.
 
 ## Workspace map
 

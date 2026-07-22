@@ -91,7 +91,7 @@ export default function Setup({ onComplete }: SetupProps) {
         {step === 0 && (
           <div className="text-center">
             <img
-              src="/content-playbook.png"
+              src="./content-playbook.png"
               alt="6FB Content Studio"
               className="w-16 h-16 sm:w-20 sm:h-20 mx-auto rounded-2xl object-contain mb-6"
             />
@@ -126,8 +126,18 @@ export default function Setup({ onComplete }: SetupProps) {
 
         {/* Step 1: API Key */}
         {step === 1 && (
-          <div>
-            <button onClick={() => setStep(0)} className="text-6fb-text-muted text-sm mb-6 hover:text-white transition-colors flex items-center gap-1.5">
+          <form onSubmit={event => { event.preventDefault(); void handleSave(); }}>
+            <input
+              type="text"
+              name="username"
+              value="claude-api-key"
+              autoComplete="username"
+              readOnly
+              tabIndex={-1}
+              aria-hidden="true"
+              className="sr-only"
+            />
+            <button type="button" onClick={() => setStep(0)} className="text-6fb-text-muted text-sm mb-6 hover:text-white transition-colors flex items-center gap-1.5">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
                 <polyline points="15 18 9 12 15 6"/>
               </svg>
@@ -162,6 +172,7 @@ export default function Setup({ onComplete }: SetupProps) {
             </label>
             <input
               type="password"
+              autoComplete="new-password"
               value={apiKey}
               onChange={e => { setApiKey(e.target.value); setError(''); }}
               placeholder="sk-ant-api03-..."
@@ -179,7 +190,7 @@ export default function Setup({ onComplete }: SetupProps) {
             )}
 
             <button
-              onClick={handleSave}
+              type="submit"
               disabled={!apiKey || saving}
               className="w-full bg-6fb-green hover:bg-6fb-green-hover disabled:bg-6fb-border disabled:text-6fb-text-muted text-white font-semibold py-3 rounded-lg transition-colors"
             >
@@ -190,7 +201,7 @@ export default function Setup({ onComplete }: SetupProps) {
               <span className="w-3 h-3 shrink-0"><SetupIcons.Lock /></span>
               Stored locally via electron-store. The app never sends your key to 6FB.
             </p>
-          </div>
+          </form>
         )}
       </div>
     </div>

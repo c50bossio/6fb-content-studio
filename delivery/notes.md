@@ -14,7 +14,7 @@ Last updated: 2026-07-21
 - Pull request #18 merged to `main` as
   `9b792a1e9aac312c5599dbff7220e62103e432f5` on 2026-07-21.
 - Annotated tag `v1.5.43` resolves to that exact merge commit.
-- `v1.5.43` is superseded by `v1.5.44` as the current non-draft,
+- `v1.5.43` and `v1.5.44` are superseded by `v1.5.45` as the current non-draft,
   non-prerelease public release.
 - The macOS and Windows release workflows both completed successfully on the
   exact tagged commit and published all eight expected assets.
@@ -35,6 +35,15 @@ Last updated: 2026-07-21
 - A fresh public macOS DMG download matched the release API SHA-256, passed DMG
   stapling and strict app signature verification, and launched from a disposable
   profile as version `1.5.44`.
+- Annotated tag `v1.5.45` resolves to merge commit
+  `14be3d825f28f91edfaf18cdaf6d334e545aeeb2`. The release was published on
+  2026-07-21 at 20:49:44 UTC.
+- macOS workflow run `29867007398` and Windows workflow run `29867008468`
+  completed successfully for that exact commit. The public release contains all
+  eight expected macOS and Windows assets and updater metadata.
+- This audit verified the live release metadata and workflow conclusions but did
+  not independently download and certify the 417 MB `v1.5.45` DMG. The most
+  recent independent DMG launch/signature certification remains `v1.5.44`.
 
 ## Open questions
 

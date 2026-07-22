@@ -274,10 +274,10 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
 
   return (
     <>
-    <div className="h-full flex overflow-hidden bg-[#0f0f0f]">
+    <div className="h-full flex flex-col md:flex-row overflow-y-auto md:overflow-hidden bg-[#0f0f0f]">
 
       {/* ═══ LEFT column ═══ */}
-      <div className="w-[280px] shrink-0 border-r border-[#1a1a1a] flex flex-col">
+      <div className="w-full h-[300px] md:w-[280px] md:h-auto shrink-0 border-b md:border-b-0 md:border-r border-[#1a1a1a] flex flex-col">
 
         {/* Header */}
         <div className="shrink-0 px-4 pt-4 pb-3 border-b border-[#1a1a1a]">
@@ -512,7 +512,7 @@ export default function CarouselStudio({ brandProfile, onNavigateToBrand, onCaro
       </div>
 
       {/* ═══ RIGHT: Preview ═══ */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 min-h-[420px] md:min-h-0 flex flex-col overflow-hidden">
         {slides.length === 0 ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center px-12">
             {loading ? (

@@ -858,19 +858,19 @@ export default function VideoPlanner({
               <label className="block text-xs font-semibold text-6fb-text-secondary uppercase tracking-wider mb-2">
                 Video Topic
               </label>
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <input
                   type="text"
                   value={topic}
                   onChange={e => { setTopic(e.target.value); setShowTrending(false); }}
-                  placeholder="e.g. Why most barbers fail in their first year"
-                  className="flex-1 bg-6fb-card border border-6fb-border rounded-xl px-4 py-3 text-sm text-white placeholder:text-6fb-text-muted focus:outline-none focus:border-6fb-green/50 transition-colors"
+                  placeholder="e.g. Build a loyal barber clientele"
+                  className="min-w-0 flex-1 bg-6fb-card border border-6fb-border rounded-xl px-4 py-3 text-sm text-white placeholder:text-6fb-text-muted focus:outline-none focus:border-6fb-green/50 transition-colors"
                   onKeyDown={e => e.key === 'Enter' && handleGenerate()}
                 />
                 <button
                   onClick={fetchTrending}
                   disabled={fetchingTrending}
-                  className="flex items-center gap-2 px-4 py-3 rounded-xl bg-6fb-card border border-6fb-border text-xs font-semibold text-6fb-text-secondary hover:text-white hover:border-6fb-green/40 transition-all whitespace-nowrap disabled:opacity-50"
+                  className="flex w-full items-center justify-center gap-2 px-4 py-3 rounded-xl bg-6fb-card border border-6fb-border text-xs font-semibold text-6fb-text-secondary hover:text-white hover:border-6fb-green/40 transition-all whitespace-nowrap disabled:opacity-50 sm:w-auto"
                 >
                   {fetchingTrending
                     ? <span className="w-3 h-3 border border-6fb-green border-t-transparent rounded-full animate-spin" />
@@ -916,7 +916,7 @@ export default function VideoPlanner({
             </div>
 
             {/* Perspective + Video Type */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <label className="block text-xs font-semibold text-6fb-text-secondary uppercase tracking-wider mb-2">Perspective</label>
                 <select value={perspective} onChange={e => setPerspective(e.target.value)}
@@ -971,7 +971,7 @@ export default function VideoPlanner({
                   {INTENT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <input value={audience} onChange={e => { markBriefTouched('audience'); setAudience(e.target.value); }} placeholder="Target audience"
                   className="bg-[#0f0f0f] border border-6fb-border rounded-lg px-3 py-2 text-xs text-white placeholder:text-6fb-text-muted focus:outline-none focus:border-6fb-green/50" />
                 <input value={viewerOutcome} onChange={e => { markBriefTouched('viewerOutcome'); setViewerOutcome(e.target.value); }} placeholder="Viewer outcome"

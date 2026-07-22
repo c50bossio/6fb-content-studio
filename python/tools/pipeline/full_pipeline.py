@@ -1091,6 +1091,7 @@ def run_pipeline(
     output_dir: str = None,
     no_post: bool = True,
     run_experiment: bool = False,
+    research: bool = False,
     aspect_ratio: str = "9x16",
     compose: bool = False,
     notify: bool = False,
@@ -1101,9 +1102,27 @@ def run_pipeline(
 ):
     """Run the full content pipeline end-to-end."""
     # Studio export requires compose (needs rendered clips)
+    if not no_post:
+        raise ValueError(
+            "Direct pipeline posting is not implemented. Use Content Studio's reviewed publishing flow."
+        )
+
     if studio_export and not compose:
         print("[pipeline] ⚠️  --studio-export requires --compose (need rendered clips). Enabling --compose.")
         compose = True
+
+    if notify and not compose:
+        print("[pipeline] ⚠️  --notify requires --compose (need clip specs). Enabling --compose.")
+        compose = True
+
+    research_requested = research or run_experiment
+    if research_requested and not compose:
+        print("[pipeline] ⚠️  Research requires --compose (need clip specs). Enabling --compose.")
+        compose = True
+
+    if compose:
+        from pipeline.ai_composer import assert_remotion_ready
+        assert_remotion_ready()
 
     # 'auto' is handled by the clip extractor's intelligent format router.
     # It will analyze face cluster density and pick '9x16' (solo) or 'split' (multi-person).
@@ -1518,7 +1537,9 @@ Transcript (with timestamps):
         if outputs:
             print(f"[pipeline] ✅ Fallback produced {len(outputs)} clips — scores will be low but improvable")
         else:
-            print(f"[pipeline] ❌ Fallback also failed — skipping reframe step")
+            error = "Face-tracking and center-crop fallback produced no clips"
+            print(f"[pipeline] ❌ {error}")
+            return {"status": "failed", "error": error, "clips": []}
 
     # --- Track clips ---
     for clip_raw, clip_fixed in zip(qualified_clips, fixed_clips):
@@ -1535,6 +1556,7 @@ Transcript (with timestamps):
 
     # --- Steps 6-9: Composition pipeline (if --compose) ---
     clip_specs = []
+    requested_stage_failures = []
 
     if compose:
         print(f"\n🎨 Step 6/{total_steps}: Pop-out analysis + Captions")
@@ -1585,9 +1607,9 @@ Transcript (with timestamps):
             cap_status = f"✅ {Path(captions_src).name}" if captions_src else "⚠️ No captions"
             print(f"  📋 {clip_fixed['title']}: spec generated ({spec['status']}) | captions: {cap_status}")
 
-        print(f"\n🎨 Step 6.5/{total_steps}: Market Intel AutoResearch (parallel)")
+        print(f"\n🎨 Step 6.5/{total_steps}: Market Intel AutoResearch")
         api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-        if api_key:
+        if research_requested and api_key:
             from pipeline.auto_researcher import get_ecosystem_research
             from concurrent.futures import ThreadPoolExecutor, as_completed as _as_completed
 
@@ -1603,16 +1625,25 @@ Transcript (with timestamps):
                             data["research_context"] = research_data
                             with open(spec_path, 'w') as f:
                                 json.dump(data, f, indent=2)
-                            return spec['title'], len(research_data)
+                            return spec['title'], len(research_data), None
                 except Exception as e:
                     print(f"  ❌ AutoResearch failed for {spec.get('title','?')}: {e}")
-                return spec.get('title','?'), 0
+                    return spec.get('title','?'), 0, str(e)
+                return spec.get('title','?'), 0, "Clip spec or transcript was unavailable"
 
             with ThreadPoolExecutor(max_workers=3) as pool:
                 futs = {pool.submit(_research_one, s): s for s in clip_specs}
                 for fut in _as_completed(futs):
-                    title, n = fut.result()
-                    print(f"  ✅ Research: {title} ({n} facts found)")
+                    title, n, error = fut.result()
+                    if error:
+                        requested_stage_failures.append(f"Research failed for {title}: {error}")
+                    else:
+                        print(f"  ✅ Research: {title} ({n} facts found)")
+        elif research_requested:
+            print("  ❌ AutoResearch requested but ANTHROPIC_API_KEY is not set")
+            requested_stage_failures.append("Research requested but ANTHROPIC_API_KEY is not set")
+        else:
+            print("  ⏭️  AutoResearch skipped (use --research or --experiment)")
 
 
         print(f"\n🖌️  Step 7/{total_steps}: AI composition (parallel)")
@@ -1663,10 +1694,19 @@ Transcript (with timestamps):
             print("[pipeline] No API key — skipping AI composition")
             print("[pipeline] Set ANTHROPIC_API_KEY or use Content Studio with your key")
             compose_results = []
+            requested_stage_failures.append("Composition requested but ANTHROPIC_API_KEY is not set")
 
         # --- Step 8: Render (parallel, 2 workers to avoid CPU thrash) ---
         print(f"\n🎞️  Step 8/{total_steps}: Remotion render")
         successful_compositions = [r for r in compose_results if r and r.get("success")]
+        failed_compositions = [r for r in compose_results if not r or not r.get("success")]
+        if failed_compositions:
+            requested_stage_failures.append(
+                f"Composition failed for {len(failed_compositions)} of {len(compose_results)} clips"
+            )
+        if clip_specs and not successful_compositions:
+            requested_stage_failures.append("Composition produced no successful clips")
+        rendered_paths = []
         if successful_compositions:
             from pipeline.ai_composer import render_clip as do_render
             from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -1703,14 +1743,20 @@ Transcript (with timestamps):
                     title, path, err = future.result()
                     done_count += 1
                     if path:
+                        rendered_paths.append(path)
                         print(f"  ✅ [{done_count}/{total_renders}] {title[:40]}")
                     else:
+                        requested_stage_failures.append(f"Render failed for {title}: {err}")
                         print(f"  ❌ [{done_count}/{total_renders}] {title[:40]}: {err}")
                     pct = 91 + int((done_count / total_renders) * 7)
                     print(f"[PROGRESS] {pct} {done_count}/{total_renders} rendered")
                     sys.stdout.flush()
         else:
             print("[pipeline] No compositions to render")
+        if successful_compositions and len(rendered_paths) != len(successful_compositions):
+            requested_stage_failures.append(
+                f"Render produced {len(rendered_paths)} of {len(successful_compositions)} requested clips"
+            )
 
         # --- Step 8.5: Thumbnail extraction ---
         print(f"\n🖼️  Step 8.5/{total_steps}: Generating thumbnails")
@@ -1739,8 +1785,10 @@ Transcript (with timestamps):
                         print(f"  ✅ Thumbnail: {title[:40]}")
                     else:
                         print(f"  ⚠️  Thumbnail failed (ffmpeg): {title[:40]}")
+                        requested_stage_failures.append(f"Thumbnail failed for {title}")
                 except Exception as e:
                     print(f"  ⚠️  Thumbnail failed: {e}")
+                    requested_stage_failures.append(f"Thumbnail failed for {title}: {e}")
 
         # --- Step 8.7: Studio export (if --studio-export) ---
         if studio_export:
@@ -1786,12 +1834,20 @@ Transcript (with timestamps):
                     if result.get("errors"):
                         for err in result["errors"]:
                             print(f"  ⚠️  {err}")
+                        requested_stage_failures.extend(str(err) for err in result["errors"])
+                    if result.get("pushed", 0) != len(export_clips):
+                        requested_stage_failures.append(
+                            f"Studio export pushed {result.get('pushed', 0)} of {len(export_clips)} clips"
+                        )
                 else:
                     print("  ⚠️  No rendered compositions available for studio export")
+                    requested_stage_failures.append("Studio export requested but no rendered clips were available")
             except ImportError:
                 print("  ⚠️  studio_export module not found — skipping")
+                requested_stage_failures.append("Studio export requested but its module is unavailable")
             except Exception as e:
                 print(f"  ⚠️  Studio export failed: {e}")
+                requested_stage_failures.append(f"Studio export failed: {e}")
 
         # --- Step 9: Discord notification ---
         if notify:
@@ -1802,9 +1858,15 @@ Transcript (with timestamps):
                     print(f"  ✅ Notified: {spec['title']}")
                 except Exception as e:
                     print(f"  ⚠️  Notification failed for {spec['title']}: {e}")
+                    requested_stage_failures.append(f"Notification failed for {spec['title']}: {e}")
         else:
             print(f"\n📣 Step 9/{total_steps}: Discord notification (skipped — use --notify)")
 
+
+    if requested_stage_failures:
+        error = "; ".join(dict.fromkeys(requested_stage_failures))
+        print(f"[pipeline] ❌ Requested stage failure: {error}")
+        return {"status": "failed", "error": error, "clips": outputs}
 
     # --- Summary ---
     print("\n" + "=" * 60)
@@ -1833,7 +1895,24 @@ Transcript (with timestamps):
     }
 
 
-def main():
+def pipeline_failure_error(result) -> str | None:
+    """Return an actionable CLI error when a pipeline stage reports failure."""
+    if isinstance(result, dict) and result.get("status") == "failed":
+        return str(result.get("error") or "Pipeline failed")
+    if isinstance(result, dict) and result.get("status") == "complete" and not result.get("clips"):
+        return "Pipeline completed without producing clips"
+    return None
+
+
+def positive_int(value: str) -> int:
+    """Parse an integer that is valid for a requested clip count."""
+    parsed = int(value)
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
+def main(argv=None, pipeline_runner=run_pipeline):
     parser = argparse.ArgumentParser(
         description="IX Content Pipeline — End-to-end clip production",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1848,17 +1927,22 @@ Examples:
     parser.add_argument("--video", required=True, help="Path to source video")
     parser.add_argument("--research", action="store_true", help="Enable AutoResearcher Market Intel integration")
     parser.add_argument("--brand", default="6fbarber", help="Brand slug")
-    parser.add_argument("--clips", type=int, default=5, help="Number of clips to select")
+    parser.add_argument("--clips", type=positive_int, default=5, help="Number of clips to select")
     parser.add_argument("--transcript", help="Path to existing .srt transcript")
     parser.add_argument("--transcription-method", default="auto",
                         choices=["auto", "mlx", "faster-whisper", "faster_whisper", "whisper", "api"],
                         help="Transcription backend for videos without an existing transcript")
     parser.add_argument("--output", help="Output directory")
-    parser.add_argument("--format", default="9x16", help="Aspect ratio (9x16, 1x1, 4x5)")
+    parser.add_argument(
+        "--format",
+        default="9x16",
+        choices=["9x16", "1x1", "4x5", "split", "auto"],
+        help="Aspect ratio (9x16, 1x1, 4x5, split, auto)",
+    )
     parser.add_argument("--no-post", action="store_true", default=True, help="Don't post (default)")
     parser.add_argument("--post", action="store_true", help="Post to Zernio")
     parser.add_argument("--experiment", action="store_true", help="Run as AutoResearcher experiment")
-    parser.add_argument("--compose", action="store_true", help="Run composition pipeline (Steps 6-9)")
+    parser.add_argument("--compose", action="store_true", help="Run optional Remotion composition (fails early when its workspace is not installed)")
     parser.add_argument("--notify", action="store_true", help="Send Discord notifications")
     parser.add_argument("--content-type", default="auto",
                         help="Content type for pop-out style (default: auto)")
@@ -1868,29 +1952,46 @@ Examples:
                         help="Export rendered clips to Content Manager studio queue")
     parser.add_argument("--user-email", help="User email for Content Manager studio queue")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    run_pipeline(
-        video_path=args.video,
-        brand=args.brand,
-        num_clips=args.clips,
-        transcript_path=args.transcript,
-        transcription_method=args.transcription_method,
-        output_dir=args.output,
-        no_post=not args.post,
-        run_experiment=args.experiment,
-        aspect_ratio=args.format,
-        compose=args.compose,
-        notify=args.notify,
-        content_type=args.content_type,
-        logo_override=None if args.no_logo else args.logo_override,
-        studio_export=args.studio_export,
-        user_email=args.user_email,
-    )
+    if args.post:
+        print(
+            "[pipeline] ERROR: Direct pipeline posting is not implemented. "
+            "Use Content Studio's reviewed publishing flow.",
+            file=sys.stderr,
+        )
+        return 1
+
+    try:
+        result = pipeline_runner(
+            video_path=args.video,
+            brand=args.brand,
+            num_clips=args.clips,
+            transcript_path=args.transcript,
+            transcription_method=args.transcription_method,
+            output_dir=args.output,
+            no_post=not args.post,
+            run_experiment=args.experiment,
+            research=args.research,
+            aspect_ratio=args.format,
+            compose=args.compose,
+            notify=args.notify,
+            content_type=args.content_type,
+            logo_override=None if args.no_logo else args.logo_override,
+            studio_export=args.studio_export,
+            user_email=args.user_email,
+        )
+        failure = pipeline_failure_error(result)
+        if failure:
+            raise RuntimeError(failure)
+        return 0
+    except (FileNotFoundError, RuntimeError, ValueError) as exc:
+        print(f"[pipeline] ERROR: {exc}", file=sys.stderr)
+        return 1
 
 
 if __name__ == "__main__":
     import multiprocessing
 
     multiprocessing.freeze_support()
-    main()
+    sys.exit(main())

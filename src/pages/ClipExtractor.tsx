@@ -549,7 +549,7 @@ function LibraryPanel({ runs, selectedRunId, onSelect, onDeleteRun, onRefresh, o
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
   return (
-    <aside className="w-56 shrink-0 flex flex-col h-full border-r border-[#1e1e1e] bg-[#0d0d0d]">
+    <aside className="w-full h-48 md:w-56 md:h-full shrink-0 flex flex-col border-b md:border-b-0 md:border-r border-[#1e1e1e] bg-[#0d0d0d]">
       <div className="flex items-center justify-between px-3 py-3 border-b border-[#1e1e1e]">
         <div>
           <p className="text-[10px] font-bold text-[#666] uppercase tracking-widest">History</p>
@@ -929,7 +929,7 @@ export default function ClipExtractor({
   const progressCopy = getProgressCopy(progress.percent);
 
   return (
-    <div className="flex h-full overflow-hidden bg-[#0f0f0f]">
+    <div className="flex flex-col md:flex-row h-full overflow-y-auto md:overflow-hidden bg-[#0f0f0f]">
 
       {/* Preview Modal */}
       {previewClip && (
@@ -954,7 +954,7 @@ export default function ClipExtractor({
       )}
 
       {/* Main panel */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 min-h-[520px] md:min-h-0 flex flex-col overflow-hidden">
 
         {/* Header */}
         <div className="shrink-0 border-b border-[#1a1a1a] px-5 py-3.5 flex items-center gap-3">

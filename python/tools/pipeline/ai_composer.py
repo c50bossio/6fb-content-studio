@@ -35,6 +35,31 @@ CLAUDE_MODEL = "claude-sonnet-4-20250514"
 DATA_DIR = PROJECT_ROOT / "remotion" / "data"
 
 
+def remotion_prerequisite_error() -> str | None:
+    """Return an actionable error when the optional Remotion workspace is absent."""
+    required = [
+        PROJECT_ROOT / "remotion" / "index.ts",
+        ROOT_TSX,
+        PROJECT_ROOT / "package.json",
+    ]
+    missing = [str(path.relative_to(PROJECT_ROOT)) for path in required if not path.exists()]
+    if not missing:
+        return None
+    return (
+        "Remotion composition is unavailable in this checkout. Missing: "
+        + ", ".join(missing)
+        + ". The shipping Electron workflow uses FFmpeg and does not require --compose; "
+          "install the optional python/remotion workspace before enabling composition."
+    )
+
+
+def assert_remotion_ready() -> None:
+    """Fail before media processing or external API calls when Remotion is unavailable."""
+    error = remotion_prerequisite_error()
+    if error:
+        raise RuntimeError(error)
+
+
 def safe_file_stem(value: str, fallback: str = "clip") -> str:
     """Return a filesystem-safe stem for generated Remotion assets."""
     cleaned = re.sub(r"[^a-zA-Z0-9_.-]+", "-", str(value or "")).strip(".-")
@@ -400,12 +425,9 @@ def register_in_root(title: str) -> bool:
 
 
 def typecheck() -> bool:
-    """Run TypeScript type check — always pass for pipeline stability.
-    
-    Remotion render will catch real errors; the global tsc check 
-    falsely blocks valid clips when ANY other composition has issues.
-    """
-    print("[ai_composer] TypeScript check... (non-blocking)")
+    """Run the Remotion workspace TypeScript check and report its real result."""
+    assert_remotion_ready()
+    print("[ai_composer] TypeScript check...")
     try:
         result = subprocess.run(
             ["npx", "tsc", "--noEmit"],
@@ -416,21 +438,23 @@ def typecheck() -> bool:
         )
         if result.returncode == 0:
             print("[ai_composer] TypeScript check passed ✅")
+            return True
         else:
             errors = result.stdout + result.stderr
             hard_errors = [l for l in errors.splitlines() if "error TS" in l]
             if hard_errors:
-                print(f"[ai_composer] TypeScript warnings ({len(hard_errors)} issues — non-blocking):")
+                print(f"[ai_composer] TypeScript errors ({len(hard_errors)} issues):")
                 for e in hard_errors[:5]:
-                    print(f"  ⚠️  {e.strip()}")
+                    print(f"  ❌  {e.strip()}")
+            return False
     except Exception as e:
-        print(f"[ai_composer] TypeScript check skipped: {e}")
-    
-    return True  # Always pass — let Remotion render catch real errors
+        print(f"[ai_composer] TypeScript check failed: {e}")
+        return False
 
 
 def render_clip(title: str, output_path: str = None, props_path: str = None) -> str:
     """Render PipelineClipTemplate with per-clip JSON props."""
+    assert_remotion_ready()
     if not output_path:
         safe = safe_file_stem(title)
         output_path = str(PROJECT_ROOT / "output" / "rendered" / f"{safe}.mp4")
@@ -500,6 +524,11 @@ def compose_clip(
     # Load spec
     with open(spec_path) as f:
         spec = json.load(f)
+
+    try:
+        assert_remotion_ready()
+    except RuntimeError as exc:
+        return {"success": False, "error": str(exc), "title": spec.get("title", "Untitled")}
 
     title = spec.get("title", "Untitled")
     transcript = spec.get("transcript", "")

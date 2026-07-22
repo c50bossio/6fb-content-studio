@@ -229,11 +229,11 @@ export default function App() {
         exampleHooks: [],
       };
       (window as unknown as { electronAPI: typeof window.electronAPI }).electronAPI = {
-        saveApiKey: async (provider) => {
+        saveApiKey: async (provider: string) => {
           if (provider === 'claude') localStorage.setItem('contentStudio:hasClaudeKey', 'true');
           return { success: true };
         },
-        getApiKey: async (provider) => ({
+        getApiKey: async (provider: string) => ({
           hasKey: provider === 'claude' && localStorage.getItem('contentStudio:hasClaudeKey') === 'true',
           hint: null,
         }),
@@ -261,12 +261,12 @@ export default function App() {
         extractCarousel: async () => ({ success: false, error: 'Electron required' }),
         readTranscript: async () => ({ success: false, error: 'Electron required' }),
         autoMatchCarouselFrames: async () => ({ success: false, error: 'Electron required' }),
-        saveBrandProfile: async (profile) => {
+        saveBrandProfile: async (profile: BrandProfile) => {
           localStorage.setItem('contentStudio:brandProfile', JSON.stringify(profile));
           return { success: true };
         },
         getBrandProfile: async () => localJson('contentStudio:brandProfile', mockBrandProfile),
-        saveContentBrain: async (brain) => {
+        saveContentBrain: async (brain: ContentBrain) => {
           localStorage.setItem('contentStudio:contentBrain', JSON.stringify(brain));
           return { success: true };
         },
@@ -280,6 +280,7 @@ export default function App() {
           paths: { userData: '~/Library/Application Support/6fb-content-studio', clipExtractor: '' },
           apiKeys: { claude: true, openai: false },
         }),
+        getAppVersion: async () => 'browser-preview',
         resetApp: async () => ({ success: true }),
         openPath: async () => ({ success: true }),
         showInFinder: async () => ({ success: true }),
@@ -319,7 +320,7 @@ export default function App() {
           media: [],
         }),
         generateVideoPlan: async () => ({ success: false, error: 'Electron required' }),
-        saveVideoPlan: async (plan) => {
+        saveVideoPlan: async (plan: object) => {
           const plans = localList<object>('contentStudio:videoPlans');
           const planWithId = { id: Date.now().toString(), ...plan };
           localStorage.setItem('contentStudio:videoPlans', JSON.stringify([planWithId, ...plans]));
@@ -354,7 +355,7 @@ export default function App() {
   return (
     <div className="h-screen bg-6fb-bg flex overflow-hidden">
       <Sidebar currentPage={currentPage} onNavigate={navigate} />
-      <main className="flex-1 overflow-y-auto">
+      <main className="flex-1 min-w-0 overflow-y-auto pt-14 lg:pt-0">
         {currentPage === 'dashboard'  && <Dashboard onNavigate={navigate} stats={stats} hasBrandProfile={!!brandProfile} />}
         {currentPage === 'planner'   && <VideoPlanner onCreateFromPlan={openClipsFromPlan} />}
         {currentPage === 'clips'      && <ClipExtractor initialPlanId={clipPlanHandoffId} onPlanHandoffConsumed={() => setClipPlanHandoffId(null)} onClipCreated={onClipCreated} onNavigateToEditor={openEditorForClip} onScheduleClip={openSchedulerDraft} />}
