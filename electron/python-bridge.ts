@@ -241,6 +241,8 @@ export function runClipExtractor(
         ...process.env,
         PATH: `${pathPrefix}${process.env.PATH || ''}`,
         PYTHONUNBUFFERED: '1',
+        PYTHONUTF8: '1',
+        PYTHONIOENCODING: 'utf-8',
         PYTHONPATH: runtime.toolsDir,
         ...(runtime.anthropicApiKey ? { ANTHROPIC_API_KEY: runtime.anthropicApiKey } : {}),
         // Pass Drop Zone context so the pipeline can boost scoring for planned hooks
@@ -269,8 +271,11 @@ export function runClipExtractor(
     // Buffer incomplete lines so regex patterns don't fail on chunk boundaries
     let stdoutLineBuf = '';
 
-    proc.stdout?.on('data', (data: Buffer) => {
-      stdoutLineBuf += data.toString();
+    proc.stdout?.setEncoding('utf8');
+    proc.stderr?.setEncoding('utf8');
+
+    proc.stdout?.on('data', (data: string) => {
+      stdoutLineBuf += data;
       // Split on newlines, keep the last (potentially incomplete) segment buffered
       const lines = stdoutLineBuf.split('\n');
       stdoutLineBuf = lines.pop() ?? '';
@@ -354,8 +359,7 @@ export function runClipExtractor(
       }
     });
 
-    proc.stderr?.on('data', (data: Buffer) => {
-      const text = data.toString();
+    proc.stderr?.on('data', (text: string) => {
       stderr += text;
       
       // Parse FFMPEG Progress (outputs directly to stderr)
@@ -383,6 +387,10 @@ export function runClipExtractor(
 
     proc.on('close', (code) => {
       cleanup();
+      if (stdoutLineBuf) {
+        stdout += stdoutLineBuf;
+        stdoutLineBuf = '';
+      }
       if (mainWindow) {
         mainWindow.webContents.send('progress-update', {
           percent: 100,

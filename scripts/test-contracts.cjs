@@ -7,6 +7,7 @@ const path = require('node:path');
 const root = process.cwd();
 const requiredSources = [
   'electron/main.ts',
+  'electron/python-bridge.ts',
   'electron/preload.ts',
   'src/pages/Setup.tsx',
   'scripts/build-pipeline-runtime.ps1',
@@ -32,6 +33,7 @@ if (missingSources.length) {
 }
 const [
   main,
+  pythonBridge,
   preload,
   setup,
   windowsRuntimeBuilder,
@@ -85,6 +87,8 @@ assert.match(windowsRelease, /workflow_dispatch:/, 'Windows release validation m
 assert.match(windowsRelease, /RELEASE_VERSION_INPUT: \$\{\{ inputs\.version \}\}/, 'Workflow inputs must enter PowerShell through the environment, not source interpolation');
 assert.match(windowsRelease, /actions\/upload-artifact@v7/, 'Windows artifacts must use the current Node 24 staging action');
 assert.match(releaseWorkflow, /actions\/download-artifact@v8/, 'Coordinated publication must use the current Node 24 download action');
+assert.match(windowsRelease, /actions\/checkout@v6[\s\S]*?persist-credentials: false/, 'Windows release validation must not retain checkout credentials');
+assert.match(releaseWorkflow, /actions\/checkout@v6[\s\S]*?persist-credentials: false/, 'Coordinated release validation must not retain checkout credentials');
 assert.doesNotMatch(windowsRelease, /softprops\/action-gh-release/, 'The Windows workflow must never publish independently');
 assert.match(releaseWorkflow, /release-windows:[\s\S]*?uses: \.\/\.github\/workflows\/release-windows\.yml/, 'The tag workflow must call the Windows release validator');
 assert.match(releaseWorkflow, /concurrency:[\s\S]*?cancel-in-progress: false/, 'Release reruns must serialize without cancelling an active release');
@@ -100,6 +104,13 @@ assert.match(releaseWorkflow, /publish-release:[\s\S]*?needs: smoke-staged-mac[\
 assert.match(releaseWorkflow, /smoke-published-mac:[\s\S]*?needs: publish-release[\s\S]*?smoke-mac-release-dmg\.sh/, 'Workflow success must include a public macOS download smoke');
 assert.doesNotMatch(releaseWorkflow.match(/smoke-published-mac:[\s\S]*$/)?.[0] || '', /GH_TOKEN:/, 'Public release smoke must prove anonymous availability');
 assert.match(pythonTest, /process\.env\.SIXFB_TEST_PYTHON/, 'Python tests must honor the workflow-selected interpreter');
+assert.match(pythonTest, /legacy_codepage_env\['PYTHONIOENCODING'\] = 'cp1252'/, 'Python tests must reproduce redirected Windows legacy-codepage output');
+assert.match(pythonTest, /stderr\.strip\(\) == f'\[pipeline\] ERROR: \{expected_remotion_error\}'/, 'Python negative-path tests must assert the intended Remotion failure exactly');
+assert.match(pythonBridge, /PYTHONUTF8: '1'/, 'Electron clip extraction must force Python UTF-8 mode');
+assert.match(pythonBridge, /PYTHONIOENCODING: 'utf-8'/, 'Electron clip extraction must force UTF-8 child streams');
+assert.match(pythonBridge, /proc\.stdout\?\.setEncoding\('utf8'\)/, 'Electron clip extraction must decode stdout across UTF-8 chunk boundaries');
+assert.match(pythonBridge, /proc\.stderr\?\.setEncoding\('utf8'\)/, 'Electron clip extraction must decode stderr across UTF-8 chunk boundaries');
+assert.match(windowsRelease, /PYTHONUTF8: '1'[\s\S]*?PYTHONIOENCODING: 'utf-8'/, 'Windows release validation must run Python under UTF-8');
 assert.match(main, /isSamePath\(filePath, app\.getPath\('userData'\)\)/, 'Trusted Open Folder must allow only the exact app-data directory');
 assert.match(workspaceValidator, /process\.env\.SIXFB_WORKSPACE_PYTHON/, 'Workspace validation must support an explicit Python interpreter');
 assert.match(workspaceValidator, /process\.platform === 'win32'/, 'Workspace validation must select Python cross-platform');
