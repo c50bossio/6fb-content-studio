@@ -12,22 +12,18 @@ Public release `v1.5.45` is available from merged `origin/main` commit
 and eight assets are public. The most recent independent public-DMG signature,
 launch, and real-Mac workflow certification remains `v1.5.44`.
 
-The current `codex/complete-project-audit` worktree contains the reviewed
-complete-project audit candidate based on `origin/main` commit
-`14be3d825f28f91edfaf18cdaf6d334e545aeeb2`. Functionality,
-responsive UI, instruction routing, folder-app validators, the rebuilt macOS
-pipeline runtime, and isolated production Electron IPC pass locally. The
-candidate is committed and pushed in ready-for-review pull request #25. The
-first automated review's three actionable findings and 10 of the subsequent 11
-CodeRabbit findings are repaired and verified locally. The remaining 44 px CSS
-suggestion was deliberately retained because the acceptance contract and clean
-all-width screenshots require every visible interaction target to remain at
-least 44 px. The final verified implementation follow-up is committed and
-pushed at `3a6480b20f5ee62c8083f54c8273dd34da5b14e0`; pull request #25 is open,
-ready, and mergeable. CodeRabbit status reports success. The substantive
-exact-head Codex review found no major issue. This subsequent handoff-only
-update changes no runtime code. No merge, tag, deployment, release, social
-post, or other production mutation was made.
+The reviewed complete-project audit is merged to `origin/main` at
+`5a179c49b181aa401f624825413600209f06d296` through pull request #25.
+Functionality, responsive UI, instruction routing, folder-app validators, the
+rebuilt macOS pipeline runtime, production build, and isolated Electron IPC all
+pass. The full suite and workspace validators also pass in an isolated worktree
+on that exact merge commit, whose tree matches the verified pull-request head.
+The automated review findings were addressed except for one deliberately
+declined 44 px CSS suggestion that conflicts with the acceptance contract; the
+final 47-screen matrix has zero target or layout findings. Codex found no major
+issue on the final implementation head, and the observer cleared the subsequent
+handoff-only change. No tag, deployment, release, social post, or other
+production-runtime mutation was made.
 
 ## Last session (2026-07-21)
 
@@ -66,11 +62,14 @@ post, or other production mutation was made.
   then passed the complete serial suite with 10 unit tests, 68 IPC contracts, 14
   required documentation paths, the CDP fault probe, production build, and
   isolated Electron IPC smoke.
+- Completed: merged pull request #25 as `5a179c49b181aa401f624825413600209f06d296`,
+  confirmed its tree matches the reviewed head, and reran the full suite plus
+  normal, strict, and portable workspace validation on that exact merge commit.
 - Blocked: no local code or instruction blocker. Independent Windows-host
   execution and a fresh `v1.5.45` installer certification were outside this
   macOS local audit and are not claimed.
-- Next: finish the status-only handoff check, then merge pull request #25 under
-  the owner's explicit `Proceed`; stop before tagging, deployment, or release.
+- Next: stop before tagging, deployment, release publication, scheduler runs,
+  or social posting until the owner explicitly approves that separate gate.
 
 ## Decisions made
 
@@ -96,15 +95,14 @@ post, or other production mutation was made.
   silently reapproved and may require one native file-picker re-selection.
 - Treat status checks as only one part of the evidence. Current code, full local
   proof, observer clearance, and the exact-head Codex review support the
-  candidate. Four GitHub threads remain administratively open:
+  merged audit. Four GitHub threads remain administratively open:
   three findings are addressed in code and one 44 px suggestion is deliberately
-  declined. Merge, workflow, and public-release certification remain separate
-  gates.
+  declined. Workflow and public-release certification remain separate gates.
 - Prioritize Guided Plan-to-Post as the next product cycle. The decision is
   grounded in the current source and release trajectory; no direct barber
   feedback or usage evidence is yet recorded.
 
 ## Open questions
 
-- None for local implementation. Merge, tagging, deployment, release, and fresh
+- None for local implementation. Tagging, deployment, release, and fresh
   Windows/public-installer certification remain explicit later gates.
