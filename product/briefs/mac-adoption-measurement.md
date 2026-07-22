@@ -1,6 +1,6 @@
 # Mac pilot adoption measurement
 
-Status: proposed; pending explicit owner approval
+Status: approved for pilot use through pull request #35
 
 Last updated: 2026-07-22
 

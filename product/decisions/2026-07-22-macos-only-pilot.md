@@ -23,9 +23,9 @@ there is adoption evidence that those costs create value.
   release proof.
 - Deferring Windows reduces launch breadth while simplifying release safety and
   support during the pilot.
-- A provisional adoption and direct-demand gate is now documented for owner
-  review. It is not controlling until explicitly approved, and its low-confidence
-  numbers must be revisited prospectively after initial pilot evidence.
+- The owner approved a provisional adoption and direct-demand gate through pull
+  request #35. Its low-confidence numbers must be revisited prospectively after
+  initial pilot evidence.
 
 ## Acceptance criteria
 
@@ -41,8 +41,7 @@ there is adoption evidence that those costs create value.
 
 ## Revisit rule
 
-If explicitly approved, use the provisional evidence gate in
-`../briefs/windows-reconsideration-threshold.md`. Until then, the measurable
-threshold remains open. Crossing an approved gate opens a fresh business,
-signing, certification, and support review; it does not approve Windows spend,
-publication, or distribution.
+Use the approved provisional evidence gate in
+`2026-07-22-windows-reconsideration-threshold.md`. Crossing the gate opens a
+fresh business, signing, certification, and support review; it does not approve
+Windows spend, publication, or distribution.
