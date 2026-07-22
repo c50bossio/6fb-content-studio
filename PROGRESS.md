@@ -32,9 +32,10 @@ passed, but the owner subsequently chose macOS arm64 as the only near-term
 distribution platform. Windows and its signing cost are deferred until Mac
 adoption justifies the additional platform.
 
-The current macOS-only candidate is commit
-`e019b1530ab26ee8fafc6f0f383035ec96591c5e` on
-`codex/v1.5.46-mac-only`, opened as draft pull request #30. It requires
+The macOS-only release change is merged through pull request #30 at exact
+`origin/main` commit `e1fe4a9d94adb1aa59618a14dfd888257467fe5d`.
+Its tree matches final reviewed pull-request head
+`c9902ef3e34da4fe143594036a2477d5e31e8051`. The release contract requires
 exactly four Mac artifacts, staged-DMG certification before publication, and an
 anonymous public-DMG smoke afterward. Draft Azure-signing pull request #29 was
 closed without merge. The signed-in Azure tenant showed zero subscriptions at
@@ -76,16 +77,27 @@ No `v1.5.46` tag, release, public installer, or updater publication exists.
 - Decision: ship macOS arm64 only; retain Windows as a manual, non-publishing
   future validation path. Historical Windows proof remains evidence, not a tag
   or release gate.
-- Completed: macOS-only release contract, four-asset manifest, documentation,
-  full local proof, and clean code, adversarial-verification, and observer
-  reviews on implementation commit `e019b1530ab26ee8fafc6f0f383035ec96591c5e`.
-- Completed: opened draft pull request #30 from
-  `codex/v1.5.46-mac-only`; it has no tag or publication side effect.
-- Blocked for tagging: review and merge the macOS-only change, re-pin exact
-  `origin/main`, rerun complete proof on that commit, and obtain separate
-  explicit tag approval.
-- Next: review and merge draft pull request #30, then certify the resulting
-  exact `origin/main` before seeking separate approval to create `v1.5.46`.
+- Completed: CodeRabbit identified two valid pre-merge findings. Release copy
+  now stays future-facing and the contract test locks the Windows validator to
+  exact `--publish never`; the full suite and mutation proof pass on final pull
+  request head `c9902ef3e34da4fe143594036a2477d5e31e8051`.
+- Completed: merged pull request #30 as
+  `e1fe4a9d94adb1aa59618a14dfd888257467fe5d`; the merge tree matches the
+  reviewed head exactly.
+- Completed: rebuilt the macOS runtime and reran the full suite, dependency
+  audit, Actionlint 1.7.12, shell syntax, negative public-manifest probes, and
+  normal/strict/portable workspace validation on that exact clean
+  `origin/main`. All passed; the dependency audit reported zero vulnerabilities.
+- Completed: confirmed the six required Apple/GitHub Actions secret names are
+  present without reading their values, and confirmed `v1.5.46` remains unused
+  locally and on GitHub.
+- Blocked for tagging: at approval time, re-fetch and record exact live
+  `origin/main`, confirm it contains verified release-code anchor
+  `e1fe4a9d94adb1aa59618a14dfd888257467fe5d` with no later runtime or release
+  workflow change, and obtain separate explicit owner approval.
+- Next: stop before tagging. After that re-pin and approval, push only the
+  approved annotated tag and monitor the Mac-only signing, notarization,
+  staged-DMG, publication, and anonymous public-download gates.
 
 ## Last session (2026-07-21)
 
