@@ -57,11 +57,16 @@ Last updated: 2026-07-22
   the staged macOS DMG passes stapling, signature, Gatekeeper, and version
   checks. The tracked release-note file is the public release body.
 - No `v1.5.46` tag, GitHub Release, or public artifact exists. Non-publishing
-  Windows run `29935424714` passed on exact branch head
-  `4a8eeda9b3b94d81cd0c6b49ae02799bf670c2d8`, including runtime build, full
-  suite, v1.5.46 package, packaged-app launch/system-health smoke, and staging
-  of four files. Detailed loop evidence is in
+  Windows run `29937539545` is the first clean semantic preflight and passed on
+  exact code commit `95a34de2faf8cf53d42a0318580a79601502fa23`, including
+  runtime build, strict source and frozen UTF-8 probes, full suite, v1.5.46
+  package, packaged-app launch/system-health smoke, and upload of four files.
+  The downloaded artifact manifest and hashes are recorded in
   `delivery/evidence/2026-07-22-v1.5.46-release-prep.md`.
+- Earlier workflow-success run `29935424714` was false-green for four Python
+  negative paths because Windows `charmap` failures satisfied exit-code-only
+  assertions. Python stdio, Electron pipe decoding, Windows CI, and source and
+  frozen regression tests now enforce valid UTF-8 and exact intended errors.
 - The current Windows packaging path does not configure or claim Authenticode
   signing. Owner acceptance or a signing change is required before tagging;
   workflow smoke and independent downloaded-installer acceptance remain

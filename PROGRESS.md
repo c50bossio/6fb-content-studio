@@ -44,17 +44,23 @@ updater publication exists yet.
   promotion, and anonymous public-download smoke.
 - Completed: converted the Windows workflow to a reusable, non-publishing job
   with a manual pre-tag dry-run path; removed independent Windows publication.
-- Completed: Windows-host run `29935424714` passed on exact branch head
-  `4a8eeda9b3b94d81cd0c6b49ae02799bf670c2d8`: runtime build, full suite,
-  bundled-runtime validation, v1.5.46 package, packaged-app launch/system-health
-  smoke, and four-file artifact staging all passed.
-- Completed: the Windows loop found and fixed PowerShell `-p` argument binding
-  and the documentation test's missing-ripgrep dependency without skipping or
-  weakening either check; both failed runs and the clean third run are recorded
-  in `delivery/evidence/2026-07-22-v1.5.46-release-prep.md`.
-- Completed: local full suite, dependency audit, workflow YAML parse, shell
-  syntax, documentation contracts, and normal/strict/portable workspace
-  validators all pass on the preparation branch.
+- Completed: Windows-host run `29937539545` passed on exact code commit
+  `95a34de2faf8cf53d42a0318580a79601502fa23`: runtime rebuild, full suite,
+  strict source and frozen UTF-8 probes, bundled-runtime validation, v1.5.46
+  package, packaged-app launch/system-health smoke, and four-file artifact
+  upload all passed.
+- Completed: independently downloaded the unexpired Windows Actions artifact;
+  all four expected files were non-empty, hashes were recorded, and updater
+  metadata matched the installer.
+- Completed: the Windows loop found and fixed PowerShell `-p` argument binding,
+  the documentation test's missing-ripgrep dependency, and four false-green
+  `charmap` negative paths without skipping or weakening a check. The exact
+  failed, false-green, cancelled, and clean runs are recorded in
+  `delivery/evidence/2026-07-22-v1.5.46-release-prep.md`.
+- Completed: local full suite, source and rebuilt frozen UTF-8 probes, dependency
+  audit, actionlint, workflow YAML parse, shell syntax, documentation contracts,
+  and normal/strict/portable workspace validators all pass on the exact tested
+  code commit. Independent code review found no actionable defect.
 - Blocked for tagging: merge the preparation change, run and record the Windows
   workflow on the exact final main commit, and decide whether v1.5.46 may ship
   with unsigned Windows installers or requires Authenticode signing.
