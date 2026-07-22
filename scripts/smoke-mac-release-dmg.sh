@@ -24,10 +24,41 @@ trap cleanup EXIT
 
 echo "Downloading $DMG_NAME from $REPO@$TAG..."
 rm -f "$DMG_PATH"
-gh release download "$TAG" \
-  --repo "$REPO" \
-  --pattern "$DMG_NAME" \
-  --dir "$WORK_DIR"
+SOURCE_LABEL="published"
+if [[ "${RELEASE_INCLUDE_DRAFT:-0}" == "1" ]]; then
+  DRAFT_RELEASE_ID="${RELEASE_ID:-}"
+  if [[ -z "$DRAFT_RELEASE_ID" ]]; then
+    for attempt in 1 2 3; do
+      DRAFT_RELEASE_ID="$(gh api "repos/$REPO/releases?per_page=100" --paginate \
+        --jq ".[] | select(.tag_name == \"$TAG\" and .draft == true) | .id" 2>/dev/null | head -1 || true)"
+      [[ -n "$DRAFT_RELEASE_ID" ]] && break
+      sleep $((attempt * 2))
+    done
+  fi
+  test -n "$DRAFT_RELEASE_ID" || { echo "Draft release not found for $TAG" >&2; exit 1; }
+  ASSET_ID=""
+  for attempt in 1 2 3; do
+    ASSET_ID="$(gh api "repos/$REPO/releases/$DRAFT_RELEASE_ID/assets" \
+      --jq ".[] | select(.name == \"$DMG_NAME\") | .id" 2>/dev/null | head -1 || true)"
+    [[ -n "$ASSET_ID" ]] && break
+    sleep $((attempt * 2))
+  done
+  test -n "$ASSET_ID" || { echo "Draft DMG asset not found for $TAG" >&2; exit 1; }
+  for attempt in 1 2 3; do
+    if gh api -H "Accept: application/octet-stream" \
+      "repos/$REPO/releases/assets/$ASSET_ID" > "$DMG_PATH" && [[ -s "$DMG_PATH" ]]; then
+      break
+    fi
+    rm -f "$DMG_PATH"
+    sleep $((attempt * 2))
+  done
+  SOURCE_LABEL="staged draft"
+else
+  curl --fail --location --silent --show-error \
+    --retry 2 --retry-delay 2 --retry-all-errors --max-time 900 \
+    "https://github.com/$REPO/releases/download/$TAG/$DMG_NAME" \
+    --output "$DMG_PATH"
+fi
 
 test -s "$DMG_PATH" || { echo "Downloaded DMG is missing or empty: $DMG_PATH" >&2; exit 1; }
 xcrun stapler validate "$DMG_PATH"
@@ -49,4 +80,4 @@ if [[ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]]; then
   exit 1
 fi
 
-echo "Published macOS DMG smoke passed for $TAG."
+echo "macOS DMG smoke passed for $TAG from $SOURCE_LABEL release assets."

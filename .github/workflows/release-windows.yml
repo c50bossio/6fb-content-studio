@@ -1,12 +1,21 @@
 name: Build & Release (Windows)
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_call:
+    inputs:
+      version:
+        description: Release version with or without a leading v
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Non-publishing package version to validate
+        required: true
+        type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   release-windows:
@@ -61,12 +70,16 @@ jobs:
       - name: Package Windows installer
         shell: powershell
         env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          RELEASE_VERSION_INPUT: ${{ inputs.version }}
         run: |
           function Assert-NativeSuccess([string]$Command) {
             if ($LASTEXITCODE -ne 0) { throw "$Command failed with exit code $LASTEXITCODE" }
           }
-          $version = $env:GITHUB_REF_NAME.TrimStart("v")
+          $version = $env:RELEASE_VERSION_INPUT.TrimStart("v")
+          if ($version -notmatch '^\d+\.\d+\.\d+$') {
+            Write-Error "Invalid release version: $version"
+            exit 1
+          }
           npm version $version --no-git-tag-version --allow-same-version
           Assert-NativeSuccess "npm version"
           npm run package:win -- --publish never
@@ -87,15 +100,16 @@ jobs:
       - name: Smoke Windows app launch
         shell: powershell
         env:
-          EXPECTED_VERSION: ${{ github.ref_name }}
+          EXPECTED_VERSION: ${{ inputs.version }}
         run: node scripts/smoke-windows-app.cjs
 
-      - name: Publish Windows artifacts
-        uses: softprops/action-gh-release@v3
+      - name: Stage Windows release artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: "6FB Content Studio v${{ env.VERSION }}"
-          files: |
+          name: release-windows
+          if-no-files-found: error
+          retention-days: 7
+          path: |
             release/*.exe
             release/*.blockmap
             release/latest.yml
-          token: ${{ secrets.GH_TOKEN }}

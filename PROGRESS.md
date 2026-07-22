@@ -1,6 +1,6 @@
 # Progress
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 
 > This file records current cross-workspace state. Durable product,
 > engineering, and delivery truth belongs in the corresponding `notes.md`.
@@ -24,6 +24,35 @@ final 47-screen matrix has zero target or layout findings. Codex found no major
 issue on the final implementation head, and the observer cleared the subsequent
 handoff-only change. No tag, deployment, release, social post, or other
 production-runtime mutation was made.
+
+Proposed v1.5.46 release preparation is on
+`codex/v1.5.46-release-prep`, based on `origin/main`
+`821b1582d45941e74580a162dc6e7a3066116aef`. The preparation replaces
+independent platform publication with a coordinated, draft-first release: both
+platform jobs must pass, the draft must contain exactly eight non-empty assets,
+the staged macOS DMG must pass stapling/signature/Gatekeeper/version checks, and
+only then may the release become public. A final anonymous public-DMG smoke is
+part of workflow completion. No `v1.5.46` tag, release, workflow run, installer,
+or updater publication exists yet.
+
+## Release preparation (2026-07-22)
+
+- Completed: drafted the v1.5.46 readiness checklist and publishable release
+  notes without claiming tag or publication completion.
+- Completed: added early semantic-tag/release-note validation, per-tag release
+  concurrency, exact draft-asset verification, staged-DMG smoke, explicit draft
+  promotion, and anonymous public-download smoke.
+- Completed: converted the Windows workflow to a reusable, non-publishing job
+  with a manual pre-tag dry-run path; removed independent Windows publication.
+- Completed: local full suite, dependency audit, workflow YAML parse, shell
+  syntax, documentation contracts, and normal/strict/portable workspace
+  validators all pass on the preparation branch.
+- Blocked for tagging: merge the preparation change, run and record the Windows
+  workflow on the exact final main commit, and decide whether v1.5.46 may ship
+  with unsigned Windows installers or requires Authenticode signing.
+- Next: review and merge the preparation change, re-pin exact `origin/main`, run
+  the non-publishing Windows-host preflight, then request separate explicit tag
+  approval. Do not tag or publish during preparation.
 
 ## Last session (2026-07-21)
 
@@ -104,5 +133,7 @@ production-runtime mutation was made.
 
 ## Open questions
 
-- None for local implementation. Tagging, deployment, release, and fresh
-  Windows/public-installer certification remain explicit later gates.
+- Will v1.5.46 ship with the current unsigned Windows artifacts, or must
+  Authenticode signing and verification be added first?
+- Independent public-DMG launch/runtime and downloaded Windows installer and
+  portable-app acceptance remain separate certification gates after publication.

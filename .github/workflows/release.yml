@@ -1,15 +1,50 @@
-name: Build & Release (macOS)
+name: Build & Release
 
 on:
   push:
     tags:
       - 'v*'
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  validate-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+
+    steps:
+      - name: Checkout release metadata
+        uses: actions/checkout@v6
+
+      - name: Validate release tag and notes
+        id: version
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$GITHUB_REF_TYPE" != "tag" || ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release workflow requires a vMAJOR.MINOR.PATCH tag"
+            exit 1
+          fi
+          test -n "$GH_TOKEN" || {
+            echo "::error::Missing required release secret: GH_TOKEN"
+            exit 1
+          }
+          test -f "delivery/release-notes/v${VERSION}.md" || {
+            echo "::error::Missing tracked release notes for v${VERSION}"
+            exit 1
+          }
+          echo "value=$VERSION" >> "$GITHUB_OUTPUT"
+
   release-mac:
+    needs: validate-tag
     runs-on: macos-15
 
     steps:
@@ -48,10 +83,9 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           missing=0
-          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID GH_TOKEN; do
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID; do
             if [ -z "${!name}" ]; then
               echo "::error::Missing required release secret: $name"
               missing=1
@@ -99,7 +133,6 @@ jobs:
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           CSC_KEYCHAIN: ${{ runner.temp }}/build.keychain
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
         run: |
           TAG=${GITHUB_REF_NAME}
           VERSION=${TAG#v}
@@ -155,31 +188,173 @@ jobs:
             exit 1
           fi
 
-      # ── 7. Publish to GitHub Releases ──────────────────────────────
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v3
+      - name: Stage macOS release artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: "6FB Content Studio v${{ env.VERSION }}"
-          body: |
-            ## 6FB Content Studio v${{ env.VERSION }}
-
-            **Signed & notarized — opens without any security prompt on macOS.**
-
-            ### Install
-            1. Download the `.dmg` below
-            2. Drag **6FB Content Studio** to Applications
-            3. Double-click — opens immediately, no warnings
-
-            ### First-time setup
-            Settings → 6FB Account → sign in → Sync Instagram
-          files: |
+          name: release-mac
+          if-no-files-found: error
+          retention-days: 7
+          path: |
             ${{ env.DMG_PATH }}
             ${{ env.ZIP_PATH }}
             ${{ env.YML_PATH }}
             ${{ env.ZIP_BLOCKMAP_PATH }}
+
+  release-windows:
+    needs: validate-tag
+    uses: ./.github/workflows/release-windows.yml
+    with:
+      version: ${{ needs.validate-tag.outputs.version }}
+
+  stage-release:
+    needs:
+      - release-mac
+      - release-windows
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      release_id: ${{ steps.stage-draft.outputs.id }}
+
+    steps:
+      - name: Checkout release notes
+        uses: actions/checkout@v6
+
+      - name: Download staged release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+
+      - name: Validate complete release set
+        id: validate-release
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid release version: $VERSION"
+            exit 1
+          fi
+          expected=(
+            "6FB-Content-Studio-arm64.dmg"
+            "6FB-Content-Studio-arm64.zip"
+            "6FB-Content-Studio-arm64.zip.blockmap"
+            "latest-mac.yml"
+            "6FB-Content-Studio-${VERSION}.exe"
+            "6FB-Content-Studio-Setup-${VERSION}.exe"
+            "6FB-Content-Studio-Setup-${VERSION}.exe.blockmap"
+            "latest.yml"
+          )
+          for name in "${expected[@]}"; do
+            test -s "release/$name" || {
+              echo "::error::Missing or empty release artifact: $name"
+              exit 1
+            }
+          done
+          actual_count=$(find release -maxdepth 1 -type f | wc -l | tr -d ' ')
+          test "$actual_count" -eq "${#expected[@]}" || {
+            echo "::error::Expected ${#expected[@]} artifacts, found $actual_count"
+            find release -maxdepth 1 -type f -print
+            exit 1
+          }
+          test -f "delivery/release-notes/v${VERSION}.md" || {
+            echo "::error::Missing tracked release notes for v${VERSION}"
+            exit 1
+          }
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Stage complete draft release
+        id: stage-draft
+        uses: softprops/action-gh-release@v3
+        with:
+          name: "6FB Content Studio v${{ steps.validate-release.outputs.version }}"
+          body_path: delivery/release-notes/v${{ steps.validate-release.outputs.version }}.md
+          files: release/*
+          fail_on_unmatched_files: true
+          draft: true
           token: ${{ secrets.GH_TOKEN }}
 
-      - name: Smoke published macOS DMG
+      - name: Verify exact draft asset manifest
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          RELEASE_ID: ${{ steps.stage-draft.outputs.id }}
+          VERSION: ${{ steps.validate-release.outputs.version }}
+        run: |
+          set -euo pipefail
+          test -n "$RELEASE_ID" || {
+            echo "::error::Draft release ID was not returned for $GITHUB_REF_NAME"
+            exit 1
+          }
+          release_state=$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
+            --jq '[.draft, .tag_name] | @tsv')
+          test "$release_state" = $'true\t'"$GITHUB_REF_NAME" || {
+            echo "::error::Staged release does not match the expected draft tag: $release_state"
+            exit 1
+          }
+          expected=(
+            "6FB-Content-Studio-arm64.dmg"
+            "6FB-Content-Studio-arm64.zip"
+            "6FB-Content-Studio-arm64.zip.blockmap"
+            "latest-mac.yml"
+            "6FB-Content-Studio-${VERSION}.exe"
+            "6FB-Content-Studio-Setup-${VERSION}.exe"
+            "6FB-Content-Studio-Setup-${VERSION}.exe.blockmap"
+            "latest.yml"
+          )
+          printf '%s\n' "${expected[@]}" | sort > "$RUNNER_TEMP/expected-assets.txt"
+          gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
+            --jq '.[].name' | sort > "$RUNNER_TEMP/actual-assets.txt"
+          diff -u "$RUNNER_TEMP/expected-assets.txt" "$RUNNER_TEMP/actual-assets.txt" || {
+            echo "::error::Draft release asset manifest is not exact"
+            exit 1
+          }
+          empty_assets=$(gh api "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets" \
+            --jq '.[] | select(.size <= 0) | .name')
+          test -z "$empty_assets" || {
+            echo "::error::Draft release contains empty assets: $empty_assets"
+            exit 1
+          }
+
+  smoke-staged-mac:
+    needs: stage-release
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout release smoke
+        uses: actions/checkout@v6
+
+      - name: Smoke staged macOS DMG
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          RELEASE_ID: ${{ needs.stage-release.outputs.release_id }}
+          RELEASE_INCLUDE_DRAFT: '1'
+        run: bash scripts/smoke-mac-release-dmg.sh "$GITHUB_REF_NAME"
+
+  publish-release:
+    needs: smoke-staged-mac
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Publish certified complete release
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: >-
+          gh release edit "$GITHUB_REF_NAME"
+          --repo "$GITHUB_REPOSITORY"
+          --draft=false --latest --verify-tag
+
+  smoke-published-mac:
+    needs: publish-release
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout public release smoke
+        uses: actions/checkout@v6
+
+      - name: Smoke public macOS DMG
         run: bash scripts/smoke-mac-release-dmg.sh "$GITHUB_REF_NAME"

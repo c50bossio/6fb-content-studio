@@ -1,15 +1,16 @@
 # Delivery notes
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 
 ## Confirmed facts
 
 - The source `package.json` reports version `1.5.39`; tag workflows stamp the
   release version while packaging.
-- `.github/workflows/release.yml` builds, signs, notarizes, and publishes macOS
-  artifacts on `v*` tags.
-- `.github/workflows/release-windows.yml` builds and publishes Windows installer
-  and portable artifacts on `v*` tags.
+- `.github/workflows/release.yml` coordinates `v*` releases: it builds and
+  validates both platforms, stages all eight assets in a draft, smoke-checks
+  the notarized macOS DMG from that draft, and only then publishes.
+- `.github/workflows/release-windows.yml` is a reusable, non-publishing Windows
+  build/test/package workflow with a manual pre-tag dry-run entry point.
 - Generated package output belongs in ignored `release/`.
 - Pull request #18 merged to `main` as
   `9b792a1e9aac312c5599dbff7220e62103e432f5` on 2026-07-21.
@@ -44,10 +45,30 @@ Last updated: 2026-07-21
 - This audit verified the live release metadata and workflow conclusions but did
   not independently download and certify the 417 MB `v1.5.45` DMG. The most
   recent independent DMG launch/signature certification remains `v1.5.44`.
+- Proposed `v1.5.46` preparation is based on audited `origin/main` commit
+  `821b1582d45941e74580a162dc6e7a3066116aef`, which includes pull requests #25
+  and #26. The final tag target must be the exact verified `origin/main` commit
+  after the preparation change is reviewed and merged.
+- `delivery/checklists/v1.5.46-release-readiness.md` and
+  `delivery/release-notes/v1.5.46.md` define the release candidate gates and
+  draft copy. They do not authorize or claim a tag or publication.
+- v1.5.46 preparation removes independent platform publication: the coordinated
+  workflow can make the release public only after both artifact sets exist and
+  the staged macOS DMG passes stapling, signature, Gatekeeper, and version
+  checks. The tracked release-note file is the public release body.
+- At v1.5.46 preparation time, no `v1.5.46` tag, GitHub Release, workflow run,
+  or public artifact exists.
+- The current Windows packaging path does not configure or claim Authenticode
+  signing. Owner acceptance or a signing change is required before tagging;
+  workflow smoke and independent downloaded-installer acceptance remain
+  distinct from signature trust.
 
 ## Open questions
 
-- None for release publication or real-Mac acceptance.
+- What exact post-preparation `origin/main` commit will be approved as the
+  `v1.5.46` tag target?
+- Will v1.5.46 receive an independent Windows-host installer and portable-app
+  launch certification in addition to the Windows workflow smoke?
 
 ## Recent decisions
 

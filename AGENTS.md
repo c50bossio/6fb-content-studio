@@ -3,7 +3,7 @@
 6FB Content Studio is an Electron desktop application for barbers to plan,
 create, edit, schedule, and measure content.
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 
 > This is the canonical, model-independent project map. Read the routed
 > workspace `CONTEXT.md` before acting; keep detailed context out of this file.
@@ -22,7 +22,8 @@ Last updated: 2026-07-21
 - `electron/` — Electron main process, preload API, FFmpeg rendering, and Python bridge.
 - `python/tools/` — clip extraction and content-pipeline source.
 - `scripts/` — bundled-runtime, packaging, metadata, and smoke-test tooling.
-- `.github/workflows/` — tag-triggered macOS and Windows release automation.
+- `.github/workflows/` — coordinated tag release automation and non-publishing
+  Windows preflight.
 - `assets/` and `public/` — application artwork and public renderer assets.
 - `out/`, `release/`, `python/build/`, and `python/runtime/` are generated outputs,
   not source-of-truth workspaces.
