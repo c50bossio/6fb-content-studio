@@ -38,15 +38,15 @@ $RuntimePipelineDir = Join-Path $RuntimeDir "pipeline"
 
 Push-Location $RootDir
 try {
-  $FfmpegStatic = (Invoke-NativeCommand node -p "require('ffmpeg-static')" | Out-String).Trim()
-  $FfprobeStatic = (Invoke-NativeCommand node -p "require('ffprobe-static').path" | Out-String).Trim()
+  $FfmpegStatic = (Invoke-NativeCommand -FilePath "node" -ArgumentList @("-p", "require('ffmpeg-static')") | Out-String).Trim()
+  $FfprobeStatic = (Invoke-NativeCommand -FilePath "node" -ArgumentList @("-p", "require('ffprobe-static').path") | Out-String).Trim()
 
-  if (-not (Test-Path $FfmpegStatic -PathType Leaf)) {
+  if ([string]::IsNullOrWhiteSpace($FfmpegStatic) -or -not (Test-Path $FfmpegStatic -PathType Leaf)) {
     Write-Error "ffmpeg-static binary not found. Run npm install first."
     exit 1
   }
 
-  if (-not (Test-Path $FfprobeStatic -PathType Leaf)) {
+  if ([string]::IsNullOrWhiteSpace($FfprobeStatic) -or -not (Test-Path $FfprobeStatic -PathType Leaf)) {
     Write-Error "ffprobe-static binary not found. Run npm install first."
     exit 1
   }
