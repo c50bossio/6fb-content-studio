@@ -13,7 +13,8 @@ and eight assets are public. The most recent independent public-DMG signature,
 launch, and real-Mac workflow certification remains `v1.5.44`.
 
 The current `codex/complete-project-audit` worktree contains the reviewed
-complete-project audit candidate on exact `origin/main`. Functionality,
+complete-project audit candidate based on `origin/main` commit
+`14be3d825f28f91edfaf18cdaf6d334e545aeeb2`. Functionality,
 responsive UI, instruction routing, folder-app validators, the rebuilt macOS
 pipeline runtime, and isolated production Electron IPC pass locally. The
 candidate is committed and pushed in ready-for-review pull request #25. The
@@ -21,10 +22,12 @@ first automated review's three actionable findings and 10 of the subsequent 11
 CodeRabbit findings are repaired and verified locally. The remaining 44 px CSS
 suggestion was deliberately retained because the acceptance contract and clean
 all-width screenshots require every visible interaction target to remain at
-least 44 px. The final verified follow-up is committed and pushed at
-`9efa6a05a3dd4599704d95c69e00abb3f33a0a61`; pull request #25 is open and
-mergeable, with its external CodeRabbit check pending. No merge, tag,
-deployment, release, social post, or other production mutation was made.
+least 44 px. The final verified implementation follow-up is committed and
+pushed at `3a6480b20f5ee62c8083f54c8273dd34da5b14e0`; pull request #25 is open,
+ready, and mergeable. CodeRabbit status reports success. The substantive
+exact-head Codex review found no major issue. This subsequent handoff-only
+update changes no runtime code. No merge, tag, deployment, release, social
+post, or other production mutation was made.
 
 ## Last session (2026-07-21)
 
@@ -66,8 +69,8 @@ deployment, release, social post, or other production mutation was made.
 - Blocked: no local code or instruction blocker. Independent Windows-host
   execution and a fresh `v1.5.45` installer certification were outside this
   macOS local audit and are not claimed.
-- Next: review any new external pull-request feedback, then stop before merge,
-  tag, deployment, or release without explicit approval.
+- Next: finish the status-only handoff check, then merge pull request #25 under
+  the owner's explicit `Proceed`; stop before tagging, deployment, or release.
 
 ## Decisions made
 
@@ -91,9 +94,12 @@ deployment, release, social post, or other production mutation was made.
   read access, and persisted media grants are written only by trusted handlers.
   Legacy external assets saved before canonical approval pinning are never
   silently reapproved and may require one native file-picker re-selection.
-- Skip the quota-limited post-fix CodeRabbit wait by explicit owner decision;
-  the actionable review threads were resolved and the remaining required local,
-  merge, workflow, and public-release gates passed.
+- Treat status checks as only one part of the evidence. Current code, full local
+  proof, observer clearance, and the exact-head Codex review support the
+  candidate. Four GitHub threads remain administratively open:
+  three findings are addressed in code and one 44 px suggestion is deliberately
+  declined. Merge, workflow, and public-release certification remain separate
+  gates.
 - Prioritize Guided Plan-to-Post as the next product cycle. The decision is
   grounded in the current source and release trajectory; no direct barber
   feedback or usage evidence is yet recorded.
