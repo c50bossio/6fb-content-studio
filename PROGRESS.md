@@ -32,7 +32,9 @@ passed, but the owner subsequently chose macOS arm64 as the only near-term
 distribution platform. Windows and its signing cost are deferred until Mac
 adoption justifies the additional platform.
 
-The current macOS-only candidate is on `codex/v1.5.46-mac-only`. It requires
+The current macOS-only candidate is commit
+`e019b1530ab26ee8fafc6f0f383035ec96591c5e` on
+`codex/v1.5.46-mac-only`, opened as draft pull request #30. It requires
 exactly four Mac artifacts, staged-DMG certification before publication, and an
 anonymous public-DMG smoke afterward. Draft Azure-signing pull request #29 was
 closed without merge. The signed-in Azure tenant showed zero subscriptions at
@@ -74,13 +76,16 @@ No `v1.5.46` tag, release, public installer, or updater publication exists.
 - Decision: ship macOS arm64 only; retain Windows as a manual, non-publishing
   future validation path. Historical Windows proof remains evidence, not a tag
   or release gate.
-- In progress: macOS-only release contract, four-asset manifest, documentation,
-  and adversarial verification on `codex/v1.5.46-mac-only`.
+- Completed: macOS-only release contract, four-asset manifest, documentation,
+  full local proof, and clean code, adversarial-verification, and observer
+  reviews on implementation commit `e019b1530ab26ee8fafc6f0f383035ec96591c5e`.
+- Completed: opened draft pull request #30 from
+  `codex/v1.5.46-mac-only`; it has no tag or publication side effect.
 - Blocked for tagging: review and merge the macOS-only change, re-pin exact
   `origin/main`, rerun complete proof on that commit, and obtain separate
   explicit tag approval.
-- Next: complete local and review proof, open a draft PR, then stop before any
-  tag or publication action.
+- Next: review and merge draft pull request #30, then certify the resulting
+  exact `origin/main` before seeking separate approval to create `v1.5.46`.
 
 ## Last session (2026-07-21)
 
