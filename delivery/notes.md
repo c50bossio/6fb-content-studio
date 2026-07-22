@@ -4,8 +4,8 @@ Last updated: 2026-07-22
 
 ## Confirmed facts
 
-- The source `package.json` reports version `1.5.39`; tag workflows stamp the
-  release version while packaging.
+- The source `package.json` reports version `1.5.39`; the tag workflow stamps
+  the release version while packaging.
 - `.github/workflows/release.yml` coordinates macOS-arm64-only `v*` releases:
   it stages exactly four Mac assets in a draft, smoke-checks the notarized DMG
   from that draft, and only then publishes.
