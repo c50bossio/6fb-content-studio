@@ -404,10 +404,17 @@ signing setup occurred. Azure and Windows signing were not used for v1.5.46.
   writes the newly added nullable `OAuthNonce.codeChallenge` column. Owner
   approval was obtained and migration `20260723030000_add_oauth_nonce_code_challenge`
   applied successfully; Prisma then reported the production schema up to date.
+  Follow-up [#127](https://github.com/c50bossio/6fb-content-generator/pull/127)
+  added a migration-before-deploy gate. Its first exact-main run exposed a
+  test-environment precedence defect before deployment; [#128](https://github.com/c50bossio/6fb-content-generator/pull/128)
+  corrected that command and merged at `b28204042066062b3000cc59783c81c28d92368a`.
+  Exact-main CI `29978261036` then passed Build, unit, Playwright, production
+  migration (no pending migrations), Vercel deployment, and a SHA-bound
+  production smoke (12 passed, 0 failed).
   A fresh temporary-profile browser handoff reached localhost and returned a
   connected Electron account result without exposing the token to the renderer.
   Desktop [#41](https://github.com/c50bossio/6fb-content-studio/pull/41)
-  remains a draft at `2141c64fb1be8a184c4c2f629998fcff6b91a4f5`; it is not
+  remains a draft at `e4b07a267fb3faadb36e78d568dbf690c2f42a34`; it is not
   merged, deployed, tagged, or released.
 - Desktop: Settings now offers **Sign in with 6FB in browser** while preserving
   password login as a fallback. Electron reserves a random high localhost port,
@@ -436,5 +443,5 @@ signing setup occurred. Azure and Windows signing were not used for v1.5.46.
   visual matrix captured 84 states at 375, 768, and 1440 px with zero layout,
   console, or network findings and three focus contracts. The 1440 Settings
   browser-login capture remains clean.
-- Next gate: push the rebased draft branch, wait for its exact-head CI, then
-  request a separate desktop-merge decision. No desktop release may occur first.
+- Next gate: request a separate desktop-merge decision. No desktop release may
+  occur first.
