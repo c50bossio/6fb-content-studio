@@ -128,6 +128,9 @@ declare global {
       onPostDue: (callback: () => void) => () => void;
       // 6FB Account
       login6FB: (creds: { email: string; password: string }) => Promise<{ success: boolean; error?: string }>;
+      start6FBBrowserLogin: () => Promise<{ success: boolean; error?: string }>;
+      cancel6FBBrowserLogin: () => Promise<{ success: boolean }>;
+      on6FBBrowserLoginComplete: (callback: (result: { success: boolean; email?: string; error?: string }) => void) => () => void;
       syncInstagramCredentials: () => Promise<{ success: boolean; username?: string; tokenExpiresAt?: string; error?: string }>;
       get6FBAccount: () => Promise<{ email: string | null; igUsername: string | null; igTokenExpiresAt: string | null; connected: boolean }>;
       disconnect6FB: () => Promise<{ success: boolean }>;
@@ -366,6 +369,9 @@ export default function App() {
         markPostAsPublished: async () => ({ success: true }),
         onPostDue: () => () => {},
         login6FB: async () => ({ success: false, error: 'Electron required' }),
+        start6FBBrowserLogin: async () => ({ success: false, error: 'Electron required' }),
+        cancel6FBBrowserLogin: async () => ({ success: true }),
+        on6FBBrowserLoginComplete: () => () => {},
         syncInstagramCredentials: async () => ({ success: false, error: 'Electron required' }),
         get6FBAccount: async () => ({ email: null, igUsername: null, igTokenExpiresAt: null, connected: false }),
         disconnect6FB: async () => ({ success: true }),

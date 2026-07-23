@@ -1,7 +1,8 @@
 import { app, BrowserWindow, ipcMain, dialog, shell, protocol, net, Menu } from 'electron';
 import { basename, dirname, extname, isAbsolute, join, resolve } from 'path';
 import { toFile } from 'openai/uploads';
-import { randomUUID } from 'node:crypto';
+import { randomInt, randomUUID } from 'node:crypto';
+import { createServer, type Server } from 'node:http';
 import { existsSync, readdirSync, readFileSync, mkdirSync } from 'fs';
 import { pathToFileURL } from 'url';
 import { runClipExtractor, checkPythonDeps, cancelActiveExtraction, resolveSystemPython, type ClipExtractorRuntime } from './python-bridge';
@@ -16,6 +17,7 @@ import { sanitizeTrendUrl } from './trend-intelligence.mts';
 import { INSTAGRAM_GRAPH_ORIGIN } from './instagram-graph.mts';
 import { YOUTUBE_POLICY_VERSION } from '../src/types/trends';
 import { normalizeSavedThumbnailPackage, normalizeThumbnailConcept, normalizeThumbnailPackage, thumbnailPackageToMarkdown } from './thumbnail-package.mts';
+import { callbackCode, createDesktopSsoRequest, DESKTOP_SSO_MAX_PORT, DESKTOP_SSO_MIN_PORT, validDesktopSession } from './desktop-sso.mts';
 
 const EXTERNAL_REQUEST_TIMEOUT_MS = 20_000;
 
@@ -455,6 +457,7 @@ app.on('window-all-closed', () => {
 // Clean up any running Python extraction before quitting
 app.on('before-quit', () => {
   cancelActiveExtraction();
+  stopDesktopAuthFlow();
 });
 
 app.on('activate', () => {
@@ -2579,6 +2582,75 @@ ipcMain.handle('install-update', () => {
 
 // ─── 6FB Account (Content Manager integration) ───────────────────────
 const CONTENT_MANAGER = 'https://content.6fbmentorship.com/apps/content';
+const DESKTOP_SSO_TIMEOUT_MS = 5 * 60_000;
+
+type DesktopAuthFlow = {
+  server: Server;
+  port: number;
+  state: string;
+  verifier: string;
+  timeout: NodeJS.Timeout;
+};
+
+let desktopAuthFlow: DesktopAuthFlow | null = null;
+
+function sendDesktopAuthResult(result: { success: boolean; email?: string; error?: string }) {
+  const window = mainWindow;
+  if (window && !window.isDestroyed()) window.webContents.send('6fb-browser-login-complete', result);
+}
+
+function stopDesktopAuthFlow() {
+  const flow = desktopAuthFlow;
+  desktopAuthFlow = null;
+  if (!flow) return;
+  clearTimeout(flow.timeout);
+  flow.server.close();
+}
+
+function storeContentManagerSession(token: string, email: string) {
+  const previousEmail = store.get('contentManagerEmail') as string | undefined;
+  if (previousEmail && previousEmail.toLowerCase() !== email.toLowerCase()) {
+    store.delete('youtubePolicyAcceptedVersion');
+    smartTrendService.clearYouTubeCache();
+  }
+  store.set('contentManagerToken', token);
+  store.set('apiKeys.contentPlanner', token);
+  store.set('contentManagerEmail', email);
+}
+
+function listenForDesktopSso(onRequest: (request: import('node:http').IncomingMessage, response: import('node:http').ServerResponse) => void) {
+  return new Promise<{ server: Server; port: number }>((resolve, reject) => {
+    let attempts = 0;
+    const tryListen = () => {
+      attempts += 1;
+      const server = createServer(onRequest);
+      const port = randomInt(DESKTOP_SSO_MIN_PORT, DESKTOP_SSO_MAX_PORT + 1);
+      server.once('error', (error: NodeJS.ErrnoException) => {
+        if (error.code === 'EADDRINUSE' && attempts < 5) return tryListen();
+        reject(error);
+      });
+      server.once('listening', () => resolve({ server, port }));
+      server.listen(port, '127.0.0.1');
+    };
+    tryListen();
+  });
+}
+
+async function exchangeDesktopSsoCode(code: string, verifier: string) {
+  try {
+    const response = await boundedFetch(`${CONTENT_MANAGER}/api/auth/desktop/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Client': '6fb-content-studio' },
+      body: JSON.stringify({ code, code_verifier: verifier }),
+    });
+    const data: unknown = await response.json().catch(() => null);
+    if (!response.ok || !validDesktopSession(data)) throw new Error('The browser sign-in could not be verified.');
+    storeContentManagerSession(data.token, data.email);
+    sendDesktopAuthResult({ success: true, email: data.email });
+  } catch (error) {
+    sendDesktopAuthResult({ success: false, error: error instanceof Error ? error.message : 'Browser sign-in failed.' });
+  }
+}
 
 ipcMain.handle('login-6fb', async (_event, { email, password }: { email: string; password: string }) => {
   try {
@@ -2592,14 +2664,63 @@ ipcMain.handle('login-6fb', async (_event, { email, password }: { email: string;
     const setCookie = res.headers.get('set-cookie') ?? '';
     const token = setCookie.match(/auth_token=([^;]+)/)?.[1];
     if (token) {
-      store.set('contentManagerToken', token);
-      store.set('apiKeys.contentPlanner', token);
+      storeContentManagerSession(token, email);
+    } else {
+      store.set('contentManagerEmail', email);
     }
-    store.set('contentManagerEmail', email);
     return { success: true, user: data.user };
   } catch (err) {
     return { success: false, error: String(err) };
   }
+});
+
+ipcMain.handle('start-6fb-browser-login', async () => {
+  if (desktopAuthFlow) return { success: false, error: 'Browser sign-in is already in progress.' };
+  try {
+    const listener = await listenForDesktopSso((request, response) => {
+      const remoteAddress = request.socket.remoteAddress;
+      if (request.method !== 'GET' || (remoteAddress !== '127.0.0.1' && remoteAddress !== '::ffff:127.0.0.1')) {
+        response.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+        response.end('Content Studio only accepts local sign-in callbacks.');
+        return;
+      }
+      const flow = desktopAuthFlow;
+      if (!flow) {
+        response.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+        response.end('This sign-in callback has expired. Return to Content Studio and try again.');
+        return;
+      }
+      const receivedUrl = `http://127.0.0.1:${flow.port}${request.url ?? '/'}`;
+      const code = callbackCode(receivedUrl, flow.state);
+      if (!code) {
+        response.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+        response.end('This sign-in callback is invalid. Return to Content Studio and try again.');
+        return;
+      }
+      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+      response.end('<!doctype html><title>6FB Content Studio</title><p>Sign-in complete. You can return to Content Studio.</p>');
+      const verifier = flow.verifier;
+      stopDesktopAuthFlow();
+      void exchangeDesktopSsoCode(code, verifier);
+    });
+    const request = createDesktopSsoRequest(`${CONTENT_MANAGER}/api/auth/desktop/authorize`, listener.port);
+    const timeout = setTimeout(() => {
+      stopDesktopAuthFlow();
+      sendDesktopAuthResult({ success: false, error: 'Browser sign-in timed out. Please try again.' });
+    }, DESKTOP_SSO_TIMEOUT_MS);
+    desktopAuthFlow = { ...listener, ...request, timeout };
+    await shell.openExternal(request.authorizeUrl);
+    return { success: true };
+  } catch (error) {
+    stopDesktopAuthFlow();
+    return { success: false, error: error instanceof Error ? error.message : 'Could not start browser sign-in.' };
+  }
+});
+
+ipcMain.handle('cancel-6fb-browser-login', async () => {
+  if (!desktopAuthFlow) return { success: true };
+  stopDesktopAuthFlow();
+  return { success: true };
 });
 
 ipcMain.handle('sync-instagram-credentials', async () => {

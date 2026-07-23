@@ -49,6 +49,7 @@ export default function Settings() {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
   const [loginLoading, setLoginLoading] = useState(false);
+  const [browserLoginLoading, setBrowserLoginLoading] = useState(false);
   const [syncLoading, setSyncLoading] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
   const [youtubeConsentAccepted, setYouTubeConsentAccepted] = useState(false);
@@ -73,6 +74,17 @@ export default function Settings() {
       (api.getYouTubeTrendsConsent() as Promise<{ accepted: boolean }>).then(result => {
         setYouTubeConsentAccepted(result.accepted);
       }).catch(() => {});
+      const onBrowserLoginComplete = api.on6FBBrowserLoginComplete as unknown as ((callback: (result: { success: boolean; email?: string; error?: string }) => void) => () => void) | undefined;
+      const unsubscribe = onBrowserLoginComplete?.((result) => {
+        setBrowserLoginLoading(false);
+        if (result.success) {
+          setLoginError('');
+          (api.get6FBAccount() as Promise<SixFBAccount>).then(setAccount).catch(() => {});
+        } else {
+          setLoginError(result.error || 'Browser sign-in failed.');
+        }
+      });
+      return () => unsubscribe?.();
     } else {
       setHealth({
         deps: { python: false, ffmpeg: false, ffprobe: false, mediapipe: false, clipExtractor: false },
@@ -99,6 +111,26 @@ export default function Settings() {
       }
     } catch { setLoginError('Connection error'); }
     setLoginLoading(false);
+  };
+
+  const handleBrowserLogin = async () => {
+    setBrowserLoginLoading(true);
+    setLoginError('');
+    try {
+      const result = await api.start6FBBrowserLogin() as { success: boolean; error?: string };
+      if (!result.success) {
+        setBrowserLoginLoading(false);
+        setLoginError(result.error || 'Could not open browser sign-in.');
+      }
+    } catch {
+      setBrowserLoginLoading(false);
+      setLoginError('Could not open browser sign-in.');
+    }
+  };
+
+  const handleCancelBrowserLogin = async () => {
+    await api.cancel6FBBrowserLogin();
+    setBrowserLoginLoading(false);
   };
 
   const handleSyncInstagram = async () => {
@@ -494,14 +526,32 @@ export default function Settings() {
         <div className="bg-6fb-card border border-6fb-border rounded-xl p-5">
           {!account?.connected ? (
             <form className="space-y-3" onSubmit={event => { event.preventDefault(); void handleLogin6FB(); }}>
-              <p className="text-xs text-6fb-text-muted mb-3">Sign in with your Content Manager account, then choose Sync Instagram to connect your professional account.</p>
+              <p className="text-xs text-6fb-text-muted mb-3">Use the browser where you are already signed in to 6FB. Then choose Sync Instagram to connect your professional account.</p>
+              <button
+                type="button"
+                onClick={() => void handleBrowserLogin()}
+                disabled={browserLoginLoading || loginLoading}
+                className="w-full min-h-11 bg-6fb-green hover:bg-6fb-green-hover disabled:bg-6fb-border disabled:text-6fb-text-muted text-white font-semibold py-2.5 rounded-lg text-sm transition-colors"
+              >
+                {browserLoginLoading ? 'Waiting for browser sign-in...' : 'Sign in with 6FB in browser'}
+              </button>
+              {browserLoginLoading && (
+                <button type="button" onClick={() => void handleCancelBrowserLogin()} className="w-full min-h-11 text-xs text-6fb-text-muted hover:text-white py-1.5">
+                  Cancel browser sign-in
+                </button>
+              )}
+              <div className="flex items-center gap-3 py-1" aria-hidden="true">
+                <div className="h-px flex-1 bg-6fb-border" />
+                <span className="text-[11px] uppercase tracking-wide text-6fb-text-muted">or use a password</span>
+                <div className="h-px flex-1 bg-6fb-border" />
+              </div>
               <input
                 type="email"
                 autoComplete="username"
                 value={loginEmail}
                 onChange={e => setLoginEmail(e.target.value)}
                 placeholder="Email"
-                className="w-full bg-6fb-bg border border-6fb-border rounded-lg px-3 py-2 text-white text-sm placeholder-6fb-text-muted focus:outline-none focus:border-6fb-green transition-colors"
+                className="w-full min-h-11 bg-6fb-bg border border-6fb-border rounded-lg px-3 py-2 text-white text-sm placeholder-6fb-text-muted focus:outline-none focus:border-6fb-green transition-colors"
               />
               <input
                 type="password"
@@ -509,13 +559,13 @@ export default function Settings() {
                 value={loginPassword}
                 onChange={e => setLoginPassword(e.target.value)}
                 placeholder="Password"
-                className="w-full bg-6fb-bg border border-6fb-border rounded-lg px-3 py-2 text-white text-sm placeholder-6fb-text-muted focus:outline-none focus:border-6fb-green transition-colors"
+                className="w-full min-h-11 bg-6fb-bg border border-6fb-border rounded-lg px-3 py-2 text-white text-sm placeholder-6fb-text-muted focus:outline-none focus:border-6fb-green transition-colors"
               />
               {loginError && <p className="text-xs text-red-400">{loginError}</p>}
               <button
                 type="submit"
                 disabled={loginLoading || !loginEmail.trim() || !loginPassword.trim()}
-                className="w-full bg-6fb-green hover:bg-6fb-green-hover disabled:bg-6fb-border disabled:text-6fb-text-muted text-white font-semibold py-2.5 rounded-lg text-sm transition-colors"
+                className="w-full min-h-11 bg-6fb-green hover:bg-6fb-green-hover disabled:bg-6fb-border disabled:text-6fb-text-muted text-white font-semibold py-2.5 rounded-lg text-sm transition-colors"
               >
                 {loginLoading ? 'Signing in...' : 'Sign In'}
               </button>
@@ -527,7 +577,7 @@ export default function Settings() {
                   <p className="text-sm text-white font-medium">{account.email}</p>
                   <p className="text-xs text-6fb-text-muted">Connected to Content Manager</p>
                 </div>
-                <button onClick={handleDisconnect6FB} className="text-xs text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg border border-red-500/20 hover:border-red-500/40 transition-colors">
+                <button onClick={handleDisconnect6FB} className="min-h-11 text-xs text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg border border-red-500/20 hover:border-red-500/40 transition-colors">
                   Disconnect
                 </button>
               </div>
@@ -547,7 +597,7 @@ export default function Settings() {
                   <button
                     onClick={handleSyncInstagram}
                     disabled={syncLoading}
-                    className="text-xs bg-6fb-green/10 text-6fb-green px-3 py-1.5 rounded-lg hover:bg-6fb-green/20 transition-colors font-medium border border-6fb-green/20 disabled:opacity-50"
+                    className="min-h-11 text-xs bg-6fb-green/10 text-6fb-green px-3 py-1.5 rounded-lg hover:bg-6fb-green/20 transition-colors font-medium border border-6fb-green/20 disabled:opacity-50"
                   >
                     {syncLoading ? 'Syncing...' : account.igUsername ? 'Re-sync' : 'Sync Instagram'}
                   </button>

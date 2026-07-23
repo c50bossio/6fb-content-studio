@@ -390,3 +390,30 @@ signing setup occurred. Azure and Windows signing were not used for v1.5.46.
 ## Open questions
 
 - Who owns the non-repository pilot roster and weekly participant check-in?
+
+## Browser-to-desktop SSO handoff (2026-07-22)
+
+- Completed in isolated branches only: `codex/desktop-sso-handoff` in this
+  repository and the companion Content Playbook repository. No branch has been
+  merged, tagged, deployed, or released.
+- Desktop: Settings now offers **Sign in with 6FB in browser** while preserving
+  password login as a fallback. Electron reserves a random high localhost port,
+  creates PKCE/state values in memory, validates the localhost callback, and
+  exchanges only an opaque single-use code over HTTPS. Tokens and cookies are
+  never placed in URLs or sent to the renderer.
+- Content Playbook: its new authorize route uses the existing Hub SSO redirect
+  when needed, creates a five-minute `OAuthNonce`, and redirects to localhost
+  with the nonce plus public PKCE challenge. Its token route verifies the
+  verifier and atomically consumes the nonce before returning the scoped
+  Content token to Electron.
+- Verified: desktop `npm test` passed with the freshly built macOS arm64 Python
+  runtime (58 unit tests, 74 IPC/contracts, docs, CDP, Python/runtime, build,
+  and isolated Electron smoke); Content Playbook full test suite passed 162
+  files / 2,788 tests and the desktop SSO suite passed 6/6; TypeScript passed in
+  both repositories. Responsive visual audit passed 78 captured states at 375,
+  768, and 1440 px with zero overflow, clipped text, undersized targets,
+  console errors, or network errors. The new Settings browser-login state is
+  explicitly captured and checked at all three widths.
+- Next gate: review the two isolated diffs, then create and merge the paired
+  pull requests. A staging or production browser-to-desktop sign-in must be
+  accepted after the backend deployment and before any new desktop release.

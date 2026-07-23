@@ -40,6 +40,14 @@ Last updated: 2026-07-22
 
 ## Recent decisions
 
+- Browser-to-desktop SSO is implemented but not yet integrated. It uses the
+  existing Hub-to-Content code exchange rather than copying browser cookies or
+  credentials. The desktop callback is loopback-only, bound to in-memory PKCE
+  and state values, and the Content-side authorization code is a five-minute,
+  single-use `OAuthNonce`. Local proof is recorded in `PROGRESS.md`; paired
+  backend deployment and a real authenticated handoff remain required before a
+  release claim.
+
 - Smart Live Trends is implemented on an isolated feature branch. Electron
   main owns bounded Google Trends RSS and authorized Instagram Graph requests;
   the renderer receives typed, source-labelled results without credentials.

@@ -182,6 +182,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // 6FB Account (Content Manager)
   login6FB: (creds: { email: string; password: string }) =>
     ipcRenderer.invoke('login-6fb', creds),
+  start6FBBrowserLogin: () =>
+    ipcRenderer.invoke('start-6fb-browser-login'),
+  cancel6FBBrowserLogin: () =>
+    ipcRenderer.invoke('cancel-6fb-browser-login'),
+  on6FBBrowserLoginComplete: (callback: (result: { success: boolean; email?: string; error?: string }) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, result: { success: boolean; email?: string; error?: string }) => callback(result);
+    ipcRenderer.on('6fb-browser-login-complete', handler);
+    return () => ipcRenderer.removeListener('6fb-browser-login-complete', handler);
+  },
   syncInstagramCredentials: () =>
     ipcRenderer.invoke('sync-instagram-credentials'),
   get6FBAccount: () =>
