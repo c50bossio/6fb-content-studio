@@ -42,6 +42,7 @@ export default function Settings() {
   const [health, setHealth] = useState<SystemHealth | null>(null);
   const [loading, setLoading] = useState(true);
   const [resetConfirm, setResetConfirm] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
 
   // API Keys
   const [account, setAccount] = useState<SixFBAccount | null>(null);
@@ -225,10 +226,159 @@ export default function Settings() {
   );
   const hasBundledRuntime = !!(health?.paths.binaryPath || health?.paths.pipelineScript);
 
+  const accountAndConnections = (
+    <section className="mb-8" aria-labelledby="account-connections-heading">
+      <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 id="account-connections-heading" className="flex items-center gap-2 text-base font-semibold text-white sm:text-lg">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0 text-6fb-green" aria-hidden="true">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+            </svg>
+            Account & connections
+          </h2>
+          <p className="mt-1 text-xs text-6fb-text-muted">Connect once to bring your plan and professional accounts into Content Studio.</p>
+        </div>
+        {account?.connected && <span className="inline-flex items-center gap-2 text-xs font-semibold text-6fb-green"><StatusDot ok /> Connected</span>}
+      </div>
+      <div className="rounded-xl border border-6fb-border bg-6fb-card p-5">
+        {!account?.connected ? (
+          <div className="space-y-4">
+            <div>
+              <p className="text-sm font-medium text-white">Sign in to 6FB</p>
+              <p className="mt-1 text-xs leading-relaxed text-6fb-text-muted">Use the browser where you are already signed in. Content Studio will return here when the connection is complete.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void handleBrowserLogin()}
+              disabled={browserLoginLoading || loginLoading}
+              className="min-h-11 w-full rounded-lg bg-6fb-green px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-6fb-green-hover disabled:bg-6fb-border disabled:text-6fb-text-muted"
+            >
+              {browserLoginLoading ? 'Waiting for browser sign-in...' : 'Sign in with 6FB'}
+            </button>
+            {browserLoginLoading && (
+              <button type="button" onClick={() => void handleCancelBrowserLogin()} className="min-h-11 w-full rounded-lg text-xs text-6fb-text-muted transition-colors hover:text-white">
+                Cancel browser sign-in
+              </button>
+            )}
+            <details className="rounded-lg border border-6fb-border bg-6fb-bg/40 px-3">
+              <summary className="min-h-11 cursor-pointer py-3 text-xs font-semibold text-6fb-text-secondary">Use email and password instead</summary>
+              <form className="space-y-3 border-t border-6fb-border py-3" onSubmit={event => { event.preventDefault(); void handleLogin6FB(); }}>
+                <input type="email" autoComplete="username" value={loginEmail} onChange={event => setLoginEmail(event.target.value)} placeholder="Email" className="min-h-11 w-full rounded-lg border border-6fb-border bg-6fb-bg px-3 py-2 text-sm text-white placeholder-6fb-text-muted focus:border-6fb-green focus:outline-none" />
+                <input type="password" autoComplete="current-password" value={loginPassword} onChange={event => setLoginPassword(event.target.value)} placeholder="Password" className="min-h-11 w-full rounded-lg border border-6fb-border bg-6fb-bg px-3 py-2 text-sm text-white placeholder-6fb-text-muted focus:border-6fb-green focus:outline-none" />
+                <button type="submit" disabled={loginLoading || !loginEmail.trim() || !loginPassword.trim()} className="min-h-11 w-full rounded-lg border border-6fb-green/30 px-4 py-2 text-sm font-semibold text-6fb-green transition-colors hover:border-6fb-green disabled:cursor-not-allowed disabled:opacity-50">
+                  {loginLoading ? 'Signing in...' : 'Sign in'}
+                </button>
+              </form>
+            </details>
+            {loginError && <p role="alert" className="text-xs text-red-400">{loginError}</p>}
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-medium text-white">{account.email}</p>
+                <p className="mt-1 text-xs text-6fb-text-muted">Your 6FB account is connected.</p>
+              </div>
+              <button onClick={handleDisconnect6FB} className="min-h-11 self-start rounded-lg border border-red-500/20 px-3 py-1.5 text-xs text-red-400 transition-colors hover:border-red-500/40 hover:text-red-300 sm:self-auto">
+                Disconnect account
+              </button>
+            </div>
+            <div className="border-t border-6fb-border pt-4">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-6fb-text-muted">Connected tools</h3>
+              <div className="mt-3 grid gap-3">
+                <div className="flex items-start gap-3 rounded-lg bg-6fb-bg/50 p-3">
+                  <span className="mt-1"><StatusDot ok /></span>
+                  <div>
+                    <p className="text-sm font-medium text-white">Content Planner</p>
+                    <p className="mt-1 text-xs leading-relaxed text-6fb-text-muted">Daily briefs and your week plan are ready to use as topic suggestions.</p>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-3 rounded-lg border border-6fb-border p-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-3">
+                    <span className="mt-1"><StatusDot ok={Boolean(account.igUsername)} /></span>
+                    <div>
+                      <p className="text-sm font-medium text-white">Instagram</p>
+                      <p className="mt-1 text-xs text-6fb-text-muted">
+                        {account.igUsername ? `Connected as @${account.igUsername}` : 'Connect a professional Instagram account to unlock reach and engagement analytics.'}
+                        {account.igTokenExpiresAt && <span className="text-6fb-text-muted/60"> · expires {new Date(account.igTokenExpiresAt).toLocaleDateString()}</span>}
+                      </p>
+                    </div>
+                  </div>
+                  <button onClick={handleSyncInstagram} disabled={syncLoading} className="min-h-11 rounded-lg border border-6fb-green/20 bg-6fb-green/10 px-3 py-1.5 text-xs font-medium text-6fb-green transition-colors hover:bg-6fb-green/20 disabled:opacity-50">
+                    {syncLoading ? 'Syncing...' : account.igUsername ? 'Re-sync Instagram' : 'Sync Instagram'}
+                  </button>
+                </div>
+                {syncMsg && <p role="status" className={`text-xs ${syncMsg.startsWith('Connected') ? 'text-6fb-green' : 'text-red-400'}`}>{syncMsg}</p>}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+
+  const youtubeInspiration = (
+    <section className="mb-8" aria-labelledby="youtube-inspiration-heading">
+      <h2 id="youtube-inspiration-heading" className="mb-4 flex items-center gap-2 text-base font-semibold text-white sm:text-lg">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0 text-6fb-green" aria-hidden="true">
+          <path d="m10 8 6 4-6 4V8Z"/><rect x="3" y="5" width="18" height="14" rx="4"/>
+        </svg>
+        YouTube inspiration
+      </h2>
+      <div className="space-y-4 rounded-xl border border-6fb-border bg-6fb-card p-5">
+        <div className="flex items-start gap-3">
+          <span className="mt-1"><StatusDot ok={Boolean(account?.connected && youtubeConsentAccepted)} /></span>
+          <div>
+            <p className="text-sm font-medium text-white">{account?.connected ? youtubeConsentAccepted ? 'Enabled for this policy version' : 'Consent required' : '6FB sign-in required'}</p>
+            <p className="mt-1 text-xs leading-relaxed text-6fb-text-muted">When you press Find live trends, 6FB may request public YouTube videos as inspiration references. Content Studio never connects to your private YouTube account.</p>
+          </div>
+        </div>
+        {!youtubeConsentAccepted ? (
+          <label className={`relative flex min-h-[44px] items-start gap-3 rounded-lg border px-3 py-2.5 text-xs leading-relaxed ${account?.connected ? 'cursor-pointer border-6fb-border text-6fb-text-secondary hover:border-6fb-green/40' : 'cursor-not-allowed border-6fb-border/60 text-6fb-text-muted'}`}>
+            <input type="checkbox" checked={false} disabled={!account?.connected || youtubeConsentSaving} onChange={event => { if (event.target.checked) void handleYouTubeConsent(true); }} className="absolute inset-0 h-full w-full cursor-inherit opacity-0" />
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-6fb-text-muted bg-6fb-bg" aria-hidden="true" />
+            <span>I agree to enable public YouTube inspiration under the linked 6FB, YouTube, and Google terms and privacy policies.</span>
+          </label>
+        ) : (
+          <button type="button" onClick={() => void handleYouTubeConsent(false)} disabled={youtubeConsentSaving} className="min-h-[44px] w-full rounded-lg border border-red-500/20 px-4 text-xs font-semibold text-red-300 transition-colors hover:border-red-500/40 hover:text-red-200 disabled:opacity-50 sm:w-auto">
+            {youtubeConsentSaving ? 'Updating…' : 'Disable YouTube discovery'}
+          </button>
+        )}
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-label="YouTube inspiration policies">
+          {YOUTUBE_POLICY_LINKS.map(link => (
+            <button key={link.url} type="button" onClick={() => void api.openTrendSource(link.url)} className="min-h-[44px] rounded-lg border border-6fb-border px-3 text-left text-xs font-semibold text-6fb-text-secondary transition-colors hover:border-6fb-green/40 hover:text-white">{link.label} ↗</button>
+          ))}
+        </div>
+        {youtubeMsg && <p className={`text-xs ${youtubeMsg.startsWith('YouTube inspiration enabled') ? 'text-6fb-green' : 'text-amber-300'}`} role="status">{youtubeMsg}</p>}
+      </div>
+    </section>
+  );
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-3xl">
       <h1 className="text-3xl font-bold text-white mb-2">Settings</h1>
-      <p className="text-6fb-text-muted mb-8">Manage AI providers, your 6FB account, and the local extraction runtime.</p>
+      <p className="text-6fb-text-muted mb-8">Manage your connected accounts and the tools that support your content workflow.</p>
+
+      {accountAndConnections}
+      {youtubeInspiration}
+
+      <section className="mb-8" aria-labelledby="advanced-settings-heading">
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(current => !current)}
+          aria-expanded={showAdvanced}
+          aria-controls="advanced-settings-content"
+          className="flex min-h-[44px] w-full items-center justify-between rounded-xl border border-6fb-border bg-6fb-card px-5 text-left transition-colors hover:border-6fb-green/40"
+        >
+          <span>
+            <span id="advanced-settings-heading" className="block text-sm font-semibold text-white">Advanced settings</span>
+            <span className="mt-1 block text-xs text-6fb-text-muted">API keys, storage, runtime health, app details, and reset.</span>
+          </span>
+          <span className="text-sm text-6fb-green" aria-hidden="true">{showAdvanced ? '−' : '+'}</span>
+        </button>
+      </section>
+
+      {showAdvanced && <div id="advanced-settings-content">
 
       {/* API Keys Section */}
       <section className="mb-8">
@@ -306,72 +456,6 @@ export default function Settings() {
               </form>
             )}
           </div>
-        </div>
-      </section>
-
-      <section className="mb-8" aria-labelledby="youtube-inspiration-heading">
-        <h2 id="youtube-inspiration-heading" className="mb-4 flex items-center gap-2 text-base font-semibold text-white sm:text-lg">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0 text-6fb-green" aria-hidden="true">
-            <path d="m10 8 6 4-6 4V8Z"/><rect x="3" y="5" width="18" height="14" rx="4"/>
-          </svg>
-          YouTube inspiration
-        </h2>
-        <div className="space-y-4 rounded-xl border border-6fb-border bg-6fb-card p-5">
-          <div className="flex items-start gap-3">
-            <span className="mt-1"><StatusDot ok={Boolean(account?.connected && youtubeConsentAccepted)} /></span>
-            <div>
-              <p className="text-sm font-medium text-white">
-                {account?.connected
-                  ? youtubeConsentAccepted ? 'Enabled for this policy version' : 'Consent required'
-                  : '6FB sign-in required'}
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-6fb-text-muted">
-                When you press Find live trends, 6FB may request public YouTube videos as inspiration references. Content Studio never connects to your private YouTube account.
-              </p>
-            </div>
-          </div>
-
-          {!youtubeConsentAccepted ? (
-            <label className={`relative flex min-h-[44px] items-start gap-3 rounded-lg border px-3 py-2.5 text-xs leading-relaxed ${account?.connected ? 'cursor-pointer border-6fb-border text-6fb-text-secondary hover:border-6fb-green/40' : 'cursor-not-allowed border-6fb-border/60 text-6fb-text-muted'}`}>
-              <input
-                type="checkbox"
-                checked={false}
-                disabled={!account?.connected || youtubeConsentSaving}
-                onChange={event => { if (event.target.checked) void handleYouTubeConsent(true); }}
-                className="absolute inset-0 h-full w-full cursor-inherit opacity-0"
-              />
-              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-6fb-text-muted bg-6fb-bg" aria-hidden="true" />
-              <span>I agree to enable public YouTube inspiration under the linked 6FB, YouTube, and Google terms and privacy policies.</span>
-            </label>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void handleYouTubeConsent(false)}
-              disabled={youtubeConsentSaving}
-              className="min-h-[44px] w-full rounded-lg border border-red-500/20 px-4 text-xs font-semibold text-red-300 transition-colors hover:border-red-500/40 hover:text-red-200 disabled:opacity-50 sm:w-auto"
-            >
-              {youtubeConsentSaving ? 'Updating…' : 'Disable YouTube discovery'}
-            </button>
-          )}
-
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-label="YouTube inspiration policies">
-            {YOUTUBE_POLICY_LINKS.map(link => (
-              <button
-                key={link.url}
-                type="button"
-                onClick={() => void api.openTrendSource(link.url)}
-                className="min-h-[44px] rounded-lg border border-6fb-border px-3 text-left text-xs font-semibold text-6fb-text-secondary transition-colors hover:border-6fb-green/40 hover:text-white"
-              >
-                {link.label} ↗
-              </button>
-            ))}
-          </div>
-
-          {youtubeMsg && (
-            <p className={`text-xs ${youtubeMsg.startsWith('YouTube inspiration enabled') ? 'text-6fb-green' : 'text-amber-300'}`} role="status">
-              {youtubeMsg}
-            </p>
-          )}
         </div>
       </section>
 
@@ -515,130 +599,6 @@ export default function Settings() {
         </div>
       </section>
 
-      {/* 6FB Account Section */}
-      <section className="mb-8">
-        <h2 className="text-base sm:text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-6fb-green shrink-0">
-            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-          </svg>
-          6FB Account
-        </h2>
-        <div className="bg-6fb-card border border-6fb-border rounded-xl p-5">
-          {!account?.connected ? (
-            <form className="space-y-3" onSubmit={event => { event.preventDefault(); void handleLogin6FB(); }}>
-              <p className="text-xs text-6fb-text-muted mb-3">Use the browser where you are already signed in to 6FB. Then choose Sync Instagram to connect your professional account.</p>
-              <button
-                type="button"
-                onClick={() => void handleBrowserLogin()}
-                disabled={browserLoginLoading || loginLoading}
-                className="w-full min-h-11 bg-6fb-green hover:bg-6fb-green-hover disabled:bg-6fb-border disabled:text-6fb-text-muted text-white font-semibold py-2.5 rounded-lg text-sm transition-colors"
-              >
-                {browserLoginLoading ? 'Waiting for browser sign-in...' : 'Sign in with 6FB in browser'}
-              </button>
-              {browserLoginLoading && (
-                <button type="button" onClick={() => void handleCancelBrowserLogin()} className="w-full min-h-11 text-xs text-6fb-text-muted hover:text-white py-1.5">
-                  Cancel browser sign-in
-                </button>
-              )}
-              <div className="flex items-center gap-3 py-1" aria-hidden="true">
-                <div className="h-px flex-1 bg-6fb-border" />
-                <span className="text-[11px] uppercase tracking-wide text-6fb-text-muted">or use a password</span>
-                <div className="h-px flex-1 bg-6fb-border" />
-              </div>
-              <input
-                type="email"
-                autoComplete="username"
-                value={loginEmail}
-                onChange={e => setLoginEmail(e.target.value)}
-                placeholder="Email"
-                className="w-full min-h-11 bg-6fb-bg border border-6fb-border rounded-lg px-3 py-2 text-white text-sm placeholder-6fb-text-muted focus:outline-none focus:border-6fb-green transition-colors"
-              />
-              <input
-                type="password"
-                autoComplete="current-password"
-                value={loginPassword}
-                onChange={e => setLoginPassword(e.target.value)}
-                placeholder="Password"
-                className="w-full min-h-11 bg-6fb-bg border border-6fb-border rounded-lg px-3 py-2 text-white text-sm placeholder-6fb-text-muted focus:outline-none focus:border-6fb-green transition-colors"
-              />
-              {loginError && <p className="text-xs text-red-400">{loginError}</p>}
-              <button
-                type="submit"
-                disabled={loginLoading || !loginEmail.trim() || !loginPassword.trim()}
-                className="w-full min-h-11 bg-6fb-green hover:bg-6fb-green-hover disabled:bg-6fb-border disabled:text-6fb-text-muted text-white font-semibold py-2.5 rounded-lg text-sm transition-colors"
-              >
-                {loginLoading ? 'Signing in...' : 'Sign In'}
-              </button>
-            </form>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-white font-medium">{account.email}</p>
-                  <p className="text-xs text-6fb-text-muted">Connected to Content Manager</p>
-                </div>
-                <button onClick={handleDisconnect6FB} className="min-h-11 text-xs text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg border border-red-500/20 hover:border-red-500/40 transition-colors">
-                  Disconnect
-                </button>
-              </div>
-              <div className="border-t border-6fb-border pt-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-white">Instagram</p>
-                    <p className="text-xs text-6fb-text-muted">
-                      {account.igUsername ? `@${account.igUsername}` : 'Not synced'}
-                      {account.igTokenExpiresAt && (
-                        <span className="ml-2 text-6fb-text-muted/60">
-                          · expires {new Date(account.igTokenExpiresAt).toLocaleDateString()}
-                        </span>
-                      )}
-                    </p>
-                  </div>
-                  <button
-                    onClick={handleSyncInstagram}
-                    disabled={syncLoading}
-                    className="min-h-11 text-xs bg-6fb-green/10 text-6fb-green px-3 py-1.5 rounded-lg hover:bg-6fb-green/20 transition-colors font-medium border border-6fb-green/20 disabled:opacity-50"
-                  >
-                    {syncLoading ? 'Syncing...' : account.igUsername ? 'Re-sync' : 'Sync Instagram'}
-                  </button>
-                </div>
-                {syncMsg && <p className={`text-xs mt-2 ${syncMsg.startsWith('Connected') ? 'text-6fb-green' : 'text-red-400'}`}>{syncMsg}</p>}
-              </div>
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* Content Planner Integration */}
-      <section className="mb-8">
-        <h2 className="text-base sm:text-lg font-semibold text-white mb-4 flex items-center gap-2">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-6fb-green shrink-0">
-            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
-          </svg>
-          Content Planner (content.6fbmentorship.com)
-        </h2>
-        <div className="bg-6fb-card border border-6fb-border rounded-xl p-5 space-y-3">
-          {account?.connected ? (
-            <div className="flex items-center gap-3">
-              <span className="w-2 h-2 rounded-full bg-6fb-green shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-white">Connected</p>
-                <p className="text-xs text-6fb-text-muted">
-                  Signed in as <span className="text-6fb-green">{account.email}</span> — daily brief &amp; week plan will appear as topic suggestions.
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-start gap-3">
-              <span className="w-2 h-2 rounded-full bg-6fb-text-muted shrink-0 mt-1" />
-              <p className="text-xs text-6fb-text-muted">
-                Sign into your <span className="text-white font-medium">6FB Account</span> above to automatically connect the Content Planner — no token copy-paste needed.
-              </p>
-            </div>
-          )}
-        </div>
-      </section>
-
       {/* Danger Zone */}
       <section>
         <h2 className="text-base sm:text-lg font-semibold text-red-400 mb-4 flex items-center gap-2">
@@ -666,6 +626,7 @@ export default function Settings() {
           </div>
         </div>
       </section>
+      </div>}
     </div>
   );
 }

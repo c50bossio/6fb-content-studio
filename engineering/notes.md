@@ -4,6 +4,14 @@ Last updated: 2026-07-22
 
 ## Confirmed facts
 
+- Settings UX candidate `codex/settings-ux-rework` presents 6FB account,
+  Content Planner, and Instagram connection state before optional technical
+  controls. API keys, packaged-runtime health, local storage, version details,
+  and reset remain available through an accessible Advanced disclosure. Browser
+  SSO and the password fallback are preserved. Local proof: full suite (65
+  unit tests, 82 IPC contracts, build, runtime, and Electron smoke) plus an
+  87-capture 375/768/1440 visual matrix with zero layout, console, or network
+  findings; release and installer acceptance remain separate gates.
 - The renderer uses React 19 with Electron Vite and TypeScript.
 - Electron owns settings, filesystem access, media rendering, scheduling,
   Instagram integration, analytics aggregation, and the Python bridge.
