@@ -458,7 +458,7 @@ test('authorized Instagram reads bounded recent account media and returns live e
   assert.equal(feed.ideas.some(idea => idea.sourceUrl?.includes('access_token')), false);
 });
 
-test('authorized account signals survive a full Google feed alongside planned topics', async () => {
+test('direct barber-domain account signals survive a full Google feed alongside planned topics', async () => {
   const service = new SmartTrendService({
     now: () => BASE_TIME,
     sleep: async () => {},
@@ -487,6 +487,31 @@ test('authorized account signals survive a full Google feed alongside planned to
   assert.equal(feed.ideas.some(idea => idea.sourceId === 'instagram'), true);
   assert.equal(feed.ideas.some(idea => idea.sourceId === 'content-planner'), true);
   assert.equal(feed.ideas.some(idea => idea.sourceId === 'google-trends'), true);
+});
+
+test('low-fit authorized account media is withheld while the live source status stays truthful', async () => {
+  const service = new SmartTrendService({
+    now: () => BASE_TIME,
+    sleep: async () => {},
+    request: async url => {
+      if (url.includes(GOOGLE_URL_PART)) return response(googleRss('FIFA team of the tournament 2026'));
+      if (url.includes('/12345/media')) {
+        return jsonResponse({ data: [{
+          id: 'personal_media', media_type: 'IMAGE', caption: 'Thankful for family and health',
+          timestamp: '2026-07-22T17:30:00Z', permalink: 'https://www.instagram.com/p/personal_media/',
+          like_count: 500, comments_count: 40,
+        }] });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    },
+  });
+
+  const feed = await service.fetch({ instagramAccessToken: 'ig-token', instagramUserId: '12345' });
+
+  assert.equal(source(feed, 'instagram').state, 'live');
+  assert.match(source(feed, 'instagram').message ?? '', /no signal cleared barber fit 20/i);
+  assert.equal(feed.ideas.some(idea => idea.sourceId === 'instagram'), false);
+  assert.equal(feed.ideas.every(idea => idea.evidenceState === 'idea-starter'), true);
 });
 
 test('Instagram permission failure is terminal and capped at one request', async () => {
