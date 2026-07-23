@@ -1,5 +1,12 @@
 import { useState, useEffect } from 'react';
 
+const YOUTUBE_POLICY_LINKS = [
+  { label: '6FB Privacy', url: 'https://6fbmentorship.com/privacy' },
+  { label: '6FB Terms', url: 'https://6fbmentorship.com/terms' },
+  { label: 'YouTube Terms', url: 'https://www.youtube.com/t/terms' },
+  { label: 'Google Privacy', url: 'https://policies.google.com/privacy' },
+] as const;
+
 interface SixFBAccount {
   email: string | null;
   igUsername: string | null;
@@ -44,6 +51,9 @@ export default function Settings() {
   const [loginLoading, setLoginLoading] = useState(false);
   const [syncLoading, setSyncLoading] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
+  const [youtubeConsentAccepted, setYouTubeConsentAccepted] = useState(false);
+  const [youtubeConsentSaving, setYouTubeConsentSaving] = useState(false);
+  const [youtubeMsg, setYouTubeMsg] = useState('');
   const [appVersion, setAppVersion] = useState('...');
 
   const api = (window as unknown as { electronAPI: Record<string, (...args: unknown[]) => Promise<unknown>> }).electronAPI;
@@ -57,6 +67,9 @@ export default function Settings() {
         setLoading(false);
       }).catch(() => setLoading(false));
       (api.get6FBAccount() as Promise<SixFBAccount>).then(setAccount).catch(() => {});
+      (api.getYouTubeTrendsConsent() as Promise<{ accepted: boolean }>).then(result => {
+        setYouTubeConsentAccepted(result.accepted);
+      }).catch(() => {});
     } else {
       setHealth({
         deps: { python: false, ffmpeg: false, ffprobe: false, mediapipe: false, clipExtractor: false },
@@ -110,8 +123,31 @@ export default function Settings() {
   const handleDeleteKey = async (provider: string) => {
     if (!isElectron) return;
     await api.deleteApiKey(provider);
-    const h = await api.checkSystemHealth() as SystemHealth;
-    setHealth(h);
+    try {
+      const h = await api.checkSystemHealth() as SystemHealth;
+      setHealth(h);
+    } catch {
+      // The mutation already succeeded; a health-refresh failure must not undo it.
+    }
+  };
+
+  const handleYouTubeConsent = async (accepted: boolean) => {
+    setYouTubeConsentSaving(true);
+    setYouTubeMsg('');
+    try {
+      const result = await api.setYouTubeTrendsConsent(accepted) as { success: boolean; error?: string };
+      if (!result.success) {
+        setYouTubeMsg(result.error || 'Could not update YouTube inspiration consent.');
+      } else {
+        setYouTubeConsentAccepted(accepted);
+        setYouTubeMsg(accepted
+          ? 'YouTube inspiration enabled for Find live trends.'
+          : 'YouTube discovery disabled and its local cache cleared.');
+      }
+    } catch {
+      setYouTubeMsg('Could not update YouTube inspiration consent.');
+    }
+    setYouTubeConsentSaving(false);
   };
 
   const handleReset = async () => {
@@ -184,6 +220,73 @@ export default function Settings() {
               Remove
             </button>
           </div>
+          )}
+
+        </div>
+      </section>
+
+      <section className="mb-8" aria-labelledby="youtube-inspiration-heading">
+        <h2 id="youtube-inspiration-heading" className="mb-4 flex items-center gap-2 text-base font-semibold text-white sm:text-lg">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0 text-6fb-green" aria-hidden="true">
+            <path d="m10 8 6 4-6 4V8Z"/><rect x="3" y="5" width="18" height="14" rx="4"/>
+          </svg>
+          YouTube inspiration
+        </h2>
+        <div className="space-y-4 rounded-xl border border-6fb-border bg-6fb-card p-5">
+          <div className="flex items-start gap-3">
+            <span className="mt-1"><StatusDot ok={Boolean(account?.connected && youtubeConsentAccepted)} /></span>
+            <div>
+              <p className="text-sm font-medium text-white">
+                {account?.connected
+                  ? youtubeConsentAccepted ? 'Enabled for this policy version' : 'Consent required'
+                  : '6FB sign-in required'}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-6fb-text-muted">
+                When you press Find live trends, 6FB may request public YouTube videos as inspiration references. Content Studio never connects to your private YouTube account.
+              </p>
+            </div>
+          </div>
+
+          {!youtubeConsentAccepted ? (
+            <label className={`relative flex min-h-[44px] items-start gap-3 rounded-lg border px-3 py-2.5 text-xs leading-relaxed ${account?.connected ? 'cursor-pointer border-6fb-border text-6fb-text-secondary hover:border-6fb-green/40' : 'cursor-not-allowed border-6fb-border/60 text-6fb-text-muted'}`}>
+              <input
+                type="checkbox"
+                checked={false}
+                disabled={!account?.connected || youtubeConsentSaving}
+                onChange={event => { if (event.target.checked) void handleYouTubeConsent(true); }}
+                className="absolute inset-0 h-full w-full cursor-inherit opacity-0"
+              />
+              <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-6fb-text-muted bg-6fb-bg" aria-hidden="true" />
+              <span>I agree to enable public YouTube inspiration under the linked 6FB, YouTube, and Google terms and privacy policies.</span>
+            </label>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void handleYouTubeConsent(false)}
+              disabled={youtubeConsentSaving}
+              className="min-h-[44px] w-full rounded-lg border border-red-500/20 px-4 text-xs font-semibold text-red-300 transition-colors hover:border-red-500/40 hover:text-red-200 disabled:opacity-50 sm:w-auto"
+            >
+              {youtubeConsentSaving ? 'Updating…' : 'Disable YouTube discovery'}
+            </button>
+          )}
+
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2" aria-label="YouTube inspiration policies">
+            {YOUTUBE_POLICY_LINKS.map(link => (
+              <button
+                key={link.url}
+                type="button"
+                onClick={() => void api.openTrendSource(link.url)}
+                className="min-h-[44px] rounded-lg border border-6fb-border px-3 text-left text-xs font-semibold text-6fb-text-secondary transition-colors hover:border-6fb-green/40 hover:text-white"
+              >
+                {link.label} ↗
+              </button>
+            ))}
+          </div>
+
+          {youtubeMsg && (
+            <p className={`text-xs ${youtubeMsg.startsWith('YouTube inspiration enabled') ? 'text-6fb-green' : 'text-amber-300'}`} role="status">
+              {youtubeMsg}
+            </p>
           )}
         </div>
       </section>
@@ -339,7 +442,7 @@ export default function Settings() {
         <div className="bg-6fb-card border border-6fb-border rounded-xl p-5">
           {!account?.connected ? (
             <form className="space-y-3" onSubmit={event => { event.preventDefault(); void handleLogin6FB(); }}>
-              <p className="text-xs text-6fb-text-muted mb-3">Sign in with your Content Manager account to sync your Instagram credentials automatically.</p>
+              <p className="text-xs text-6fb-text-muted mb-3">Sign in with your Content Manager account, then choose Sync Instagram to connect your professional account.</p>
               <input
                 type="email"
                 autoComplete="username"

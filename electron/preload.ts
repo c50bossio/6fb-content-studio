@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { ContentBrain, ContentStrategyBrief } from '../src/types/content-strategy';
 import type { PublishingQueuePost } from '../src/types/publishing';
+import type { TrendFeed } from '../src/types/trends';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // API Key Management
@@ -18,6 +19,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('complete-setup'),
   fetchTodayBrief: () =>
     ipcRenderer.invoke('fetch-today-brief'),
+  fetchSmartTrends: (): Promise<TrendFeed> =>
+    ipcRenderer.invoke('fetch-smart-trends'),
+  getYouTubeTrendsConsent: () =>
+    ipcRenderer.invoke('get-youtube-trends-consent'),
+  setYouTubeTrendsConsent: (accepted: boolean) =>
+    ipcRenderer.invoke('set-youtube-trends-consent', accepted),
+  openTrendSource: (url: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('open-trend-source', url),
   completeTodayPlay: (postId: string, action: 'complete' | 'skip') =>
     ipcRenderer.invoke('complete-today-play', { postId, action }),
   fetchVoiceProfile: () =>

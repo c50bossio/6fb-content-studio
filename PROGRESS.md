@@ -7,6 +7,51 @@ Last updated: 2026-07-22
 
 ## Current status
 
+### Smart Live Trends candidate (2026-07-22)
+
+Smart Live Trends is implemented but **not release-ready** in isolated branch
+`codex/smart-live-trends`, based on exact `origin/main` commit
+`aacdbff6924b6fe4fc5219c8eeabb6590b8bef8f`. The Video Planner now retrieves
+bounded current Google Trends RSS signals on an explicit click, can use an
+authorized Instagram professional account when available, and labels connected
+Content Planner topics as **Your plan**. A policy-remediated YouTube reference
+section is implemented behind current versioned consent and the existing 6FB
+sign-in token; it calls only the fixed 6FB backend endpoint, preserves validated
+backend order/content, and never enters topic selection or barber-fit scoring.
+The unavailable TikTok trend row has been removed. When current signals have no barber relevance,
+the picker leads with labelled offline Idea starters rather than pretending a
+broad trend is niche evidence.
+
+The blocked user-supplied YouTube-key prototype has been removed. Settings now
+keeps 6FB Privacy, 6FB Terms, YouTube Terms, and Google Privacy links accessible,
+and disabling discovery or resetting the app clears consent and cached YouTube
+references. Unit, type, and static contract proof passes locally. Release still
+uses the separately owned `/apps/content/api/studio/youtube-trends` backend
+contract, which is implemented and locally verified on isolated branch
+`codex/youtube-trends-proxy`. On 2026-07-22, a replacement server-only key was
+created in the owning Google Cloud project with an API restriction to
+`youtube.googleapis.com`; one bounded read-only `search.list` request returned
+HTTP 200, and the encrypted `YOUTUBE_API_KEY` value was replaced in the Vercel
+production, preview, and development environments. The historical unrestricted
+key remains active until the merged deployment and authenticated end-to-end
+proof confirm the cutover, at which point it must be deleted. No deployment was
+triggered by the environment update. The linked ready-for-review pull requests
+are [desktop #37](https://github.com/c50bossio/6fb-content-studio/pull/37),
+[backend #125](https://github.com/c50bossio/6fb-content-generator/pull/125),
+and [policy #152](https://github.com/c50bossio/6fb-mentorship-landing/pull/152).
+At creation, all three preserve their locally verified heads; their remote
+checks are pending. This candidate is not merged, deployed, tagged, packaged,
+or released.
+
+Current Mac client proof: TypeScript passes; 55 unit tests pass; static contracts
+pass across 72 IPC channels; the production build passes; and the 75-capture
+responsive audit at 375/768/1440 reports zero console errors, network errors, or
+screen findings. Current backend proof: its script typecheck, 161-file/2,782-test
+suite, TypeScript check, scoped lint, production webpack build, and independent
+42-test security/contract matrix pass. Filesystem scans find no Google API-key
+literals or YouTube/Gemini query-key transports. This proof does not substitute
+for replacement-key rotation, deployment, or authenticated staging.
+
 Public release `v1.5.46` is available for macOS arm64 from annotated tag
 `v1.5.46`, which resolves to the exact approved tag-target commit
 `f81b63b7b9400fb76cd37d399f366b9a3fbb2aed`. Production workflow run

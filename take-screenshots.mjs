@@ -13,6 +13,14 @@ const chromePath = process.env.CHROME_PATH || '/Applications/Google Chrome.app/C
 const debugPort = Number(process.env.SIXFB_CDP_PORT || 9333);
 const widths = (process.env.SIXFB_SCREENSHOT_WIDTHS || '375,768,1440').split(',').map(Number);
 const height = Number(process.env.SIXFB_SCREENSHOT_HEIGHT || 900);
+const youtubeQaThumbnail = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(`
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 270">
+    <rect width="480" height="270" fill="#101010"/>
+    <rect x="18" y="18" width="444" height="234" rx="18" fill="#181818" stroke="#333"/>
+    <path d="M207 92v86l74-43-74-43Z" fill="#ff0033"/>
+    <text x="240" y="214" fill="#fff" font-family="Arial, sans-serif" font-size="22" font-weight="700" text-anchor="middle">BARBER REFERENCE · QA FIXTURE</text>
+  </svg>
+`)}`;
 
 const screens = [
   ['dashboard', 'Dashboard'],
@@ -223,6 +231,19 @@ async function setInputValue(client, selector, value) {
   await delay(100);
 }
 
+async function resetScroll(client) {
+  const reset = `(() => {
+    window.scrollTo(0, 0);
+    for (const element of document.querySelectorAll('*')) {
+      if (element.scrollTop) element.scrollTop = 0;
+    }
+  })()`;
+  await evaluate(client, reset);
+  await delay(100);
+  await evaluate(client, reset);
+  await delay(100);
+}
+
 async function auditLayout(client) {
   return evaluate(client, `(() => {
     const viewport = { width: window.innerWidth, height: window.innerHeight };
@@ -369,6 +390,7 @@ async function main() {
     await waitForContent(client, 'Dashboard');
 
     if (process.env.SIXFB_QA_INJECT_FAILURES === '1') {
+      await clickScreen(client, 'Dashboard');
       await evaluate(client, `(() => {
         console.error('6FB visual gate self-test console error');
         fetch('http://127.0.0.1:1/__6fb-visual-gate-missing__').catch(() => {});
@@ -391,6 +413,28 @@ async function main() {
         report.screens[key] = await auditLayout(client);
         await capture(client, path.join(outputDir, String(width), `${slug}.png`));
       }
+
+      await clickScreen(client, 'Dashboard');
+      await evaluate(client, `(() => {
+        window.electronAPI = {
+          ...window.electronAPI,
+          get6FBAccount: async () => ({ email: 'qa@6fbmentorship.com', igUsername: null, igTokenExpiresAt: null, connected: true }),
+          getYouTubeTrendsConsent: async () => ({ accepted: false, acceptedVersion: null, currentVersion: '2026-07-22', accountConnected: true }),
+          setYouTubeTrendsConsent: async accepted => ({ success: true, accepted, acceptedVersion: accepted ? '2026-07-22' : null }),
+        };
+      })()`);
+      await clickScreen(client, 'Settings');
+      await waitForContent(client, 'Consent required');
+      await resetScroll(client);
+      report.screens[`${width}/settings-youtube-consent-required`] = await auditLayout(client);
+      await capture(client, path.join(outputDir, String(width), 'settings-youtube-consent-required.png'));
+
+      await evaluate(client, `document.querySelector('input[type="checkbox"]')?.click()`);
+      await waitForContent(client, 'YouTube inspiration enabled');
+      await resetScroll(client);
+      report.screens[`${width}/settings-youtube-enabled`] = await auditLayout(client);
+      await capture(client, path.join(outputDir, String(width), 'settings-youtube-enabled.png'));
+      await clickScreen(client, 'Dashboard');
 
       await clickScreen(client, 'Scheduler');
       const hoverPoint = await evaluate(client, `(() => {
@@ -458,10 +502,160 @@ async function main() {
       }
 
       await clickScreen(client, 'Video Planner');
+      await evaluate(client, `window.electronAPI.fetchSmartTrends = async () => ({
+        fetchedAt: '2026-07-22T18:00:00.000Z',
+        ideas: [
+          { id: 'qa-google', title: 'Barber pricing and client retention', sourceId: 'google-trends', sourceLabel: 'Google Trends', evidenceState: 'live', sourceUrl: 'https://trends.google.com/trending?geo=US', observedAt: '2026-07-22T18:00:00.000Z', publishedAt: '2026-07-22T17:00:00.000Z', trafficEvidence: '20K+ searches', barberFitScore: 74, whyNow: 'Google Trends reports 20K+ searches for this broad US search signal.' },
+          { id: 'qa-plan', title: 'How to turn first-time clients into regulars', sourceId: 'content-planner', sourceLabel: '6FB Content Planner', evidenceState: 'your-plan', observedAt: '2026-07-22T18:00:00.000Z', whyNow: 'Scheduled as today’s topic in your 6FB Content Planner.' }
+        ],
+        sources: [
+          { sourceId: 'google-trends', sourceLabel: 'Google Trends', state: 'live', message: 'Current US search signals.', checkedAt: '2026-07-22T18:00:00.000Z' },
+          { sourceId: 'instagram', sourceLabel: 'Instagram', state: 'not-connected', message: 'Connect an eligible professional account.' },
+          { sourceId: 'content-planner', sourceLabel: 'Your plan', state: 'connected', message: 'Connected 6FB plan.' }
+        ],
+        youtube: {
+          status: { sourceId: 'youtube', sourceLabel: 'YouTube', state: 'live', message: 'Public YouTube references from 6FB.', checkedAt: '2026-07-22T17:55:00.000Z' },
+          results: [{ videoId: 'QAfixture01', title: 'How great barbers turn consultations into loyal clients', channelTitle: 'QA fixture · not live YouTube data', publishedAt: '2026-07-21T16:00:00Z', url: 'https://www.youtube.com/watch?v=QAfixture01', thumbnailUrl: ${JSON.stringify(youtubeQaThumbnail)} }],
+          sourceCheckedAt: '2026-07-22T17:55:00.000Z', servedAt: '2026-07-22T18:00:00.000Z'
+        }
+      })`);
+      await clickButton(client, 'Find live trends');
+      await waitForContent(client, 'Barber pricing and client retention');
+      await resetScroll(client);
+      report.screens[`${width}/planner-trends-live`] = await auditLayout(client);
+      await capture(client, path.join(outputDir, String(width), 'planner-trends-live.png'));
+
+      await evaluate(client, `(() => {
+        const heading = document.getElementById('youtube-reference-heading');
+        heading?.closest('section')?.scrollIntoView({ block: 'start' });
+      })()`);
+      await delay(100);
+      report.screens[`${width}/planner-youtube-references`] = await auditLayout(client);
+      await capture(client, path.join(outputDir, String(width), 'planner-youtube-references.png'));
+      await resetScroll(client);
+
+      if (width === 375) {
+        await delay(200);
+        const preparedKeyboardSelection = await evaluate(client, `(() => {
+          const result = [...document.querySelectorAll('button')].find(candidate => candidate.textContent?.includes('Barber pricing and client retention'));
+          if (!(result instanceof HTMLButtonElement)) return false;
+          result.focus();
+          return document.activeElement === result;
+        })()`);
+        if (!preparedKeyboardSelection) throw new Error('Could not focus the first Smart Trends result');
+        await delay(100);
+        const focusedTrend = await evaluate(client, `(() => {
+          const active = document.activeElement;
+          if (!(active instanceof HTMLButtonElement)) return { focused: false };
+          return { focused: active.textContent?.includes('Barber pricing and client retention') === true };
+        })()`);
+        report.focus['375/planner-trends'] = focusedTrend;
+        if (!focusedTrend.focused) throw new Error(`The first Smart Trends result did not retain focus: ${JSON.stringify(focusedTrend)}`);
+        report.screens['375/planner-trends-focus'] = await auditLayout(client);
+        await capture(client, path.join(outputDir, '375', 'planner-trends-focus.png'));
+        await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', text: '\r', unmodifiedText: '\r', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+        await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, nativeVirtualKeyCode: 13 });
+        await delay(100);
+        const selected = await evaluate(client, `(() => {
+          const input = document.querySelector('input[placeholder^="e.g. Build a loyal"]');
+          return input instanceof HTMLInputElement && input.value === 'Barber pricing and client retention' && !document.getElementById('smart-trend-results');
+        })()`);
+        if (!selected) throw new Error('Smart Trends selection did not fill the Video Topic field');
+        await resetScroll(client);
+      }
+
+      await evaluate(client, `window.electronAPI.fetchSmartTrends = async () => ({
+        fetchedAt: '2026-07-22T19:00:00.000Z',
+        ideas: [
+          { id: 'qa-google-cached', title: 'Barber pricing searches from the last successful check', sourceId: 'google-trends', sourceLabel: 'Google Trends', evidenceState: 'cached', sourceUrl: 'https://trends.google.com/trending?geo=US', observedAt: '2026-07-21T20:15:00.000Z', publishedAt: '2026-07-21T19:45:00.000Z', trafficEvidence: '10K+ searches', barberFitScore: 62, whyNow: 'Previously current Google Trends evidence retained after a source failure.' }
+        ],
+        sources: [
+          { sourceId: 'google-trends', sourceLabel: 'Google Trends', state: 'cached', message: 'Refresh failed. Showing the last successful result.', checkedAt: '2026-07-21T20:15:00.000Z' },
+          { sourceId: 'instagram', sourceLabel: 'Instagram', state: 'not-connected', message: 'Connect an eligible professional account.' },
+          { sourceId: 'content-planner', sourceLabel: 'Your plan', state: 'not-connected', message: 'Sign in to include your plan.' }
+        ],
+        youtube: { status: { sourceId: 'youtube', sourceLabel: 'YouTube', state: 'not-connected', message: 'Sign in to 6FB and enable YouTube inspiration in Settings.' }, results: [] }
+      })`);
+      await clickButton(client, 'Find live trends');
+      await waitForContent(client, 'Source checked Jul');
+      await waitForContent(client, 'Published Jul');
+      await resetScroll(client);
+      report.screens[`${width}/planner-trends-cached`] = await auditLayout(client);
+      await capture(client, path.join(outputDir, String(width), 'planner-trends-cached.png'));
+
+      await evaluate(client, `window.electronAPI.fetchSmartTrends = async () => ({
+        fetchedAt: '2026-07-22T18:00:00.000Z',
+        ideas: [
+          { id: 'starter-1', title: 'How to raise your prices without losing your best clients', sourceId: 'idea-starter', sourceLabel: 'Idea starters', evidenceState: 'idea-starter', whyNow: 'Timeless barber-specific inspiration; no live trend evidence.' },
+          { id: 'starter-2', title: 'The consultation habit that builds repeat clientele', sourceId: 'idea-starter', sourceLabel: 'Idea starters', evidenceState: 'idea-starter', whyNow: 'Timeless barber-specific inspiration; no live trend evidence.' },
+          { id: 'starter-3', title: 'How to turn one haircut into a week of useful content', sourceId: 'idea-starter', sourceLabel: 'Idea starters', evidenceState: 'idea-starter', whyNow: 'Timeless barber-specific inspiration; no live trend evidence.' },
+          { id: 'starter-4', title: 'How shop owners can coach consistency without micromanaging', sourceId: 'idea-starter', sourceLabel: 'Idea starters', evidenceState: 'idea-starter', whyNow: 'Timeless barber-specific inspiration; no live trend evidence.' },
+          { id: 'broad-1', title: 'FIFA team of the tournament 2026', sourceId: 'google-trends', sourceLabel: 'Google Trends', evidenceState: 'live', sourceUrl: 'https://trends.google.com/trending?geo=US', barberFitScore: 0, whyNow: 'Current broad US search signal from Google Trends.' },
+          { id: 'broad-2', title: 'Maple Street Biscuit Company sold', sourceId: 'google-trends', sourceLabel: 'Google Trends', evidenceState: 'live', sourceUrl: 'https://trends.google.com/trending?geo=US', barberFitScore: 0, whyNow: 'Current broad US search signal from Google Trends.' }
+        ],
+        sources: [
+          { sourceId: 'google-trends', sourceLabel: 'Google Trends', state: 'live', message: '8 current US search signals. No signal cleared barber fit 20.' },
+          { sourceId: 'instagram', sourceLabel: 'Instagram', state: 'not-connected', message: 'Connect an eligible professional account.' },
+          { sourceId: 'content-planner', sourceLabel: 'Your plan', state: 'not-connected', message: 'Sign in to include your plan.' }
+        ],
+        youtube: { status: { sourceId: 'youtube', sourceLabel: 'YouTube', state: 'not-connected', message: 'Enable YouTube inspiration in Settings before requesting references.' }, results: [] }
+      })`);
+      await clickButton(client, 'Find live trends');
+      await waitForContent(client, 'FIFA team of the tournament 2026');
+      await resetScroll(client);
+      report.screens[`${width}/planner-trends-low-fit`] = await auditLayout(client);
+      await capture(client, path.join(outputDir, String(width), 'planner-trends-low-fit.png'));
+
+      await evaluate(client, `window.electronAPI.fetchSmartTrends = async () => ({
+        fetchedAt: '2026-07-22T18:00:00.000Z',
+        ideas: [{
+          id: 'qa-starter', title: 'The consultation habit that builds repeat clientele',
+          sourceId: 'idea-starter', sourceLabel: 'Idea starters', evidenceState: 'idea-starter',
+          whyNow: 'Timeless barber-specific inspiration; no live trend evidence.'
+        }],
+        sources: [
+          { sourceId: 'google-trends', sourceLabel: 'Google Trends', state: 'error', message: 'Source could not be reached.' },
+          { sourceId: 'instagram', sourceLabel: 'Instagram', state: 'not-connected', message: 'Connect an eligible professional account.' },
+          { sourceId: 'content-planner', sourceLabel: 'Your plan', state: 'not-connected', message: 'Sign in to include your plan.' }
+        ],
+        youtube: { status: { sourceId: 'youtube', sourceLabel: 'YouTube', state: 'not-connected', message: 'Sign in to 6FB and enable YouTube inspiration in Settings.' }, results: [] }
+      })`);
+      await clickButton(client, 'Find live trends');
+      await waitForContent(client, 'Idea starter');
+      await resetScroll(client);
+      report.screens[`${width}/planner-trends-starter`] = await auditLayout(client);
+      await capture(client, path.join(outputDir, String(width), 'planner-trends-starter.png'));
+
+      await evaluate(client, `window.electronAPI.fetchSmartTrends = async () => { throw new Error('QA offline'); }`);
+      await clickButton(client, 'Find live trends');
+      await waitForContent(client, 'Trend sources could not be checked');
+      await resetScroll(client);
+      report.screens[`${width}/planner-trends-error`] = await auditLayout(client);
+      await capture(client, path.join(outputDir, String(width), 'planner-trends-error.png'));
+
+      await evaluate(client, `(() => {
+        window.electronAPI.fetchSmartTrends = () => new Promise(resolve => {
+          window.__resolveTrendQa = () => resolve({
+            fetchedAt: '2026-07-22T18:00:00.000Z',
+            ideas: [{ id: 'qa-starter', title: 'A barber idea starter', sourceId: 'idea-starter', sourceLabel: 'Idea starters', evidenceState: 'idea-starter', whyNow: 'Timeless barber-specific inspiration; no live trend evidence.' }],
+            sources: [],
+            youtube: { status: { sourceId: 'youtube', sourceLabel: 'YouTube', state: 'not-connected', message: 'Consent required.' }, results: [] }
+          });
+        });
+      })()`);
+      await clickButton(client, 'Find live trends');
+      await waitForContent(client, 'Checking Google Trends, your connected sources');
+      await resetScroll(client);
+      report.screens[`${width}/planner-trends-loading`] = await auditLayout(client);
+      await capture(client, path.join(outputDir, String(width), 'planner-trends-loading.png'));
+      await evaluate(client, `window.__resolveTrendQa?.()`);
+      await waitForContent(client, 'A barber idea starter');
+
       await evaluate(client, `window.electronAPI.generateVideoPlan = () => new Promise(() => {})`);
       await setInputValue(client, 'input[placeholder^="e.g. Build a loyal"]', 'How to build a loyal barber clientele');
       await clickButton(client, 'Generate Shoot Plan');
       await waitForContent(client, 'Building shoot plan...');
+      await resetScroll(client);
       report.screens[`${width}/planner-loading`] = await auditLayout(client);
       await capture(client, path.join(outputDir, String(width), 'planner-loading.png'));
 

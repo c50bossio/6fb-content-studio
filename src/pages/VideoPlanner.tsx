@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import type {
   ContentBrain,
   ContentIntent,
@@ -8,6 +8,8 @@ import type {
   StrategyInsights,
   StrategyScoreBreakdown,
 } from '../types/content-strategy';
+import type { TrendEvidenceState, TrendFeed, TrendSourceState } from '../types/trends';
+import youtubeLogoSrc from '../../assets/youtube-logo.svg';
 
 // ── Copy hook ─────────────────────────────────────────────────────────────
 function useCopy() {
@@ -74,17 +76,6 @@ const TARGET_LENGTHS = [
   { value: '60+',   label: '60+ min (Long-form)',  dropZones: 5 },
 ];
 
-const FALLBACK_TRENDING = [
-  'How I price my cuts in 2025',
-  'Booth rent vs commission — the truth',
-  'My morning routine as a barber',
-  'How I got to 500 clients',
-  'Why most barbers stay broke',
-  'Tools every barber needs in 2025',
-  'How to raise your prices without losing clients',
-  'Building a brand as a barber',
-];
-
 const INTENT_OPTIONS: { value: ContentIntent; label: string }[] = [
   { value: 'education', label: 'Education' },
   { value: 'entertainment', label: 'Entertainment' },
@@ -125,6 +116,57 @@ const TOPIC_STOPWORDS = new Set([
   'the', 'and', 'for', 'with', 'that', 'this', 'your', 'you', 'how', 'why', 'what', 'when', 'from', 'into', 'about',
   'most', 'barber', 'barbers', 'barbershop', 'shop', 'their', 'they', 'them',
 ]);
+
+const TREND_EVIDENCE_LABELS: Record<TrendEvidenceState, string> = {
+  live: 'Live',
+  cached: 'Cached',
+  'your-plan': 'Your plan',
+  'idea-starter': 'Idea starter',
+};
+
+const TREND_SOURCE_STATE_LABELS: Record<TrendSourceState, string> = {
+  live: 'Live',
+  cached: 'Cached',
+  connected: 'Connected',
+  'not-connected': 'Not connected',
+  unavailable: 'Unavailable',
+  empty: 'No results',
+  error: 'Error',
+};
+
+function trendEvidenceClass(state: TrendEvidenceState) {
+  if (state === 'live') return 'border-[#00C851]/40 bg-[#00C851]/10 text-[#67e892]';
+  if (state === 'cached') return 'border-amber-400/40 bg-amber-400/10 text-amber-300';
+  if (state === 'your-plan') return 'border-sky-400/40 bg-sky-400/10 text-sky-300';
+  return 'border-6fb-border bg-white/5 text-6fb-text-secondary';
+}
+
+function trendSourceStateClass(state: TrendSourceState) {
+  if (state === 'live') return 'text-[#67e892]';
+  if (state === 'cached') return 'text-amber-300';
+  if (state === 'connected') return 'text-sky-300';
+  if (state === 'error') return 'text-red-300';
+  return 'text-6fb-text-muted';
+}
+
+function formatTrendTime(value?: string) {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return null;
+  return new Date(parsed).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function formatTrendTimestamp(value?: string) {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) return null;
+  return new Date(parsed).toLocaleString([], {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
 
 const safeTrim = (value?: string | null) => (value ?? '').trim();
 const cleanList = (items?: string[] | null) => (items ?? []).map(item => item.trim()).filter(Boolean);
@@ -644,12 +686,13 @@ export default function VideoPlanner({
   const [savedPlans, setSavedPlans]     = useState<VideoPlan[]>([]);
   const [saving, setSaving]             = useState(false);
   const [saved, setSaved]               = useState(false);
-  const [trendingTopics, setTrendingTopics]     = useState<string[]>([]);
   const [fetchingTrending, setFetchingTrending] = useState(false);
   const [showTrending, setShowTrending]         = useState(false);
-  const [briefData, setBriefData]               = useState<{ today: { topic: string; hookIdea?: string } | null; week: { day: string; topic: string | null; status: string }[] } | null>(null);
+  const [trendFeed, setTrendFeed]               = useState<TrendFeed | null>(null);
+  const [trendError, setTrendError]             = useState<string | null>(null);
   const [expandedBody, setExpandedBody]         = useState<number | null>(null);
   const [contentBrain, setContentBrain]         = useState<ContentBrain | null>(null);
+  const trendRequestId                          = useRef(0);
   const { copy: copyAll, copied: copiedAll }    = useCopy();
 
   const briefValues = useMemo<BriefValues>(() => ({
@@ -721,28 +764,26 @@ export default function VideoPlanner({
   }
 
   async function fetchTrending() {
+    const requestId = ++trendRequestId.current;
     setFetchingTrending(true);
-    try {
-      // Try the real Content Planner API first
-      const result = await (window.electronAPI as any).fetchTodayBrief?.();
-      if (result?.success && result.data) {
-        setBriefData(result.data);
-        // Also populate trending from week plan
-        const weekTopics = (result.data.week || [])
-          .filter((p: any) => p.topic)
-          .map((p: any) => p.topic as string);
-        setTrendingTopics(weekTopics.length ? weekTopics : FALLBACK_TRENDING);
-      } else {
-        // No token or API error — fall back to curated list
-        setBriefData(null);
-        setTrendingTopics(FALLBACK_TRENDING);
-      }
-    } catch {
-      setBriefData(null);
-      setTrendingTopics(FALLBACK_TRENDING);
-    }
+    setTrendError(null);
+    setTrendFeed(null);
     setShowTrending(true);
-    setFetchingTrending(false);
+    try {
+      const result = await window.electronAPI.fetchSmartTrends();
+      if (!result || !Array.isArray(result.ideas) || !Array.isArray(result.sources) ||
+          !result.youtube || !Array.isArray(result.youtube.results) || !result.youtube.status) {
+        throw new Error('Trend sources returned an invalid response.');
+      }
+      if (requestId !== trendRequestId.current) return;
+      setTrendFeed(result);
+    } catch {
+      if (requestId !== trendRequestId.current) return;
+      setTrendFeed(null);
+      setTrendError('Trend sources could not be checked. You can retry or enter a topic manually.');
+    } finally {
+      if (requestId === trendRequestId.current) setFetchingTrending(false);
+    }
   }
 
   async function handleGenerate() {
@@ -870,47 +911,186 @@ export default function VideoPlanner({
                 <button
                   onClick={fetchTrending}
                   disabled={fetchingTrending}
-                  className="flex w-full items-center justify-center gap-2 px-4 py-3 rounded-xl bg-6fb-card border border-6fb-border text-xs font-semibold text-6fb-text-secondary hover:text-white hover:border-6fb-green/40 transition-all whitespace-nowrap disabled:opacity-50 sm:w-auto"
+                  aria-expanded={showTrending}
+                  aria-controls="smart-trend-results"
+                  className="flex min-h-[44px] w-full items-center justify-center gap-2 px-4 py-3 rounded-xl bg-6fb-card border border-6fb-border text-xs font-semibold text-6fb-text-secondary hover:text-white hover:border-6fb-green/40 transition-all whitespace-nowrap disabled:opacity-50 sm:w-auto"
                 >
                   {fetchingTrending
                     ? <span className="w-3 h-3 border border-6fb-green border-t-transparent rounded-full animate-spin" />
                     : <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
                   }
-                  Trending
+                  {fetchingTrending ? 'Checking sources…' : 'Find live trends'}
                 </button>
               </div>
 
               {showTrending && (
-                <div className="mt-2 bg-6fb-card border border-6fb-border rounded-xl overflow-hidden shadow-xl">
-                  {/* Today's Brief — if connected */}
-                  {briefData?.today && (
-                    <div className="px-3 py-2.5 border-b border-6fb-border bg-[#00C851]/5">
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <span className="text-[9px] font-bold text-[#00C851] uppercase tracking-wider">📋 Today's Plan</span>
-                      </div>
-                      <button
-                        onClick={() => { setTopic(briefData.today!.topic); setShowTrending(false); }}
-                        className="w-full text-left text-sm font-semibold text-white hover:text-[#00C851] transition-colors mb-1"
-                      >
-                        {briefData.today.topic}
-                      </button>
-                      {briefData.today.hookIdea && (
-                        <p className="text-[10px] text-6fb-text-muted leading-snug">Hook: {briefData.today.hookIdea}</p>
-                      )}
+                <div
+                  id="smart-trend-results"
+                  className="mt-2 bg-6fb-card border border-6fb-border rounded-xl overflow-hidden shadow-xl"
+                  onKeyDown={event => {
+                    if (event.key === 'Escape') setShowTrending(false);
+                  }}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2 px-4 py-3 border-b border-6fb-border">
+                    <div>
+                      <h2 className="text-xs font-bold text-white">Topic intelligence</h2>
+                      <p className="mt-0.5 text-[10px] leading-relaxed text-6fb-text-muted">
+                        Topic signals and your plan stay separate from YouTube inspiration references.
+                      </p>
+                    </div>
+                    {trendFeed && (
+                      <span className="text-[10px] text-6fb-text-muted">
+                        Checked {formatTrendTime(trendFeed.fetchedAt) ?? 'recently'}
+                      </span>
+                    )}
+                  </div>
+
+                  {fetchingTrending && !trendFeed && (
+                    <div role="status" className="flex items-center gap-3 px-4 py-5 text-xs text-6fb-text-secondary">
+                      <span className="h-4 w-4 shrink-0 animate-spin rounded-full border border-6fb-green border-t-transparent" />
+                      Checking Google Trends, your connected sources, and eligible YouTube references…
                     </div>
                   )}
-                  {/* Week plan or fallback */}
-                  <div className="px-3 py-2 border-b border-6fb-border">
-                    <span className="text-[10px] text-6fb-text-muted uppercase font-semibold tracking-wider">
-                      {briefData ? 'This Week' : 'Trending in your niche'}
-                    </span>
-                  </div>
-                  {trendingTopics.map((t, i) => (
-                    <button key={i} onClick={() => { setTopic(t); setShowTrending(false); }}
-                      className="w-full text-left px-4 py-2.5 text-sm text-6fb-text-secondary hover:text-white hover:bg-white/5 transition-colors border-b border-6fb-border/30 last:border-0">
-                      {t}
-                    </button>
-                  ))}
+
+                  {trendError && (
+                    <div role="alert" className="px-4 py-3 border-b border-red-400/20 bg-red-400/5 text-xs leading-relaxed text-red-200">
+                      {trendError}
+                    </div>
+                  )}
+
+                  {trendFeed && (
+                    <>
+                      <div className="grid grid-cols-1 gap-px bg-6fb-border/60 sm:grid-cols-2" aria-label="Trend source status">
+                        {trendFeed.sources.map(source => (
+                          <div key={source.sourceId} className="min-w-0 bg-6fb-card px-3 py-2.5">
+                            <div className="flex min-w-0 items-center justify-between gap-2">
+                              <span className="truncate text-[10px] font-semibold text-6fb-text-secondary">{source.sourceLabel}</span>
+                              <span className={`shrink-0 text-[9px] font-bold uppercase tracking-wide ${trendSourceStateClass(source.state)}`}>
+                                {TREND_SOURCE_STATE_LABELS[source.state]}
+                              </span>
+                            </div>
+                            {source.message && (
+                              <p className="mt-1 line-clamp-2 text-[9px] leading-relaxed text-6fb-text-muted">{source.message}</p>
+                            )}
+                            {formatTrendTimestamp(source.checkedAt) && (
+                              <p className="mt-1 text-[9px] leading-relaxed text-6fb-text-muted">
+                                Source checked {formatTrendTimestamp(source.checkedAt)}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div aria-live="polite">
+                        {trendFeed.ideas.map(idea => (
+                          <div key={idea.id} className="border-b border-6fb-border/40 last:border-0">
+                            <button
+                              onClick={() => { setTopic(idea.title); setShowTrending(false); }}
+                              className="group w-full px-4 pb-2 pt-3 text-left transition-colors hover:bg-white/5 focus-visible:bg-white/5"
+                            >
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className={`rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide ${trendEvidenceClass(idea.evidenceState)}`}>
+                                  {TREND_EVIDENCE_LABELS[idea.evidenceState]}
+                                </span>
+                                <span className="text-[10px] text-6fb-text-muted">{idea.sourceLabel}</span>
+                                {typeof idea.barberFitScore === 'number' && (
+                                  <span className="text-[10px] text-6fb-text-muted">Barber fit {idea.barberFitScore}/100</span>
+                                )}
+                              </div>
+                              <span className="mt-1.5 block break-words text-sm font-semibold leading-snug text-6fb-text-secondary transition-colors group-hover:text-white">
+                                {idea.title}
+                              </span>
+                              <span className="mt-1 block break-words text-[10px] leading-relaxed text-6fb-text-muted">
+                                {idea.whyNow}
+                              </span>
+                              {formatTrendTimestamp(idea.publishedAt) && (
+                                <span className="mt-1 block text-[10px] leading-relaxed text-6fb-text-muted">
+                                  Published {formatTrendTimestamp(idea.publishedAt)}
+                                </span>
+                              )}
+                            </button>
+                            {idea.sourceUrl && (
+                              <button
+                                onClick={async () => {
+                                  const opened = await window.electronAPI.openTrendSource(idea.sourceUrl!);
+                                  if (!opened.success) setTrendError(opened.error ?? 'Could not open the trend source.');
+                                }}
+                                className="ml-4 min-h-[44px] px-0 pb-2 text-[10px] font-semibold text-6fb-green hover:text-white"
+                                aria-label={`Open source for ${idea.title}`}
+                              >
+                                View source ↗
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      <section className="border-t border-6fb-border bg-white/[0.02] p-4" aria-labelledby="youtube-reference-heading">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const opened = await window.electronAPI.openTrendSource('https://www.youtube.com/');
+                                if (!opened.success) setTrendError(opened.error ?? 'Could not open YouTube.');
+                              }}
+                              className="flex min-h-[44px] items-center rounded-lg bg-white px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-6fb-green"
+                              aria-label="Open YouTube"
+                            >
+                              <img src={youtubeLogoSrc} alt="YouTube" className="h-auto w-[108px]" />
+                            </button>
+                            <h3 id="youtube-reference-heading" className="mt-2 text-xs font-bold text-white">YouTube inspiration · reference only</h3>
+                            <p className="mt-1 text-[10px] leading-relaxed text-6fb-text-muted">
+                              These public videos are shown in 6FB order for inspiration. They do not become your topic or enter AI scoring.
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <span className={`text-[9px] font-bold uppercase tracking-wide ${trendSourceStateClass(trendFeed.youtube.status.state)}`}>
+                              {TREND_SOURCE_STATE_LABELS[trendFeed.youtube.status.state]}
+                            </span>
+                            {trendFeed.youtube.status.checkedAt && (
+                              <p className="mt-1 text-[9px] text-6fb-text-muted">Source checked {formatTrendTimestamp(trendFeed.youtube.status.checkedAt)}</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {trendFeed.youtube.status.message && (
+                          <p className="mt-3 text-[10px] leading-relaxed text-6fb-text-muted">{trendFeed.youtube.status.message}</p>
+                        )}
+
+                        {trendFeed.youtube.results.length > 0 && (
+                          <div className="mt-3 grid grid-cols-1 gap-3" aria-label="YouTube inspiration references">
+                            {trendFeed.youtube.results.map(reference => (
+                              <button
+                                key={reference.videoId}
+                                type="button"
+                                onClick={async () => {
+                                  const opened = await window.electronAPI.openTrendSource(reference.url);
+                                  if (!opened.success) setTrendError(opened.error ?? 'Could not open the YouTube reference.');
+                                }}
+                                className="group grid min-h-[44px] grid-cols-1 gap-3 rounded-xl border border-6fb-border bg-6fb-card p-3 text-left transition-colors hover:border-6fb-green/40 focus-visible:border-6fb-green focus-visible:outline-none sm:grid-cols-[144px_minmax(0,1fr)]"
+                                aria-label={`Open YouTube reference: ${reference.title}`}
+                              >
+                                <img
+                                  src={reference.thumbnailUrl}
+                                  alt=""
+                                  className="h-auto w-full self-start"
+                                />
+                                <span className="min-w-0 self-center">
+                                  <span className="block break-words text-sm font-semibold leading-snug text-6fb-text-secondary group-hover:text-white">{reference.title}</span>
+                                  <span className="mt-1 block break-words text-[10px] text-6fb-text-muted">{reference.channelTitle}</span>
+                                  <time dateTime={reference.publishedAt} className="mt-1 block text-[10px] text-6fb-text-muted">
+                                    Published {formatTrendTimestamp(reference.publishedAt)}
+                                  </time>
+                                  <span className="mt-2 block text-[10px] font-semibold text-6fb-green">Open original on YouTube ↗</span>
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+                    </>
+                  )}
                 </div>
               )}
             </div>

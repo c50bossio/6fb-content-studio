@@ -16,6 +16,7 @@ import UpdateBanner from './components/UpdateBanner';
 import type { ContentBrain, ContentStrategyBrief } from './types/content-strategy';
 import type { PublishingQueueResponse } from './types/publishing';
 import type { ScheduleDraft } from './types/creation-handoff';
+import type { TrendFeed } from './types/trends';
 
 export interface BrandProfile {
   brandName: string;
@@ -93,6 +94,10 @@ declare global {
       openPath: (path: string) => Promise<{ success: boolean }>;
       showInFinder: (path: string) => Promise<{ success: boolean }>;
       fetchTodayBrief: () => Promise<{ success: boolean; data?: unknown; error?: string }>;
+      fetchSmartTrends: () => Promise<TrendFeed>;
+      getYouTubeTrendsConsent: () => Promise<{ accepted: boolean; acceptedVersion: string | null; currentVersion: string; accountConnected: boolean }>;
+      setYouTubeTrendsConsent: (accepted: boolean) => Promise<{ success: boolean; accepted?: boolean; acceptedVersion?: string | null; error?: string }>;
+      openTrendSource: (url: string) => Promise<{ success: boolean; error?: string }>;
       // Library
       scanLibrary: () => Promise<unknown>;
       deleteRun: (runId: string) => Promise<{ success: boolean }>;
@@ -274,7 +279,10 @@ export default function App() {
         renderVideo: async () => ({ success: false, error: 'Electron required' }),
         postToSocial: async () => ({ success: false, opened: false, error: 'Electron required' }),
         onProgress: () => () => {},
-        deleteApiKey: async () => ({ success: true }),
+        deleteApiKey: async (provider: string) => {
+          if (provider === 'claude') localStorage.removeItem('contentStudio:hasClaudeKey');
+          return { success: true };
+        },
         checkSystemHealth: async () => ({
           deps: { python: false, ffmpeg: false, ffprobe: false, mediapipe: false, clipExtractor: false },
           paths: { userData: '~/Library/Application Support/6fb-content-studio', clipExtractor: '' },
@@ -285,6 +293,31 @@ export default function App() {
         openPath: async () => ({ success: true }),
         showInFinder: async () => ({ success: true }),
         fetchTodayBrief: async () => ({ success: false, error: 'Electron required' }),
+        fetchSmartTrends: async () => ({
+          fetchedAt: new Date().toISOString(),
+          ideas: [
+            {
+              id: 'preview-idea-starter',
+              title: 'The consultation habit that builds repeat clientele',
+              sourceId: 'idea-starter',
+              sourceLabel: 'Idea starters',
+              evidenceState: 'idea-starter',
+              whyNow: 'Timeless barber-specific inspiration; no live trend evidence.',
+            },
+          ],
+          sources: [
+            { sourceId: 'google-trends', sourceLabel: 'Google Trends', state: 'unavailable', message: 'Open the Electron app to check live sources.' },
+            { sourceId: 'instagram', sourceLabel: 'Instagram', state: 'not-connected', message: 'Open the Electron app to use an authorized account.' },
+            { sourceId: 'content-planner', sourceLabel: 'Your plan', state: 'not-connected', message: 'Open the Electron app to include your plan.' },
+          ],
+          youtube: {
+            results: [],
+            status: { sourceId: 'youtube', sourceLabel: 'YouTube', state: 'not-connected', message: 'Sign in to 6FB and enable YouTube inspiration in Settings.' },
+          },
+        }),
+        getYouTubeTrendsConsent: async () => ({ accepted: false, acceptedVersion: null, currentVersion: '2026-07-22', accountConnected: false }),
+        setYouTubeTrendsConsent: async () => ({ success: false, error: 'Electron required' }),
+        openTrendSource: async () => ({ success: true }),
         scanLibrary: async () => ({ runs: [] }),
         deleteRun: async () => ({ success: true }),
         deleteClip: async () => ({ success: true }),

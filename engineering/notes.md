@@ -1,6 +1,6 @@
 # Engineering notes
 
-Last updated: 2026-07-21
+Last updated: 2026-07-22
 
 ## Confirmed facts
 
@@ -17,6 +17,14 @@ Last updated: 2026-07-21
   `1949b06bb9f140210b2c94a93d2de899fe73e10f`.
 - Renderer local-file URL encoding shipped in `v1.5.45` from merge commit
   `14be3d825f28f91edfaf18cdaf6d334e545aeeb2`.
+- The blocked local user-key YouTube prototype has been removed. The Mac client
+  now requires current versioned consent plus 6FB sign-in, makes one request to
+  the fixed 6FB backend, uses official branding and accessible policy links,
+  and renders validated fields as reference-only without scoring or topic use.
+  The authenticated backend is implemented and locally verified on isolated
+  branch `codex/youtube-trends-proxy`; the linked desktop, backend, and public
+  policy PRs are #37, #125, and #152 respectively. Deployment configuration and
+  authenticated staging proof remain separate gates.
 
 ## Open questions
 
@@ -27,6 +35,16 @@ Last updated: 2026-07-21
   self-test proves layout, console, and network defects fail closed.
 
 ## Recent decisions
+
+- Smart Live Trends is implemented on an isolated feature branch. Electron
+  main owns bounded Google Trends RSS and authorized Instagram Graph requests;
+  the renderer receives typed, source-labelled results without credentials.
+  Personal Content Planner topics and offline Idea starters remain separate
+  from live evidence, and the unavailable TikTok trend row is removed. The
+  policy-remediated YouTube client and authenticated backend contract are
+  locally proved but cannot release before deployment configuration and an
+  authenticated staging response are proved. The local proof record is
+  `qa/2026-07-22-smart-live-trends.md`; merge and release remain separate gates.
 
 - Keep all implementation source in its existing runtime directories.
 - Store only plans, architecture context, and verification evidence here.
