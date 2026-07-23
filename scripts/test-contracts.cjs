@@ -141,7 +141,7 @@ assert.match(smartTrendService, /requestOnce\(SIXFB_YOUTUBE_TRENDS[\s\S]*?Author
 assert.match(smartTrendService, /requestOnce\(SIXFB_YOUTUBE_TRENDS[\s\S]*?redirect: 'error'/, 'The YouTube backend bearer token must never follow a redirect');
 assert.equal((smartTrendService.match(/requestOnce\(SIXFB_YOUTUBE_TRENDS/g) ?? []).length, 1, 'The YouTube backend must have one desktop request call site');
 assert.match(smartTrendService, /input\.youtubeBackendToken && input\.youtubeConsent[\s\S]*?fetchYouTubeReferences/, 'YouTube requests must require both sign-in and current consent');
-assert.match(smartTrendService, /liveIdeas = rankTrendIdeas\([\s\S]*?\.\.\.google\.ideas, \.\.\.instagram\.ideas/, 'YouTube references must not enter AI ranking');
+assert.match(smartTrendService, /rankTrendIdeas\(instagram\.ideas, input\.contentBrain, 2\)[\s\S]*?rankTrendIdeas\(google\.ideas, input\.contentBrain, 6\)/, 'Authorized Instagram account signals must retain a bounded place beside Google signals');
 assert.doesNotMatch(smartTrendService, /youtube\.results[\s\S]*?rankTrendIdeas/, 'YouTube reference results must not enter ranking');
 assert.match(trendIntelligence, /parseYouTubeBackendResponse/, 'YouTube backend responses must cross a dedicated fail-closed parser');
 assert.match(trendIntelligence, /sourceCheckedAt[\s\S]*?servedAt/, 'YouTube response freshness and receipt timestamps must both be validated');
@@ -159,8 +159,8 @@ assert.doesNotMatch(`${main}\n${settings}\n${smartTrendService}`, /AIza|Save You
 assert.match(settings, /6FB Privacy[\s\S]*?6FB Terms[\s\S]*?YouTube Terms[\s\S]*?Google Privacy/, 'All required policy links must remain accessible in Settings');
 assert.match(settings, /Disable YouTube discovery/, 'Users must be able to revoke YouTube discovery consent');
 assert.doesNotMatch(`${trendTypes}\n${smartTrendService}\n${videoPlanner}`, /tiktok/i, 'Smart Trends must not expose an unavailable TikTok source');
-assert.match(instagramGraph, /graph\.facebook\.com\/v23\.0/, 'Instagram integrations must use the centrally pinned supported Graph API version');
-assert.doesNotMatch(`${main}\n${smartTrendService}\n${instagramGraph}`, /graph\.facebook\.com\/v1[89]\.0/, 'Instagram integrations must not use expired Graph API versions');
+assert.match(instagramGraph, /graph\.instagram\.com\/v23\.0/, 'Instagram Login integrations must use the centrally pinned supported Instagram Graph API version');
+assert.doesNotMatch(`${main}\n${smartTrendService}\n${instagramGraph}`, /graph\.facebook\.com\/v\d+\.0/, 'Instagram Login credentials must never be sent to the Facebook Graph host');
 assert.match(trendTypes, /'your-plan'/, 'Planned content must have a non-live evidence state');
 assert.match(trendTypes, /'connected'/, 'Content Planner must have a truthful connected source state');
 assert.match(trendIntelligence, /MAX_GOOGLE_RSS_BYTES = 512 \* 1024/, 'Google RSS parsing must reject oversized payloads');
