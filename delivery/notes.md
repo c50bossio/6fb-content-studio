@@ -4,7 +4,18 @@ Last updated: 2026-07-23
 
 ## Confirmed facts
 
-- `v1.5.51` is public and latest for macOS arm64. It delivers the Instagram
+- `v1.5.52` is public and latest for macOS arm64. Its annotated tag resolves
+  to `6b9c0751a33d9ece6048862e884ebebd50013932`; the staging workflow
+  `30030169653` passed its full suite, signing, notarization, exact-four-asset
+  draft, and staged-DMG smoke gates, and owner-approved promotion workflow
+  `30031241942` published the release. Independent public-DMG acceptance
+  verified the published arm64 DMG SHA-256
+  `347cc489cec968b7bd3bee4b30d5b38782ebe5f65727d4f9cb0b6731fddbf43e`,
+  notarization, strict signature, Gatekeeper, embedded version, system health,
+  Settings runtime disclosure, and Clip Extractor screen. Windows remains
+  deliberately unpublished.
+
+- `v1.5.51` is public for macOS arm64. It delivers the Instagram
   Trends correction merged through pull request #53, with final release-record
   commit `17415f8d93c819cae1f2ed2554b40160236011ed`. Tag workflow
   `30016497013` passed the full suite, signing, notarization, stapling,
@@ -21,7 +32,7 @@ Last updated: 2026-07-23
   deliberately unpublished. A follow-up hardens the anonymous verifier with a
   finite 62-second propagation backoff; it does not change v1.5.51 artifacts.
 
-- `v1.5.50` is public and latest for macOS arm64. It delivers the Settings
+- `v1.5.50` is public for macOS arm64. It delivers the Settings
   connection-workflow update merged through pull request #50. Annotated tag
   `v1.5.50` resolves to
   `1ba5acc55869a02d16baace9b80d6a046ede9940`. Staging workflow `30004587257`
@@ -31,7 +42,7 @@ Last updated: 2026-07-23
   smoke. The public asset manifest and digests are recorded in
   `delivery/evidence/2026-07-23-v1.5.50-public-release.md`.
 
-- `v1.5.49` is public and latest for macOS arm64. It delivers the
+- `v1.5.49` is public for macOS arm64. It delivers the
   browser-to-desktop 6FB sign-in merged through pull request #41. Exact tag
   target `6ac879942caf19a691338fd28a4f44a5552c7f3b` passed the signed macOS
   staging workflow `29979429561`; the owner-approved promotion workflow
