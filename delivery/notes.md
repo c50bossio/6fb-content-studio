@@ -4,6 +4,14 @@ Last updated: 2026-07-22
 
 ## Confirmed facts
 
+- Thumbnail Maker merged to `origin/main` through pull request #40 as
+  `8e42109eedba1b4eef214f55846a2a2479fc512e`, after tag `v1.5.47` was created.
+  The current public download remains v1.5.46; v1.5.47 is a private Smart Live
+  Trends draft and must not be promoted as a Thumbnail Maker release.
+- `delivery/release-notes/v1.5.48.md` and
+  `delivery/checklists/v1.5.48-release-readiness.md` define the next
+  macOS-arm64-only candidate. They do not create a tag or publish a release.
+
 - Smart Live Trends merged to `origin/main` through pull request #37 as
   `fa959f8f1b2366e216f0ada67762018d45912835`, after public `v1.5.46` was
   tagged. A new `v1.5.47` tag is therefore required to distribute it.
