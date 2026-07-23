@@ -4,10 +4,13 @@ Last updated: 2026-07-22
 
 ## Confirmed facts
 
-- `v1.5.49` is the proposed macOS-arm64-only release for the browser-to-desktop
-  6FB sign-in merged through pull request #41. Its release note and readiness
-  checklist are tracked; no v1.5.49 tag, package, draft, or public release
-  exists yet.
+- `v1.5.49` is public and latest for macOS arm64. It delivers the
+  browser-to-desktop 6FB sign-in merged through pull request #41. Exact tag
+  target `6ac879942caf19a691338fd28a4f44a5552c7f3b` passed the signed macOS
+  staging workflow `29979429561`; the owner-approved promotion workflow
+  `29980081756` passed anonymous public-manifest and public-DMG smoke checks.
+  The exact four-asset manifest and digests are recorded in
+  `delivery/evidence/2026-07-23-v1.5.49-public-release.md`.
 
 - Thumbnail Maker merged to `origin/main` through pull request #40 as
   `8e42109eedba1b4eef214f55846a2a2479fc512e`, after tag `v1.5.47` was created.

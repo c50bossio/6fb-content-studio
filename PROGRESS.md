@@ -415,8 +415,12 @@ signing setup occurred. Azure and Windows signing were not used for v1.5.46.
   connected Electron account result without exposing the token to the renderer.
   Desktop [#41](https://github.com/c50bossio/6fb-content-studio/pull/41)
   merged at `bb497c09d46fa49f5b0b69ce60cde03790d8639e`. Its merge tree exactly
-  matches the release-tested PR head `4b829fcbc565362d9c6f0308c74368ae647ef53a`;
-  it is not tagged, packaged, or publicly released.
+  matches the release-tested PR head `4b829fcbc565362d9c6f0308c74368ae647ef53a`.
+  It is now publicly shipped in macOS-arm64-only `v1.5.49`, tagged at
+  `6ac879942caf19a691338fd28a4f44a5552c7f3b`. Build-and-stage workflow
+  `29979429561` and owner-approved publication workflow `29980081756` both
+  passed, including notarization, staged/public DMG smoke, and the exact
+  four-file public manifest. Windows remains unpublished.
 - Desktop: Settings now offers **Sign in with 6FB in browser** while preserving
   password login as a fallback. Electron reserves a random high localhost port,
   creates PKCE/state values in memory, validates the localhost callback, and
@@ -444,5 +448,5 @@ signing setup occurred. Azure and Windows signing were not used for v1.5.46.
   visual matrix captured 84 states at 375, 768, and 1440 px with zero layout,
   console, or network findings and three focus contracts. The 1440 Settings
   browser-login capture remains clean.
-- Next gate: a separate macOS packaging, tag, and distribution decision. No
-  desktop release has occurred.
+- Next gate: optional real-user Mac acceptance and adoption measurement. No
+  Windows release is planned before Mac adoption supports that decision.
