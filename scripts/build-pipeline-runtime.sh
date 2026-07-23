@@ -39,6 +39,15 @@ if [[ ! -x "$FFPROBE_STATIC" ]]; then
   exit 1
 fi
 
+REQUESTED_PYTHON_VERSION="$("$PYTHON_BIN" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+if [[ -x "$VENV_DIR/bin/python" ]]; then
+  VENV_PYTHON_VERSION="$("$VENV_DIR/bin/python" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
+  if [[ "$VENV_PYTHON_VERSION" != "$REQUESTED_PYTHON_VERSION" ]]; then
+    echo "Recreating runtime venv for Python $REQUESTED_PYTHON_VERSION (found $VENV_PYTHON_VERSION)."
+    rm -rf "$VENV_DIR"
+  fi
+fi
+
 "$PYTHON_BIN" -m venv "$VENV_DIR"
 "$VENV_DIR/bin/python" -m pip install --upgrade pip 'setuptools<82' wheel
 "$VENV_DIR/bin/python" -m pip install --constraint "$MACOS_CONSTRAINTS" pyinstaller
@@ -80,8 +89,11 @@ mkdir -p "$RUNTIME_DIR/bin" "$RUNTIME_DIR/pipeline"
   --exclude-module torchaudio \
   --exclude-module tensorflow \
   --exclude-module jax \
+  --exclude-module sounddevice \
   --hidden-import clip_extractor.__main__ \
-  --collect-all mediapipe \
+  --hidden-import clip_extractor.core.pipeline \
+  --collect-data mediapipe \
+  --collect-binaries mediapipe \
   --collect-all cv2 \
   --collect-all mlx \
   --collect-all mlx_whisper \
