@@ -3,7 +3,7 @@
 6FB Content Studio is an Electron desktop application for barbers to plan,
 create, edit, schedule, and measure content.
 
-Last updated: 2026-07-22
+Last updated: 2026-07-23
 
 > This is the canonical, model-independent project map. Read the routed
 > workspace `CONTEXT.md` before acting; keep detailed context out of this file.
