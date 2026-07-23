@@ -4,6 +4,11 @@ Last updated: 2026-07-22
 
 ## Confirmed facts
 
+- `v1.5.49` is the proposed macOS-arm64-only release for the browser-to-desktop
+  6FB sign-in merged through pull request #41. Its release note and readiness
+  checklist are tracked; no v1.5.49 tag, package, draft, or public release
+  exists yet.
+
 - Thumbnail Maker merged to `origin/main` through pull request #40 as
   `8e42109eedba1b4eef214f55846a2a2479fc512e`, after tag `v1.5.47` was created.
   The current public download remains v1.5.46; v1.5.47 is a private Smart Live
