@@ -1,9 +1,11 @@
 export type TrendSourceId =
   | 'google-trends'
   | 'instagram'
+  | 'youtube'
   | 'content-planner'
-  | 'tiktok'
   | 'idea-starter';
+
+export const YOUTUBE_POLICY_VERSION = '2026-07-22';
 
 export type TrendEvidenceState = 'live' | 'cached' | 'your-plan' | 'idea-starter';
 
@@ -41,8 +43,25 @@ export interface TrendSourceStatus {
   checkedAt?: string;
 }
 
+export interface YouTubeReference {
+  videoId: string;
+  title: string;
+  channelTitle: string;
+  publishedAt: string;
+  url: string;
+  thumbnailUrl: string;
+}
+
+export interface YouTubeReferenceSection {
+  status: TrendSourceStatus;
+  results: YouTubeReference[];
+  sourceCheckedAt?: string | null;
+  servedAt?: string;
+}
+
 export interface TrendFeed {
   ideas: TrendIdea[];
   sources: TrendSourceStatus[];
+  youtube: YouTubeReferenceSection;
   fetchedAt: string;
 }

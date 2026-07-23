@@ -21,6 +21,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('fetch-today-brief'),
   fetchSmartTrends: (): Promise<TrendFeed> =>
     ipcRenderer.invoke('fetch-smart-trends'),
+  getYouTubeTrendsConsent: () =>
+    ipcRenderer.invoke('get-youtube-trends-consent'),
+  setYouTubeTrendsConsent: (accepted: boolean) =>
+    ipcRenderer.invoke('set-youtube-trends-consent', accepted),
   openTrendSource: (url: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('open-trend-source', url),
   completeTodayPlay: (postId: string, action: 'complete' | 'skip') =>

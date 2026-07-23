@@ -1,5 +1,5 @@
 import type { ContentBrain } from '../src/types/content-strategy.ts';
-import type { TrendEvidenceState, TrendIdea } from '../src/types/trends.ts';
+import type { TrendEvidenceState, TrendIdea, YouTubeReference } from '../src/types/trends.ts';
 
 export const MAX_TREND_TITLE_LENGTH = 120;
 export const MAX_TREND_IDEAS = 12;
@@ -236,6 +236,80 @@ export function mapInstagramMediaToTrends(
   }
 
   return dedupeTrendIdeas(ideas, resultLimit);
+}
+
+export interface YouTubeBackendResultSet {
+  results: YouTubeReference[];
+  sourceCheckedAt: string | null;
+  servedAt: string;
+}
+
+function exactDisplayString(value: unknown, maxLength: number): value is string {
+  return typeof value === 'string' && value.length > 0 && value.length <= maxLength &&
+    value === value.trim() && !/[\u0000-\u001F\u007F]/.test(value);
+}
+
+function exactYouTubeWatchUrl(value: unknown, videoId: string): value is string {
+  if (typeof value !== 'string' || value.length > 2_048) return false;
+  try {
+    const url = new URL(value);
+    const queryKeys = [...url.searchParams.keys()];
+    return url.protocol === 'https:' && !url.username && !url.password && !url.port && !url.hash &&
+      (url.hostname === 'youtube.com' || url.hostname === 'www.youtube.com') &&
+      url.pathname === '/watch' && queryKeys.length === 1 && queryKeys[0] === 'v' &&
+      url.searchParams.get('v') === videoId;
+  } catch {
+    return false;
+  }
+}
+
+function exactYouTubeThumbnailUrl(value: unknown, videoId: string): value is string {
+  if (typeof value !== 'string' || value.length > 2_048) return false;
+  try {
+    const url = new URL(value);
+    const escapedId = videoId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return url.protocol === 'https:' && !url.username && !url.password && !url.port && !url.search && !url.hash &&
+      (url.hostname === 'i.ytimg.com' || url.hostname === 'img.youtube.com') &&
+      new RegExp(`^/vi(?:_webp)?/${escapedId}/[A-Za-z0-9_.-]+$`).test(url.pathname);
+  } catch {
+    return false;
+  }
+}
+
+export function parseYouTubeBackendResponse(payload: unknown): YouTubeBackendResultSet | null {
+  const record = asRecord(payload);
+  if (!record || !Array.isArray(record.results) || record.results.length > 12 ||
+      !(record.sourceCheckedAt === null ||
+        (exactDisplayString(record.sourceCheckedAt, 64) && Number.isFinite(Date.parse(record.sourceCheckedAt)))) ||
+      !exactDisplayString(record.servedAt, 64) || !Number.isFinite(Date.parse(record.servedAt))) {
+    return null;
+  }
+
+  const results: YouTubeReference[] = [];
+  for (const raw of record.results) {
+    const item = asRecord(raw);
+    if (!item || typeof item.videoId !== 'string' || !/^[A-Za-z0-9_-]{11}$/.test(item.videoId) ||
+        !exactDisplayString(item.title, 200) || !exactDisplayString(item.channelTitle, 120) ||
+        !exactDisplayString(item.publishedAt, 64) || !Number.isFinite(Date.parse(item.publishedAt)) ||
+        !exactYouTubeWatchUrl(item.url, item.videoId) ||
+        !exactYouTubeThumbnailUrl(item.thumbnailUrl, item.videoId)) {
+      return null;
+    }
+    results.push({
+      videoId: item.videoId,
+      title: item.title,
+      channelTitle: item.channelTitle,
+      publishedAt: item.publishedAt,
+      url: item.url,
+      thumbnailUrl: item.thumbnailUrl,
+    });
+  }
+
+  return {
+    results,
+    sourceCheckedAt: record.sourceCheckedAt,
+    servedAt: record.servedAt,
+  };
 }
 
 function unwrapContentPlannerPayload(payload: unknown) {

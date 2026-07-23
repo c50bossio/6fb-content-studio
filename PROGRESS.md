@@ -9,23 +9,38 @@ Last updated: 2026-07-22
 
 ### Smart Live Trends candidate (2026-07-22)
 
-Smart Live Trends is implemented and locally verified in isolated branch
+Smart Live Trends is implemented but **not release-ready** in isolated branch
 `codex/smart-live-trends`, based on exact `origin/main` commit
 `aacdbff6924b6fe4fc5219c8eeabb6590b8bef8f`. The Video Planner now retrieves
 bounded current Google Trends RSS signals on an explicit click, can use an
-authorized Instagram professional account when available, labels connected
-Content Planner topics as **Your plan**, and keeps TikTok visibly unavailable
-until an approved source exists. When current signals have no barber relevance,
+authorized Instagram professional account when available, and labels connected
+Content Planner topics as **Your plan**. A policy-remediated YouTube reference
+section is implemented behind current versioned consent and the existing 6FB
+sign-in token; it calls only the fixed 6FB backend endpoint, preserves validated
+backend order/content, and never enters topic selection or barber-fit scoring.
+The unavailable TikTok trend row has been removed. When current signals have no barber relevance,
 the picker leads with labelled offline Idea starters rather than pretending a
 broad trend is niche evidence.
 
-The candidate passes the full local suite, responsive state matrix at 375, 768,
-and 1440 px, visual-gate negative self-test, and normal/strict/portable workspace
-validation. The complete commands, counts, boundaries, trigger tests, and
-screenshot locations are recorded in
-`engineering/qa/2026-07-22-smart-live-trends.md`. No real Instagram account was
-used, no TikTok request was made, and this candidate is not merged, pushed,
-tagged, packaged, or released.
+The blocked user-supplied YouTube-key prototype has been removed. Settings now
+keeps 6FB Privacy, 6FB Terms, YouTube Terms, and Google Privacy links accessible,
+and disabling discovery or resetting the app clears consent and cached YouTube
+references. Unit, type, and static contract proof passes locally. Release still
+uses the separately owned `/apps/content/api/studio/youtube-trends` backend
+contract, which is implemented and locally verified on isolated branch
+`codex/youtube-trends-proxy`. Replacement-key rotation, deployment configuration,
+and end-to-end authenticated staging proof remain open; no real Instagram
+account or YouTube credential was used, and this candidate is not merged,
+pushed, tagged, packaged, or released.
+
+Current Mac client proof: TypeScript passes; 55 unit tests pass; static contracts
+pass across 72 IPC channels; the production build passes; and the 75-capture
+responsive audit at 375/768/1440 reports zero console errors, network errors, or
+screen findings. Current backend proof: its script typecheck, 161-file/2,782-test
+suite, TypeScript check, scoped lint, production webpack build, and independent
+42-test security/contract matrix pass. Filesystem scans find no Google API-key
+literals or YouTube/Gemini query-key transports. This proof does not substitute
+for replacement-key rotation, deployment, or authenticated staging.
 
 Public release `v1.5.46` is available for macOS arm64 from annotated tag
 `v1.5.46`, which resolves to the exact approved tag-target commit

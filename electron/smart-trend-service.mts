@@ -6,6 +6,8 @@ import type {
   TrendSourceId,
   TrendSourceState,
   TrendSourceStatus,
+  YouTubeReference,
+  YouTubeReferenceSection,
 } from '../src/types/trends';
 import {
   MAX_GOOGLE_RSS_BYTES,
@@ -13,6 +15,7 @@ import {
   dedupeTrendIdeas,
   mapContentPlannerToTrends,
   mapInstagramMediaToTrends,
+  parseYouTubeBackendResponse,
   parseGoogleTrendsRss,
   rankTrendIdeas,
 } from './trend-intelligence.mts';
@@ -20,6 +23,7 @@ import { INSTAGRAM_GRAPH_ORIGIN } from './instagram-graph.mts';
 
 const GOOGLE_TRENDS_RSS = 'https://trends.google.com/trending/rss?geo=US';
 const CONTENT_PLANNER_BRIEF = 'https://content.6fbmentorship.com/api/me/today-brief';
+const SIXFB_YOUTUBE_TRENDS = 'https://content.6fbmentorship.com/apps/content/api/studio/youtube-trends';
 const ATTEMPT_TIMEOUT_MS = 5_000;
 const AGGREGATE_TIMEOUT_MS = 8_000;
 const FRESH_CACHE_MS = 10 * 60_000;
@@ -37,6 +41,8 @@ export interface SmartTrendServiceInput {
   contentPlannerToken?: string;
   instagramAccessToken?: string;
   instagramUserId?: string;
+  youtubeBackendToken?: string;
+  youtubeConsent?: boolean;
 }
 
 interface SourceResult {
@@ -49,6 +55,15 @@ interface CacheEntry {
   state: TrendSourceState;
   message: string;
   checkedAt: number;
+}
+
+interface YouTubeCacheEntry {
+  results: YouTubeReference[];
+  state: TrendSourceState;
+  message: string;
+  checkedAt: number;
+  sourceCheckedAt: string | null;
+  servedAt: string;
 }
 
 interface CircuitEntry {
@@ -134,8 +149,8 @@ function sourceLabel(sourceId: TrendSourceId) {
   switch (sourceId) {
     case 'google-trends': return 'Google Trends';
     case 'instagram': return 'Instagram';
+    case 'youtube': return 'YouTube';
     case 'content-planner': return 'Your plan';
-    case 'tiktok': return 'TikTok';
     default: return 'Idea starters';
   }
 }
@@ -176,6 +191,8 @@ export class SmartTrendService {
   private readonly now: () => number;
   private readonly sleep: (delayMs: number) => Promise<void>;
   private readonly cache = new Map<string, CacheEntry>();
+  private readonly youtubeCache = new Map<string, YouTubeCacheEntry>();
+  private readonly youtubeExpiryTimers = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly circuits = new Map<string, CircuitEntry>();
   private readonly inFlight = new Map<string, Promise<TrendFeed>>();
 
@@ -190,6 +207,8 @@ export class SmartTrendService {
       input.instagramUserId ?? 'no-instagram',
       input.instagramAccessToken ? credentialScope(input.instagramAccessToken) : 'no-instagram-token',
       input.contentPlannerToken ? credentialScope(input.contentPlannerToken) : 'no-planner-token',
+      input.youtubeBackendToken ? credentialScope(input.youtubeBackendToken) : 'no-6fb-token',
+      input.youtubeConsent ? 'youtube-consented' : 'youtube-not-consented',
     ].join(':');
     const existing = this.inFlight.get(scope);
     if (existing) return existing;
@@ -198,10 +217,58 @@ export class SmartTrendService {
     return pending;
   }
 
+  clearYouTubeCache() {
+    this.youtubeCache.clear();
+    for (const timer of this.youtubeExpiryTimers.values()) clearTimeout(timer);
+    this.youtubeExpiryTimers.clear();
+    for (const key of this.circuits.keys()) {
+      if (key.startsWith('youtube-backend:')) this.circuits.delete(key);
+    }
+  }
+
+  private deleteYouTubeCacheEntry(cacheKey: string) {
+    this.youtubeCache.delete(cacheKey);
+    const timer = this.youtubeExpiryTimers.get(cacheKey);
+    if (timer) clearTimeout(timer);
+    this.youtubeExpiryTimers.delete(cacheKey);
+  }
+
+  private storeYouTubeCacheEntry(cacheKey: string, entry: YouTubeCacheEntry) {
+    this.deleteYouTubeCacheEntry(cacheKey);
+    this.youtubeCache.set(cacheKey, entry);
+
+    const schedule = () => {
+      const remaining = entry.checkedAt + STALE_CACHE_MS - this.now();
+      if (remaining <= 0) {
+        if (this.youtubeCache.get(cacheKey) === entry) this.deleteYouTubeCacheEntry(cacheKey);
+        return;
+      }
+      const timer = setTimeout(() => {
+        if (this.youtubeCache.get(cacheKey) !== entry) return;
+        schedule();
+      }, remaining);
+      timer.unref?.();
+      this.youtubeExpiryTimers.set(cacheKey, timer);
+    };
+    schedule();
+  }
+
   private async fetchOnce(input: SmartTrendServiceInput): Promise<TrendFeed> {
     const fetchedAt = new Date(this.now()).toISOString();
-    const [google, instagram, planner] = await Promise.all([
+    const [google, youtube, instagram, planner] = await Promise.all([
       this.fromCachedOrFetch('google-trends', 'google-trends:US', () => this.fetchGoogle(fetchedAt)),
+      input.youtubeBackendToken && input.youtubeConsent
+        ? this.fetchYouTubeReferences(input.youtubeBackendToken)
+        : Promise.resolve<YouTubeReferenceSection>({
+            results: [],
+            status: status(
+              'youtube',
+              'not-connected',
+              input.youtubeBackendToken
+                ? 'Enable YouTube inspiration in Settings before requesting references.'
+                : 'Sign in to 6FB and enable YouTube inspiration in Settings.',
+            ),
+          }),
       input.instagramAccessToken && input.instagramUserId
         ? this.fromCachedOrFetch(
             'instagram',
@@ -252,18 +319,17 @@ export class SmartTrendService {
       fitAwareStatus(google),
       fitAwareStatus(instagram),
       planner.status,
-      status('tiktok', 'unavailable', 'An approved TikTok trend-data source is not connected yet.'),
     ];
 
     if (ideas.length === 0) {
       ideas = createIdeaStarters(6);
     }
 
-    return { ideas, sources, fetchedAt };
+    return { ideas, sources, youtube, fetchedAt };
   }
 
   private async fromCachedOrFetch(
-    sourceId: Exclude<TrendSourceId, 'tiktok' | 'idea-starter'>,
+    sourceId: Exclude<TrendSourceId, 'youtube' | 'idea-starter'>,
     cacheKey: string,
     loader: () => Promise<SourceResult>,
     allowStale = true,
@@ -359,6 +425,26 @@ export class SmartTrendService {
     throw lastError ?? new SourceRequestError('Source request timed out.');
   }
 
+  private async requestOnce(url: string, init: RequestInit = {}) {
+    let response: Response;
+    try {
+      response = await this.request(url, init, ATTEMPT_TIMEOUT_MS);
+    } catch {
+      throw new SourceRequestError('Source could not be reached.');
+    }
+    if (!response.ok) {
+      throw new SourceRequestError(
+        response.status === 401 || response.status === 403
+          ? '6FB sign-in or YouTube access is unavailable.'
+          : response.status === 429
+            ? 'YouTube inspiration is temporarily rate limited.'
+            : `YouTube inspiration returned ${response.status}.`,
+        response.status,
+      );
+    }
+    return response;
+  }
+
   private async fetchGoogle(fetchedAt: string): Promise<SourceResult> {
     const response = await this.requestWithRetry(GOOGLE_TRENDS_RSS, {
       headers: { Accept: 'application/rss+xml, application/xml;q=0.9' },
@@ -395,6 +481,82 @@ export class SmartTrendService {
         ? status('content-planner', 'connected', `${ideas.length} topic${ideas.length === 1 ? '' : 's'} from your plan.`, fetchedAt)
         : status('content-planner', 'empty', 'Your connected plan has no usable topics right now.', fetchedAt),
     };
+  }
+
+  private async fetchYouTubeReferences(token: string): Promise<YouTubeReferenceSection> {
+    const cacheKey = `youtube-backend:${credentialScope(token)}`;
+    const now = this.now();
+    let cached = this.youtubeCache.get(cacheKey);
+    if (cached && now - cached.checkedAt >= STALE_CACHE_MS) {
+      this.deleteYouTubeCacheEntry(cacheKey);
+      cached = undefined;
+    }
+    if (cached && now - cached.checkedAt <= FRESH_CACHE_MS) {
+      return {
+        results: cached.results,
+        sourceCheckedAt: cached.sourceCheckedAt,
+        servedAt: cached.servedAt,
+        status: status('youtube', cached.state, `${cached.message} Reused a recent 6FB response.`, cached.sourceCheckedAt ?? undefined),
+      };
+    }
+
+    const circuit = this.circuits.get(cacheKey);
+    if (circuit && circuit.openUntil > now) {
+      if (cached?.results.length && now - cached.checkedAt <= STALE_CACHE_MS) {
+        return {
+          results: cached.results,
+          sourceCheckedAt: cached.sourceCheckedAt,
+          servedAt: cached.servedAt,
+          status: status('youtube', 'cached', 'YouTube inspiration is temporarily paused. Showing the last 6FB response.', cached.sourceCheckedAt ?? undefined),
+        };
+      }
+      return { results: [], status: status('youtube', 'error', 'YouTube inspiration is temporarily paused after repeated failures.') };
+    }
+
+    try {
+      const response = await this.requestOnce(SIXFB_YOUTUBE_TRENDS, {
+        redirect: 'error',
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'X-Client': '6fb-content-studio' },
+      });
+      const parsed = parseYouTubeBackendResponse(await readLimitedJson(response));
+      if (!parsed) throw new SourceRequestError('6FB returned malformed YouTube reference data.');
+      const state: TrendSourceState = parsed.results.length ? 'live' : 'empty';
+      const message = parsed.results.length
+        ? 'Public YouTube references from 6FB.'
+        : '6FB returned no YouTube references.';
+      this.circuits.set(cacheKey, { failures: 0, openUntil: 0 });
+      this.storeYouTubeCacheEntry(cacheKey, {
+        results: parsed.results,
+        state,
+        message,
+        checkedAt: now,
+        sourceCheckedAt: parsed.sourceCheckedAt,
+        servedAt: parsed.servedAt,
+      });
+      return {
+        results: parsed.results,
+        sourceCheckedAt: parsed.sourceCheckedAt,
+        servedAt: parsed.servedAt,
+        status: status('youtube', state, message, parsed.sourceCheckedAt ?? undefined),
+      };
+    } catch (error) {
+      const previous = this.circuits.get(cacheKey) ?? { failures: 0, openUntil: 0 };
+      const failures = previous.failures + 1;
+      this.circuits.set(cacheKey, {
+        failures,
+        openUntil: failures >= CIRCUIT_FAILURE_LIMIT ? now + CIRCUIT_OPEN_MS : 0,
+      });
+      const message = error instanceof SourceRequestError ? error.message : 'YouTube inspiration could not be reached.';
+      if (cached?.results.length && now - cached.checkedAt <= STALE_CACHE_MS) {
+        return {
+          results: cached.results,
+          sourceCheckedAt: cached.sourceCheckedAt,
+          servedAt: cached.servedAt,
+          status: status('youtube', 'cached', `${message} Showing the last 6FB response.`, cached.sourceCheckedAt ?? undefined),
+        };
+      }
+      return { results: [], status: status('youtube', 'error', message, new Date(now).toISOString()) };
+    }
   }
 
   private async fetchInstagram(input: SmartTrendServiceInput, fetchedAt: string): Promise<SourceResult> {

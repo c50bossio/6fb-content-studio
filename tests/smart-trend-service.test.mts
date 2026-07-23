@@ -6,6 +6,7 @@ import type { TrendFeed, TrendSourceId } from '../src/types/trends.ts';
 const BASE_TIME = Date.parse('2026-07-22T18:00:00.000Z');
 const GOOGLE_URL_PART = 'trends.google.com/trending/rss';
 const PLANNER_URL_PART = 'content.6fbmentorship.com/api/me/today-brief';
+const YOUTUBE_URL_PART = 'content.6fbmentorship.com/apps/content/api/studio/youtube-trends';
 
 function googleRss(title = 'Barber pricing and client retention') {
   return `<?xml version="1.0"?>
@@ -29,6 +30,21 @@ function jsonResponse(value: unknown, status = 200) {
 
 function plannerPayload(topic: string) {
   return { data: { today: { topic }, week: [] } };
+}
+
+function youtubePayload() {
+  return {
+    results: [{
+      videoId: 'AbCdEfGhI12',
+      title: 'Barber pricing that builds client trust',
+      channelTitle: 'Barber Business',
+      publishedAt: '2026-07-21T16:00:00Z',
+      url: 'https://www.youtube.com/watch?v=AbCdEfGhI12',
+      thumbnailUrl: 'https://i.ytimg.com/vi/AbCdEfGhI12/hqdefault.jpg',
+    }],
+    sourceCheckedAt: '2026-07-22T17:55:00.000Z',
+    servedAt: '2026-07-22T18:00:00.000Z',
+  };
 }
 
 function source(feed: TrendFeed, sourceId: TrendSourceId) {
@@ -83,6 +99,112 @@ test('all-zero live fit leads with useful starters without fabricating relevance
   assert.match(source(feed, 'google-trends').message ?? '', /no signal cleared barber fit 20/i);
 });
 
+test('consented 6FB account makes one backend request and keeps YouTube reference-only', async () => {
+  const calls: Array<{ url: string; init: RequestInit }> = [];
+  const service = new SmartTrendService({
+    now: () => BASE_TIME,
+    sleep: async () => {},
+    request: async (url, init) => {
+      calls.push({ url, init });
+      if (url.includes(GOOGLE_URL_PART)) return response(googleRss());
+      if (url.includes(YOUTUBE_URL_PART)) return jsonResponse(youtubePayload());
+      throw new Error(`Unexpected URL: ${url}`);
+    },
+  });
+
+  const token = 'sixfb-account-token';
+  const feed = await service.fetch({ youtubeBackendToken: token, youtubeConsent: true });
+  const youtubeCall = calls.find(call => call.url.includes(YOUTUBE_URL_PART));
+  assert.ok(youtubeCall);
+  const url = new URL(youtubeCall.url);
+  assert.equal(url.search, '');
+  assert.equal(new Headers(youtubeCall.init.headers).get('authorization'), `Bearer ${token}`);
+  assert.equal(new Headers(youtubeCall.init.headers).get('x-client'), '6fb-content-studio');
+  assert.equal(youtubeCall.init.redirect, 'error');
+  assert.equal(calls.filter(call => call.url.includes(YOUTUBE_URL_PART)).length, 1);
+  assert.equal(calls.some(call => call.url.includes(token)), false);
+  assert.equal(feed.youtube.status.state, 'live');
+  assert.equal(feed.youtube.status.message, 'Public YouTube references from 6FB.');
+  assert.equal(Object.prototype.hasOwnProperty.call(feed.youtube, 'count'), false);
+  assert.deepEqual(feed.youtube.results, youtubePayload().results);
+  assert.equal(feed.youtube.sourceCheckedAt, youtubePayload().sourceCheckedAt);
+  assert.equal(feed.youtube.servedAt, youtubePayload().servedAt);
+  assert.equal(feed.ideas.some(idea => idea.sourceId === 'youtube'), false);
+  assert.equal(JSON.stringify(feed.youtube).includes('barberFitScore'), false);
+  assert.equal(JSON.stringify(feed).includes(token), false);
+});
+
+test('unknown YouTube source freshness stays null and is never replaced by receipt time', async () => {
+  const service = new SmartTrendService({
+    now: () => BASE_TIME,
+    request: async url => url.includes(GOOGLE_URL_PART)
+      ? response(googleRss())
+      : jsonResponse({ ...youtubePayload(), sourceCheckedAt: null }),
+  });
+
+  const feed = await service.fetch({ youtubeBackendToken: 'sixfb-token', youtubeConsent: true });
+
+  assert.equal(feed.youtube.sourceCheckedAt, null);
+  assert.equal(feed.youtube.servedAt, youtubePayload().servedAt);
+  assert.equal(feed.youtube.status.checkedAt, undefined);
+});
+
+test('expired YouTube payload is evicted and subsequent failures cannot reuse it', async () => {
+  let now = BASE_TIME;
+  let failYouTube = false;
+  let youtubeCalls = 0;
+  const service = new SmartTrendService({
+    now: () => now,
+    sleep: async () => {},
+    request: async url => {
+      if (url.includes(GOOGLE_URL_PART)) return response(googleRss());
+      youtubeCalls += 1;
+      if (failYouTube) throw new Error('offline');
+      return jsonResponse(youtubePayload());
+    },
+  });
+
+  const initial = await service.fetch({ youtubeBackendToken: 'sixfb-token', youtubeConsent: true });
+  assert.equal(initial.youtube.results.length, 1);
+
+  now += 24 * 60 * 60_000;
+  failYouTube = true;
+  const expired = await service.fetch({ youtubeBackendToken: 'sixfb-token', youtubeConsent: true });
+  assert.equal(expired.youtube.results.length, 0);
+  assert.equal(expired.youtube.status.state, 'error');
+
+  const nextFailure = await service.fetch({ youtubeBackendToken: 'sixfb-token', youtubeConsent: true });
+  assert.equal(nextFailure.youtube.results.length, 0);
+  assert.equal(nextFailure.youtube.status.state, 'error');
+  assert.equal(youtubeCalls, 3);
+});
+
+test('YouTube backend 429, 5xx, and network failures each make exactly one desktop attempt', async t => {
+  const cases: Array<{ name: string; request: () => Promise<Response> }> = [
+    { name: '429', request: async () => response('', 429) },
+    { name: '5xx', request: async () => response('', 503) },
+    { name: 'network', request: async () => { throw new Error('offline'); } },
+  ];
+  for (const scenario of cases) {
+    await t.test(scenario.name, async () => {
+      let youtubeCalls = 0;
+      const service = new SmartTrendService({
+        now: () => BASE_TIME,
+        sleep: async () => { assert.fail('YouTube desktop requests must not retry or sleep'); },
+        request: async url => {
+          if (url.includes(GOOGLE_URL_PART)) return response(googleRss());
+          youtubeCalls += 1;
+          return scenario.request();
+        },
+      });
+      const feed = await service.fetch({ youtubeBackendToken: 'sixfb-token', youtubeConsent: true });
+      assert.equal(youtubeCalls, 1);
+      assert.equal(feed.youtube.status.state, 'error');
+      assert.equal(feed.youtube.results.length, 0);
+    });
+  }
+});
+
 test('missing credentials make zero authenticated calls and report optional sources as not connected', async () => {
   const calls: Array<{ url: string; init: RequestInit }> = [];
   const service = new SmartTrendService({
@@ -101,7 +223,26 @@ test('missing credentials make zero authenticated calls and report optional sour
   assert.equal(calls.every(call => !call.url.includes('access_token=')), true);
   assert.equal(calls.some(call => call.url.includes(PLANNER_URL_PART) || call.url.includes('graph.facebook.com')), false);
   assert.equal(source(feed, 'instagram').state, 'not-connected');
+  assert.equal(feed.youtube.status.state, 'not-connected');
   assert.equal(source(feed, 'content-planner').state, 'not-connected');
+});
+
+test('missing sign-in or missing consent makes zero YouTube backend calls', async t => {
+  for (const input of [
+    { youtubeConsent: true },
+    { youtubeBackendToken: 'sixfb-token', youtubeConsent: false },
+  ]) {
+    await t.test(JSON.stringify(input), async () => {
+      const calls: string[] = [];
+      const service = new SmartTrendService({
+        now: () => BASE_TIME,
+        request: async url => { calls.push(url); return response(googleRss()); },
+      });
+      const feed = await service.fetch(input);
+      assert.equal(calls.some(url => url.includes(YOUTUBE_URL_PART)), false);
+      assert.equal(feed.youtube.status.state, 'not-connected');
+    });
+  }
 });
 
 test('transient 429 retries once, honors bounded retry-after, and never exceeds two attempts', async () => {
@@ -536,5 +677,5 @@ test('all unavailable sources return only truthful idea starters', async () => {
   assert.equal(source(feed, 'google-trends').state, 'error');
   assert.equal(source(feed, 'instagram').state, 'not-connected');
   assert.equal(source(feed, 'content-planner').state, 'not-connected');
-  assert.equal(source(feed, 'tiktok').state, 'unavailable');
+  assert.equal(feed.youtube.status.state, 'not-connected');
 });

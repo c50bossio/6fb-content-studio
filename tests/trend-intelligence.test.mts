@@ -11,6 +11,7 @@ import {
   dedupeTrendIdeas,
   mapContentPlannerToTrends,
   mapInstagramMediaToTrends,
+  parseYouTubeBackendResponse,
   parseGoogleTrendsRss,
   rankTrendIdeas,
   sanitizeTrendTitle,
@@ -154,6 +155,36 @@ test('Instagram mapping accepts only validated official media and caps results',
   );
   assert.equal(mapInstagramMediaToTrends(payload, 'bad tag!', FETCHED_AT).length, 0);
   assert.equal(mapInstagramMediaToTrends({ data: 'not-an-array' }, 'barber', FETCHED_AT).length, 0);
+});
+
+test('YouTube backend parsing preserves validated public references in backend order', () => {
+  const payload = {
+    results: [
+      {
+        videoId: 'AbCdEfGhI12',
+        title: 'Modern barber consultation & retention',
+        publishedAt: '2026-07-21T16:00:00Z',
+        channelTitle: 'The Barber Channel',
+        url: 'https://www.youtube.com/watch?v=AbCdEfGhI12',
+        thumbnailUrl: 'https://i.ytimg.com/vi/AbCdEfGhI12/hqdefault.jpg',
+      },
+      {
+        videoId: 'ZyXwVuTsR98',
+        title: 'Second exact title',
+        publishedAt: '2026-07-20T15:00:00Z',
+        channelTitle: 'Second Channel',
+        url: 'https://youtube.com/watch?v=ZyXwVuTsR98',
+        thumbnailUrl: 'https://img.youtube.com/vi_webp/ZyXwVuTsR98/maxresdefault.webp',
+      },
+    ],
+    sourceCheckedAt: '2026-07-22T17:55:00.000Z',
+    servedAt: '2026-07-22T18:00:00.000Z',
+  };
+  assert.deepEqual(parseYouTubeBackendResponse(payload), payload);
+  const unknownFreshness = { ...payload, sourceCheckedAt: null };
+  assert.deepEqual(parseYouTubeBackendResponse(unknownFreshness), unknownFreshness);
+  assert.equal(parseYouTubeBackendResponse({ ...payload, results: [{ ...payload.results[0], url: 'https://evil.example/watch?v=AbCdEfGhI12' }] }), null);
+  assert.equal(parseYouTubeBackendResponse({ ...payload, results: [{ ...payload.results[0], thumbnailUrl: 'https://evil.example/image.jpg' }] }), null);
 });
 
 test('Content Planner mapping labels today and week topics as plans, never live evidence', () => {

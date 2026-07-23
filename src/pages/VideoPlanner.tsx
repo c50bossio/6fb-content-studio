@@ -9,6 +9,7 @@ import type {
   StrategyScoreBreakdown,
 } from '../types/content-strategy';
 import type { TrendEvidenceState, TrendFeed, TrendSourceState } from '../types/trends';
+import youtubeLogoSrc from '../../assets/youtube-logo.svg';
 
 // ── Copy hook ─────────────────────────────────────────────────────────────
 function useCopy() {
@@ -770,7 +771,8 @@ export default function VideoPlanner({
     setShowTrending(true);
     try {
       const result = await window.electronAPI.fetchSmartTrends();
-      if (!result || !Array.isArray(result.ideas) || !Array.isArray(result.sources)) {
+      if (!result || !Array.isArray(result.ideas) || !Array.isArray(result.sources) ||
+          !result.youtube || !Array.isArray(result.youtube.results) || !result.youtube.status) {
         throw new Error('Trend sources returned an invalid response.');
       }
       if (requestId !== trendRequestId.current) return;
@@ -933,7 +935,7 @@ export default function VideoPlanner({
                     <div>
                       <h2 className="text-xs font-bold text-white">Topic intelligence</h2>
                       <p className="mt-0.5 text-[10px] leading-relaxed text-6fb-text-muted">
-                        Live signals, your plan, and offline starters are labelled separately.
+                        Topic signals and your plan stay separate from YouTube inspiration references.
                       </p>
                     </div>
                     {trendFeed && (
@@ -946,7 +948,7 @@ export default function VideoPlanner({
                   {fetchingTrending && !trendFeed && (
                     <div role="status" className="flex items-center gap-3 px-4 py-5 text-xs text-6fb-text-secondary">
                       <span className="h-4 w-4 shrink-0 animate-spin rounded-full border border-6fb-green border-t-transparent" />
-                      Checking Google Trends and your connected sources…
+                      Checking Google Trends, your connected sources, and eligible YouTube references…
                     </div>
                   )}
 
@@ -1022,6 +1024,71 @@ export default function VideoPlanner({
                           </div>
                         ))}
                       </div>
+
+                      <section className="border-t border-6fb-border bg-white/[0.02] p-4" aria-labelledby="youtube-reference-heading">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const opened = await window.electronAPI.openTrendSource('https://www.youtube.com/');
+                                if (!opened.success) setTrendError(opened.error ?? 'Could not open YouTube.');
+                              }}
+                              className="flex min-h-[44px] items-center rounded-lg bg-white px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-6fb-green"
+                              aria-label="Open YouTube"
+                            >
+                              <img src={youtubeLogoSrc} alt="YouTube" className="h-auto w-[108px]" />
+                            </button>
+                            <h3 id="youtube-reference-heading" className="mt-2 text-xs font-bold text-white">YouTube inspiration · reference only</h3>
+                            <p className="mt-1 text-[10px] leading-relaxed text-6fb-text-muted">
+                              These public videos are shown in 6FB order for inspiration. They do not become your topic or enter AI scoring.
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <span className={`text-[9px] font-bold uppercase tracking-wide ${trendSourceStateClass(trendFeed.youtube.status.state)}`}>
+                              {TREND_SOURCE_STATE_LABELS[trendFeed.youtube.status.state]}
+                            </span>
+                            {trendFeed.youtube.status.checkedAt && (
+                              <p className="mt-1 text-[9px] text-6fb-text-muted">Source checked {formatTrendTimestamp(trendFeed.youtube.status.checkedAt)}</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {trendFeed.youtube.status.message && (
+                          <p className="mt-3 text-[10px] leading-relaxed text-6fb-text-muted">{trendFeed.youtube.status.message}</p>
+                        )}
+
+                        {trendFeed.youtube.results.length > 0 && (
+                          <div className="mt-3 grid grid-cols-1 gap-3" aria-label="YouTube inspiration references">
+                            {trendFeed.youtube.results.map(reference => (
+                              <button
+                                key={reference.videoId}
+                                type="button"
+                                onClick={async () => {
+                                  const opened = await window.electronAPI.openTrendSource(reference.url);
+                                  if (!opened.success) setTrendError(opened.error ?? 'Could not open the YouTube reference.');
+                                }}
+                                className="group grid min-h-[44px] grid-cols-1 gap-3 rounded-xl border border-6fb-border bg-6fb-card p-3 text-left transition-colors hover:border-6fb-green/40 focus-visible:border-6fb-green focus-visible:outline-none sm:grid-cols-[144px_minmax(0,1fr)]"
+                                aria-label={`Open YouTube reference: ${reference.title}`}
+                              >
+                                <img
+                                  src={reference.thumbnailUrl}
+                                  alt=""
+                                  className="h-auto w-full self-start"
+                                />
+                                <span className="min-w-0 self-center">
+                                  <span className="block break-words text-sm font-semibold leading-snug text-6fb-text-secondary group-hover:text-white">{reference.title}</span>
+                                  <span className="mt-1 block break-words text-[10px] text-6fb-text-muted">{reference.channelTitle}</span>
+                                  <time dateTime={reference.publishedAt} className="mt-1 block text-[10px] text-6fb-text-muted">
+                                    Published {formatTrendTimestamp(reference.publishedAt)}
+                                  </time>
+                                  <span className="mt-2 block text-[10px] font-semibold text-6fb-green">Open original on YouTube ↗</span>
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </section>
                     </>
                   )}
                 </div>

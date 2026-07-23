@@ -95,6 +95,8 @@ declare global {
       showInFinder: (path: string) => Promise<{ success: boolean }>;
       fetchTodayBrief: () => Promise<{ success: boolean; data?: unknown; error?: string }>;
       fetchSmartTrends: () => Promise<TrendFeed>;
+      getYouTubeTrendsConsent: () => Promise<{ accepted: boolean; acceptedVersion: string | null; currentVersion: string; accountConnected: boolean }>;
+      setYouTubeTrendsConsent: (accepted: boolean) => Promise<{ success: boolean; accepted?: boolean; acceptedVersion?: string | null; error?: string }>;
       openTrendSource: (url: string) => Promise<{ success: boolean; error?: string }>;
       // Library
       scanLibrary: () => Promise<unknown>;
@@ -277,7 +279,10 @@ export default function App() {
         renderVideo: async () => ({ success: false, error: 'Electron required' }),
         postToSocial: async () => ({ success: false, opened: false, error: 'Electron required' }),
         onProgress: () => () => {},
-        deleteApiKey: async () => ({ success: true }),
+        deleteApiKey: async (provider: string) => {
+          if (provider === 'claude') localStorage.removeItem('contentStudio:hasClaudeKey');
+          return { success: true };
+        },
         checkSystemHealth: async () => ({
           deps: { python: false, ffmpeg: false, ffprobe: false, mediapipe: false, clipExtractor: false },
           paths: { userData: '~/Library/Application Support/6fb-content-studio', clipExtractor: '' },
@@ -304,9 +309,14 @@ export default function App() {
             { sourceId: 'google-trends', sourceLabel: 'Google Trends', state: 'unavailable', message: 'Open the Electron app to check live sources.' },
             { sourceId: 'instagram', sourceLabel: 'Instagram', state: 'not-connected', message: 'Open the Electron app to use an authorized account.' },
             { sourceId: 'content-planner', sourceLabel: 'Your plan', state: 'not-connected', message: 'Open the Electron app to include your plan.' },
-            { sourceId: 'tiktok', sourceLabel: 'TikTok', state: 'unavailable', message: 'Approved trend source not connected.' },
           ],
+          youtube: {
+            results: [],
+            status: { sourceId: 'youtube', sourceLabel: 'YouTube', state: 'not-connected', message: 'Sign in to 6FB and enable YouTube inspiration in Settings.' },
+          },
         }),
+        getYouTubeTrendsConsent: async () => ({ accepted: false, acceptedVersion: null, currentVersion: '2026-07-22', accountConnected: false }),
+        setYouTubeTrendsConsent: async () => ({ success: false, error: 'Electron required' }),
         openTrendSource: async () => ({ success: true }),
         scanLibrary: async () => ({ runs: [] }),
         deleteRun: async () => ({ success: true }),

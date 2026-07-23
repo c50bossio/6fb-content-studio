@@ -12,6 +12,7 @@ import { trimmedClipMetadata } from './clip-metadata.mts';
 import { SmartTrendService } from './smart-trend-service.mts';
 import { sanitizeTrendUrl } from './trend-intelligence.mts';
 import { INSTAGRAM_GRAPH_ORIGIN } from './instagram-graph.mts';
+import { YOUTUBE_POLICY_VERSION } from '../src/types/trends';
 
 const EXTERNAL_REQUEST_TIMEOUT_MS = 20_000;
 
@@ -84,6 +85,7 @@ export interface StoreSchema {
   igUserId?: string;
   igUsername?: string;
   igTokenExpiresAt?: string | null;
+  youtubePolicyAcceptedVersion?: string;
   approvedMediaPaths?: string[];
 }
 
@@ -347,6 +349,9 @@ protocol.registerSchemesAsPrivileged([{
 
 app.whenReady().then(() => {
   store = new ElectronStore({ cwd: requestedUserDataDir || app.getPath('userData') });
+  // Remove the never-shipped BYO YouTube prototype credential. The compliant
+  // client authenticates only to the 6FB backend with the existing account token.
+  store.delete('apiKeys.youtube');
   const persistedMediaPaths = store.get('approvedMediaPaths') as string[] | undefined;
   for (const filePath of Array.isArray(persistedMediaPaths) ? persistedMediaPaths : []) {
     const localPath = localFilePathFromValue(filePath);
@@ -459,10 +464,11 @@ app.on('activate', () => {
 const allowedApiKeyProviders = new Set(['claude', 'openai', 'contentPlanner']);
 
 ipcMain.handle('save-api-key', async (_event, { provider, key }: { provider: string; key: string }) => {
-  if (!allowedApiKeyProviders.has(provider) || typeof key !== 'string' || !key.trim()) {
+  const trimmed = typeof key === 'string' ? key.trim() : '';
+  if (!allowedApiKeyProviders.has(provider) || !trimmed) {
     return { success: false, error: 'Invalid API key provider or value' };
   }
-  store.set(`apiKeys.${provider}`, key);
+  store.set(`apiKeys.${provider}`, trimmed);
   return { success: true };
 });
 
@@ -515,7 +521,30 @@ ipcMain.handle('fetch-smart-trends', async () => {
     contentPlannerToken: store.get('apiKeys.contentPlanner') as string | undefined,
     instagramAccessToken: store.get('igAccessToken') as string | undefined,
     instagramUserId: store.get('igUserId') as string | undefined,
+    youtubeBackendToken: store.get('contentManagerToken') as string | undefined,
+    youtubeConsent: store.get('youtubePolicyAcceptedVersion') === YOUTUBE_POLICY_VERSION,
   });
+});
+
+ipcMain.handle('get-youtube-trends-consent', async () => ({
+  accepted: store.get('youtubePolicyAcceptedVersion') === YOUTUBE_POLICY_VERSION,
+  acceptedVersion: (store.get('youtubePolicyAcceptedVersion') as string | undefined) ?? null,
+  currentVersion: YOUTUBE_POLICY_VERSION,
+  accountConnected: !!store.get('contentManagerToken'),
+}));
+
+ipcMain.handle('set-youtube-trends-consent', async (_event, accepted: unknown) => {
+  if (typeof accepted !== 'boolean') return { success: false, error: 'Invalid consent value.' };
+  if (accepted && !store.get('contentManagerToken')) {
+    return { success: false, error: 'Sign in to 6FB before enabling YouTube inspiration.' };
+  }
+  if (accepted) {
+    store.set('youtubePolicyAcceptedVersion', YOUTUBE_POLICY_VERSION);
+  } else {
+    store.delete('youtubePolicyAcceptedVersion');
+    smartTrendService.clearYouTubeCache();
+  }
+  return { success: true, accepted, acceptedVersion: accepted ? YOUTUBE_POLICY_VERSION : null };
 });
 
 ipcMain.handle('open-trend-source', async (_event, value: unknown) => {
@@ -523,6 +552,11 @@ ipcMain.handle('open-trend-source', async (_event, value: unknown) => {
     'trends.google.com',
     'instagram.com',
     'www.instagram.com',
+    'youtube.com',
+    'www.youtube.com',
+    '6fbmentorship.com',
+    'www.6fbmentorship.com',
+    'policies.google.com',
   ]);
   if (!safeUrl) return { success: false, error: 'Untrusted trend source URL.' };
   try {
@@ -723,6 +757,7 @@ ipcMain.handle('delete-api-key', async (_event, provider: string) => {
 
 ipcMain.handle('reset-app', async () => {
   store.clear();
+  smartTrendService.clearYouTubeCache();
   approvedFilePaths.clear();
   approvedDirectoryPaths.clear();
   return { success: true };
@@ -2254,6 +2289,7 @@ ipcMain.handle('disconnect-6fb', async () => {
   store.delete('igUserId');
   store.delete('igUsername');
   store.delete('igTokenExpiresAt');
+  smartTrendService.clearYouTubeCache();
   return { success: true };
 });
 

@@ -41,23 +41,39 @@ Official reference:
 - <https://www.postman.com/meta/instagram/documentation/6yqw8pt/instagram-api>
 - <https://developers.facebook.com/docs/graph-api/changelog/versions>
 
-## TikTok
+## YouTube
 
-TikTok Creative Center exposes public discovery views for trend categories, but
-TikTok's programmatic Research API is restricted to qualifying researchers and
-organizations. No approved commercial trend-data credential or feed is present
-in this repository. The desktop app must therefore show TikTok as unavailable
-instead of scraping Creative Center pages or reverse-engineering private APIs.
+The YouTube Data API supports public video search using an API key. Search can
+be restricted to videos, recent publication time, region, relevance language,
+safe-search level, result count, and view-count order. Private user data is not
+needed for this read-only discovery scope, so OAuth is explicitly deferred.
+
+The initial desktop design used a user-supplied key, but the official developer
+policy review rejected that as a release architecture. The API client must use
+credentials assigned to the developer and its API project. A compliant client
+must also present the required YouTube terms/privacy consent and branding, and
+must not derive a custom barber-fit metric or ranking from YouTube API data
+without the applicable approved permission. The desktop key adapter therefore
+must not ship. The remediated client calls a fixed authenticated 6FB backend
+only after explicit current-version consent, shows official branding and policy
+links, and presents validated response fields as unranked references. The
+separately owned backend is implemented and locally verified on isolated branch
+`codex/youtube-trends-proxy`; deployment configuration and an authenticated
+staging response still require separate proof.
 
 Official references:
 
-- <https://ads.tiktok.com/help/article/how-to-use-trends>
-- <https://developers.tiktok.com/products/research-api/>
+- <https://developers.google.com/youtube/v3/getting-started>
+- <https://developers.google.com/youtube/v3/docs/search/list>
+- <https://developers.google.com/youtube/v3/guides/authentication>
+- <https://docs.cloud.google.com/docs/authentication/api-keys-best-practices>
+- <https://developers.google.com/youtube/terms/developer-policies>
+- <https://developers.google.com/youtube/terms/developer-policies-guide>
 
 ## Product implication
 
 Source availability is not all-or-nothing. Google may supply broad live search
 signals now; Instagram may add authorized hashtag media when permissions allow;
-the 6FB Content Planner remains personal planned content; and TikTok remains an
-explicitly unavailable adapter until an approved data route exists. Curated
-starters are useful only when labelled as offline inspiration.
+the 6FB Content Planner remains personal planned content; and YouTube is a
+connectable official public-video source rather than an unavailable placeholder.
+Curated starters are useful only when labelled as offline inspiration.

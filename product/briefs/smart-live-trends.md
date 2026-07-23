@@ -1,6 +1,7 @@
 # Smart Live Trends
 
-Status: implemented and locally verified on 2026-07-22; not merged or released
+Status: compliant Mac client and authenticated backend implemented locally;
+deployment, authenticated staging, merge, and release remain separate gates
 
 ## User problem
 
@@ -25,9 +26,13 @@ offline path.
   discovery access.
 - Keep the connected 6FB Content Planner's today/week topics, but label them
   **Your plan** rather than trends.
-- Represent TikTok as a source with an explicit unavailable/setup state until
-  an approved commercial trend-data route is connected. Do not scrape TikTok
-  pages or private endpoints.
+- Show public YouTube videos only in a dedicated branded inspiration/reference
+  section supplied by an authenticated 6FB-owned backend. Require explicit
+  versioned consent, keep required policy links accessible, and do not accept
+  user-supplied API keys or scrape YouTube pages.
+- Preserve validated YouTube result order and display fields exactly. A YouTube
+  reference may open only its original URL; it cannot fill the topic, enter AI
+  generation, or receive barber-fit scoring/ranking.
 - Rank live ideas with a deterministic barber-fit score using the saved Content
   Brain. Broad signals remain visibly broad; ranking must never convert an
   unrelated trend into fabricated barber evidence.
@@ -50,8 +55,8 @@ Each idea has exactly one source and one evidence state:
 - **Idea starter** — curated offline inspiration; not trend evidence.
 
 Each source also reports one of live, cached, connected plan, not connected,
-unavailable, empty, or error. The UI must explain unavailable Instagram or
-TikTok data without blocking other sources.
+unavailable, empty, or error. YouTube reports independently in its reference
+section and cannot block Google, Instagram, the plan, or starters.
 
 ## Interaction
 
@@ -61,7 +66,8 @@ TikTok data without blocking other sources.
    available, barber-fit score, and a short "why now" explanation.
 4. Selecting an idea fills the existing Video Topic field and closes the picker.
 5. A subsequent press performs an explicit refresh unless a very recent
-   successful live-source response is reused to protect Google or Instagram.
+   successful live-source response is reused to protect Google, Instagram, or
+   Instagram.
    Personal-plan topics are always refreshed so “today” cannot cross a date
    boundary from cache.
 
@@ -73,9 +79,11 @@ TikTok data without blocking other sources.
 - One click has a fixed source/request cap, hard timeouts, at most one bounded
   transient retry, response-size caps, schema validation, and a per-source
   circuit after repeated failures.
-- The exact worst case is 12 network attempts: two Google attempts, two Content
-  Planner attempts, and up to eight Instagram attempts across two fixed hashtag
-  lookup/media pairs. Missing connections and open circuits issue zero requests.
+- The exact worst case is 13 network attempts: two Google attempts, one 6FB YouTube backend
+  attempts, two Content Planner attempts, and up to eight Instagram attempts
+  across two fixed hashtag lookup/media pairs. A missing optional connection
+  issues zero requests to that source; Google remains an automatic source.
+  Open circuits issue zero requests to their affected source.
 - There is no polling, scheduler, bulk sync, posting, or social mutation.
 - Malformed, oversized, empty, rate-limited, slow, and failed responses degrade
   independently and cannot relabel fallback content as live.
@@ -88,11 +96,12 @@ TikTok data without blocking other sources.
    evidence, and link only to an allowlisted HTTPS Google Trends URL.
 3. Instagram ideas appear only after an authorized successful response; absent
    or insufficient permissions produce a truthful source status.
-4. TikTok is never represented as live until an approved provider returns
-   validated evidence.
+4. YouTube references appear only after current consent, 6FB sign-in, and a
+   validated backend response. Missing sign-in or consent makes zero YouTube
+   calls; 429, 5xx, and network failures make no second desktop attempt.
 5. Planned and starter ideas remain useful but cannot receive live/cached
    styling or claims.
-6. Duplicate and malformed ideas are removed; titles, URLs, result counts, and
+6. Duplicate and malformed ideas are removed; titles, URLs, idea list sizes, and
    payload sizes are capped.
 7. An all-zero live feed cannot suppress barber-specific Idea starters; broad
    live signals remain labelled and unmodified rather than receiving invented
@@ -108,6 +117,7 @@ TikTok data without blocking other sources.
 ## Explicitly deferred
 
 - Google Trends API alpha credentials and query-specific historical analysis.
-- A licensed/approved TikTok commercial data feed.
+- YouTube OAuth, user-supplied API keys, private-channel data, subscriptions,
+  comments, and publishing.
 - AI-written transformations of source claims.
 - Background refresh, notifications, posting, and performance-learning loops.
