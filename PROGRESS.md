@@ -19,9 +19,12 @@ contracts, documentation contracts, a production build, an isolated Electron
 IPC persistence smoke, and an 81-state responsive visual audit with zero
 reported findings. The release candidate is macOS arm64 only. Public v1.5.46
 does not contain this feature; private v1.5.47 predates it and remains a Smart
-Live Trends draft. The next candidate is v1.5.48, which must pass an
-exact-main pre-tag preflight and stage as a private signed/notarized draft
-before separate owner-approved public promotion.
+Live Trends draft. v1.5.48 is now a certified private macOS draft from exact
+tag target `8e29d4c8ffc20ef5b0e78c1d31b8dce8655c927b`: its constrained runtime
+rebuild, full suite, signing, notarization, stapling, exact-four-file manifest,
+and staged-DMG smoke passed in workflow `29976055852`. It is not public. The
+next gate is separate owner approval to promote the existing draft, followed by
+anonymous public-asset and DMG smoke checks.
 
 The initial clean v1.5.48 pre-tag runtime rebuild caught dependency drift before
 any tag was created: PyInstaller 6.21 could not thin its already arm64
@@ -29,9 +32,8 @@ bootloader, and the newly resolved SciPy runtime failed in the frozen probe. A
 small candidate correction locks the verified macOS-arm64 Python inputs and
 enforces them through the runtime builder and static contract. Its fresh
 runtime build, full 62-test suite, 80 contracts, production build, Electron IPC
-smoke, workspace validators, and workflow Actionlint pass. It still needs to
-merge and be rechecked at the exact tag target before staging a private v1.5.48
-draft.
+smoke, workspace validators, and workflow Actionlint pass. The correction is
+merged and the resulting tagged private draft completed its workflow gates.
 
 ### Smart Live Trends release preparation (2026-07-22)
 
