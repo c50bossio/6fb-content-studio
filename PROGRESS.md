@@ -430,5 +430,11 @@ signing setup occurred. Azure and Windows signing were not used for v1.5.46.
   with zero overflow, clipped text, undersized targets, console errors, or
   network errors. The new Settings browser-login state is explicitly captured
   and checked at all three widths.
-- Next gate: rebase and reverify desktop #41 against current Studio main.
-  No desktop merge or release may occur first.
+- Verified after rebasing desktop #41 onto Studio main `ae5270a`: the full
+  release-selected suite passed (65 unit tests, 82 IPC contracts, CDP, docs,
+  Python/runtime, production build, and isolated Electron smoke). The refreshed
+  visual matrix captured 84 states at 375, 768, and 1440 px with zero layout,
+  console, or network findings and three focus contracts. The 1440 Settings
+  browser-login capture remains clean.
+- Next gate: push the rebased draft branch, wait for its exact-head CI, then
+  request a separate desktop-merge decision. No desktop release may occur first.
