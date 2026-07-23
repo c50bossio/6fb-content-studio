@@ -1,6 +1,6 @@
 # Progress
 
-Last updated: 2026-07-22
+Last updated: 2026-07-23
 
 > This file records current cross-workspace state. Durable product,
 > engineering, and delivery truth belongs in the corresponding `notes.md`.
@@ -414,8 +414,9 @@ signing setup occurred. Azure and Windows signing were not used for v1.5.46.
   A fresh temporary-profile browser handoff reached localhost and returned a
   connected Electron account result without exposing the token to the renderer.
   Desktop [#41](https://github.com/c50bossio/6fb-content-studio/pull/41)
-  remains a draft at `e4b07a267fb3faadb36e78d568dbf690c2f42a34`; it is not
-  merged, deployed, tagged, or released.
+  merged at `bb497c09d46fa49f5b0b69ce60cde03790d8639e`. Its merge tree exactly
+  matches the release-tested PR head `4b829fcbc565362d9c6f0308c74368ae647ef53a`;
+  it is not tagged, packaged, or publicly released.
 - Desktop: Settings now offers **Sign in with 6FB in browser** while preserving
   password login as a fallback. Electron reserves a random high localhost port,
   creates PKCE/state values in memory, validates the localhost callback, and
@@ -443,5 +444,5 @@ signing setup occurred. Azure and Windows signing were not used for v1.5.46.
   visual matrix captured 84 states at 375, 768, and 1440 px with zero layout,
   console, or network findings and three focus contracts. The 1440 Settings
   browser-login capture remains clean.
-- Next gate: request a separate desktop-merge decision. No desktop release may
-  occur first.
+- Next gate: a separate macOS packaging, tag, and distribution decision. No
+  desktop release has occurred.
