@@ -13,8 +13,10 @@ Last updated: 2026-07-22
 - The source `package.json` reports version `1.5.39`; the tag workflow stamps
   the release version while packaging.
 - `.github/workflows/release.yml` coordinates macOS-arm64-only `v*` releases:
-  it stages exactly four Mac assets in a draft, smoke-checks the notarized DMG
-  from that draft, and only then publishes.
+  it stages exactly four Mac assets in a private draft and smoke-checks the
+  notarized DMG from that draft. `.github/workflows/publish-release.yml` is a
+  separate explicit manual promotion that re-verifies the draft manifest, then
+  publishes and performs anonymous public-asset and DMG smokes.
 - `.github/workflows/release-windows.yml` is a manual, non-publishing future
   Windows build/test/package validator. It is not callable from the production
   tag workflow.

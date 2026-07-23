@@ -12,6 +12,7 @@ const requiredSources = [
   'src/pages/Setup.tsx',
   'scripts/build-pipeline-runtime.ps1',
   '.github/workflows/release.yml',
+  '.github/workflows/publish-release.yml',
   '.github/workflows/release-windows.yml',
   'scripts/test-docs.cjs',
   'scripts/test-python.cjs',
@@ -45,6 +46,7 @@ const [
   setup,
   windowsRuntimeBuilder,
   releaseWorkflow,
+  publishReleaseWorkflow,
   windowsRelease,
   docsTest,
   pythonTest,
@@ -168,6 +170,12 @@ assert.match(releaseWorkflow, /actions\/checkout@v6[\s\S]*?persist-credentials: 
 const releaseCheckoutCount = (releaseWorkflow.match(/uses: actions\/checkout@v6/g) || []).length;
 const hardenedReleaseCheckoutCount = (releaseWorkflow.match(/uses: actions\/checkout@v6\s+with:\s+persist-credentials: false/g) || []).length;
 assert.equal(hardenedReleaseCheckoutCount, releaseCheckoutCount, 'Every coordinated release checkout must remove persisted credentials');
+assert.match(publishReleaseWorkflow, /workflow_dispatch:[\s\S]*?inputs:[\s\S]*?tag:/, 'Public release promotion must require an explicit tag input');
+assert.match(publishReleaseWorkflow, /Expected an existing non-prerelease draft/, 'Public release promotion must require an existing draft');
+assert.match(publishReleaseWorkflow, /expected-assets\.txt[\s\S]*?actual-assets\.txt/, 'Public release promotion must re-verify the exact draft manifest');
+assert.match(publishReleaseWorkflow, /publish-release:[\s\S]*?needs: validate-draft[\s\S]*?gh release edit[\s\S]*?--repo "\$GITHUB_REPOSITORY"[\s\S]*?--draft=false/, 'Public promotion must follow draft validation and target the explicit repository');
+assert.match(publishReleaseWorkflow, /smoke-published-mac:[\s\S]*?needs:[\s\S]*?- validate-draft[\s\S]*?- publish-release[\s\S]*?verify-public-macos-release-assets\.sh[\s\S]*?smoke-mac-release-dmg\.sh/, 'Public promotion must perform anonymous manifest and DMG smokes');
+assert.doesNotMatch(releaseWorkflow, /publish-release:|smoke-published-mac:|--draft=false/, 'Tag creation must stop at a certified private draft');
 assert.doesNotMatch(windowsRelease, /softprops\/action-gh-release/, 'The Windows workflow must never publish independently');
 assert.doesNotMatch(releaseWorkflow, /release-windows|\.exe|latest\.yml/, 'The production tag workflow must remain macOS-only');
 assert.match(releaseWorkflow, /concurrency:[\s\S]*?cancel-in-progress: false/, 'Release reruns must serialize without cancelling an active release');
@@ -193,10 +201,6 @@ assert.match(releaseWorkflow, /RELEASE_ID: \$\{\{ steps\.stage-draft\.outputs\.i
 assert.match(releaseWorkflow, /Verify exact draft asset manifest[\s\S]*?expected-assets\.txt[\s\S]*?actual-assets\.txt/, 'Draft verification must reject stale or missing release assets');
 assert.match(releaseWorkflow, /RELEASE_INCLUDE_DRAFT: '1'/, 'macOS certification must inspect the staged draft asset');
 assert.match(releaseWorkflow, /RELEASE_ID: \$\{\{ needs\.stage-release\.outputs\.release_id \}\}/, 'Staged macOS certification must use the exact draft release ID');
-assert.match(releaseWorkflow, /publish-release:[\s\S]*?needs: smoke-staged-mac[\s\S]*?gh release edit[\s\S]*?--repo "\$GITHUB_REPOSITORY"[\s\S]*?--draft=false/, 'Publication must happen only after staged macOS certification and target the explicit repository');
-assert.match(releaseWorkflow, /smoke-published-mac:[\s\S]*?needs: publish-release[\s\S]*?smoke-mac-release-dmg\.sh/, 'Workflow success must include a public macOS download smoke');
-assert.doesNotMatch(releaseWorkflow.match(/smoke-published-mac:[\s\S]*$/)?.[0] || '', /GH_TOKEN:/, 'Public release smoke must prove anonymous availability');
-assert.match(releaseWorkflow, /Verify anonymous public macOS asset manifest[\s\S]*?verify-public-macos-release-assets\.sh[\s\S]*?Smoke public macOS DMG/, 'Public certification must verify the exact anonymous asset manifest before DMG smoke');
 assert.match(publicMacManifestVerifier, /curl[\s\S]*?--retry 2[\s\S]*?--connect-timeout 10 --max-time 60/, 'Public manifest verification must use bounded anonymous network calls');
 assert.doesNotMatch(publicMacManifestVerifier, /Authorization:|GH_TOKEN/, 'Public manifest verification must not depend on authentication');
 const publicManifestMatch = publicMacManifestVerifier.match(/expected=\(\s*([\s\S]*?)\s*\)/);
