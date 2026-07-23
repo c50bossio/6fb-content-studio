@@ -1,8 +1,16 @@
 # Engineering notes
 
-Last updated: 2026-07-22
+Last updated: 2026-07-23
 
 ## Confirmed facts
+
+- The v1.5.54 macOS release workflow reached the isolated Electron IPC smoke,
+  which passed its functional assertions, but then failed only while removing
+  its temporary profile with `ENOTEMPTY`. The cleanup contract now waits for
+  Electron shutdown and retries only transient filesystem races with a fixed
+  cap; it never masks a non-transient cleanup failure or a failed smoke check.
+  Local verification evidence is recorded in
+  `qa/2026-07-23-electron-ipc-cleanup-race.md`.
 
 - Settings UX candidate `codex/settings-ux-rework` presents 6FB account,
   Content Planner, and Instagram connection state before optional technical

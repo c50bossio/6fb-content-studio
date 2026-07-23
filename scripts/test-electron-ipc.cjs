@@ -4,6 +4,7 @@ const { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync
 const { tmpdir } = require('node:os');
 const { join, resolve } = require('node:path');
 const WebSocket = require('ws');
+const { stopChildAndRemoveFixture } = require('./electron-ipc-cleanup.cjs');
 
 const projectRoot = resolve(__dirname, '..');
 const electronBinary = require('electron');
@@ -359,9 +360,7 @@ async function run() {
     console.log('Electron IPC smoke passed: packaged asset, isolated profile, thumbnail-library persistence, pinned protocol approvals, symlink rejection, scheduler lifecycle, and transactional trim validation.');
   } finally {
     client?.close();
-    child.kill('SIGTERM');
-    await delay(300);
-    rmSync(fixtureRoot, { recursive: true, force: true });
+    await stopChildAndRemoveFixture(child, fixtureRoot);
     if (child.exitCode && child.exitCode !== 0 && stderr) process.stderr.write(stderr);
   }
 }
