@@ -393,9 +393,11 @@ signing setup occurred. Azure and Windows signing were not used for v1.5.46.
 
 ## Browser-to-desktop SSO handoff (2026-07-22)
 
-- Completed in isolated branches only: `codex/desktop-sso-handoff` in this
-  repository and the companion Content Playbook repository. No branch has been
-  merged, tagged, deployed, or released.
+- Draft pull requests are open: desktop [#41](https://github.com/c50bossio/6fb-content-studio/pull/41)
+  at `786cdb94483f5faef41356f5888dabc930ceb7ea` and companion Content
+  Playbook [#126](https://github.com/c50bossio/6fb-content-generator/pull/126)
+  at `baf303d273c29529eb1e260df97fa4b3f3fa1a60`. Neither is merged, deployed,
+  tagged, or released.
 - Desktop: Settings now offers **Sign in with 6FB in browser** while preserving
   password login as a fallback. Electron reserves a random high localhost port,
   creates PKCE/state values in memory, validates the localhost callback, and
