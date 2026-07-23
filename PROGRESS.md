@@ -7,6 +7,22 @@ Last updated: 2026-07-23
 
 ## Current status
 
+### Instagram Trends correction release preparation (2026-07-23)
+
+The Instagram Trends correction merged through pull request #53 as exact
+`origin/main` commit `b8556606dcd753aeb8c13da7e3bfc9f318708615`. It uses the
+Instagram Login graph origin and bounded recent authorized-account media rather
+than unsupported public hashtag discovery, labels results as account signals,
+and reserves those signals alongside Google Trends and Content Planner topics.
+The exact application tree matches the fully verified implementation commit:
+66 unit tests plus IPC/source contracts, CDP, documentation, Python/runtime,
+production build, and isolated Electron smoke passed; a bounded read-only
+connected-account check returned four recent media items. No post, schedule,
+or account setting changed. The v1.5.51 Mac-only release notes and checklist
+are prepared locally; merge, fresh exact-main verification, explicit tag
+approval, signed draft validation, and a separate public-promotion approval
+remain required.
+
 ### Settings UX release (2026-07-23, public for macOS arm64)
 
 `codex/settings-ux-rework` reorganizes Settings around the user workflow:
