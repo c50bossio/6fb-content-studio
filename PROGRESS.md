@@ -7,6 +7,22 @@ Last updated: 2026-07-22
 
 ## Current status
 
+### Thumbnail Maker release preparation (2026-07-22)
+
+Thumbnail Maker merged to `origin/main` through pull request #40 as
+`8e42109eedba1b4eef214f55846a2a2479fc512e`; its exact tree matches the fully
+verified pull-request head. No GitHub Actions run was triggered by that merge.
+The merged feature adds a persistent local Thumbnail Library plus three
+transcript-grounded, editable thumbnail directions with app-owned final exports.
+The local integration proof includes TypeScript, 62 unit tests, 80 IPC
+contracts, documentation contracts, a production build, an isolated Electron
+IPC persistence smoke, and an 81-state responsive visual audit with zero
+reported findings. The release candidate is macOS arm64 only. Public v1.5.46
+does not contain this feature; private v1.5.47 predates it and remains a Smart
+Live Trends draft. The next candidate is v1.5.48, which must pass an
+exact-main pre-tag preflight and stage as a private signed/notarized draft
+before separate owner-approved public promotion.
+
 ### Smart Live Trends release preparation (2026-07-22)
 
 Smart Live Trends merged to `origin/main` as
