@@ -10,6 +10,10 @@ Last updated: 2026-07-22
 - `python/tools/clip_extractor/` and `python/tools/pipeline/` contain pipeline source.
 - `npm run build` is the base TypeScript/Electron build gate.
 - Runtime packaging has separate macOS and Windows build and assertion scripts.
+- The macOS arm64 runtime builder uses the tracked
+  `python/tools/clip_extractor/requirements-macos-arm64.lock` constraints. It
+  pins the verified PyInstaller, SciPy, MLX, and related runtime inputs so a
+  fresh release build cannot silently pick incompatible PyPI versions.
 - The dependency and macOS MLX runtime remediations shipped in public release
   `v1.5.43` from merge commit
   `9b792a1e9aac312c5599dbff7220e62103e432f5`.
@@ -66,6 +70,11 @@ Last updated: 2026-07-22
 - Rebuilt the stale macOS arm64 pipeline runtime so it includes MLX's
   `mlx.metallib`, and made `runtime:mac` fail if that library is unavailable or
   the completed runtime does not pass its packaged-runtime check.
+- A clean v1.5.48 pre-tag rebuild exposed two dependency-drift failures before
+  any tag was created: PyInstaller 6.21 attempted to thin an already arm64
+  bootloader, and newer SciPy runtime imports failed after freezing. The
+  macOS-only constraints restore the known-good set and are enforced by a
+  static contract plus the completed packaged-runtime probe.
 - Ran the unsigned app bundle's embedded pipeline end-to-end against a
   disposable offline fixture. Transcript parsing, boundary validation, clip
   extraction, crop-path analysis, and 1080x1920 H.264/AAC rendering completed;

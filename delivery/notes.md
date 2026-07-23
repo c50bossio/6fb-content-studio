@@ -11,6 +11,10 @@ Last updated: 2026-07-22
 - `delivery/release-notes/v1.5.48.md` and
   `delivery/checklists/v1.5.48-release-readiness.md` define the next
   macOS-arm64-only candidate. They do not create a tag or publish a release.
+- The v1.5.48 pre-tag rebuild found unreproducible macOS Python runtime inputs
+  before any tag was created. The candidate now locks the verified arm64 runtime
+  dependencies and requires a fresh packaged-runtime probe; do not create the
+  v1.5.48 tag until that correction is merged and exact-main verification passes.
 
 - Smart Live Trends merged to `origin/main` through pull request #37 as
   `fa959f8f1b2366e216f0ada67762018d45912835`, after public `v1.5.46` was
