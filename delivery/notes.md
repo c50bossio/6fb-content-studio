@@ -4,6 +4,17 @@ Last updated: 2026-07-23
 
 ## Confirmed facts
 
+- Pull request #53 merged the Instagram Login trend-source correction as exact
+  `origin/main` commit `b8556606dcd753aeb8c13da7e3bfc9f318708615`. Its tree is
+  identical to implementation commit `50669423c50cabe6f9d326d5a760ad230829caad`,
+  which passed the complete local suite (66 unit tests, contracts, CDP,
+  documentation, Python/runtime, production build, and Electron smoke). A
+  bounded read-only connected-account check returned four authorized Instagram
+  media items after the correction; it made no publishing or account changes.
+  `delivery/release-notes/v1.5.51.md` and
+  `delivery/checklists/v1.5.51-release-readiness.md` define the next
+  macOS-arm64-only candidate. They do not create a tag or publish a release.
+
 - `v1.5.50` is public and latest for macOS arm64. It delivers the Settings
   connection-workflow update merged through pull request #50. Annotated tag
   `v1.5.50` resolves to
