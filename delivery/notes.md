@@ -1,8 +1,13 @@
 # Delivery notes
 
-Last updated: 2026-07-22
+Last updated: 2026-07-23
 
 ## Confirmed facts
+
+- `v1.5.50` is the proposed next macOS-arm64-only release for the Settings
+  connection-workflow update merged through pull request #50 as
+  `16cde66ba23218b5e0b22a106ae4ae49cd9cc90c`. Its release notes and checklist
+  are tracked; no tag, package, draft, or public release exists yet.
 
 - `v1.5.49` is public and latest for macOS arm64. It delivers the
   browser-to-desktop 6FB sign-in merged through pull request #41. Exact tag

@@ -7,7 +7,7 @@ Last updated: 2026-07-23
 
 ## Current status
 
-### Settings UX candidate (2026-07-23, not merged or released)
+### Settings UX release candidate (2026-07-23, merged; not yet tagged or released)
 
 `codex/settings-ux-rework` reorganizes Settings around the user workflow:
 6FB account, Content Planner, Instagram, and YouTube inspiration appear before
@@ -17,8 +17,11 @@ and password fallback behavior are unchanged. The candidate passed the full
 suite with 65 unit tests, 82 IPC contracts, Python/runtime checks, production
 build, and isolated Electron smoke. Its responsive visual matrix captured 87
 states at 375/768/1440 with zero layout, console, or network findings; the
-visual gate self-test also passed. The branch has not been pushed, reviewed,
-merged, packaged, tagged, or released.
+visual gate self-test also passed. It merged through pull request #50 as exact
+`origin/main` commit `16cde66ba23218b5e0b22a106ae4ae49cd9cc90c`; the merge
+tree passed a fresh full suite, 87-state visual matrix, and strict workspace
+validation. CodeRabbit's post-merge check succeeded. No v1.5.50 tag, package,
+draft, or public release exists yet.
 
 ### Thumbnail Maker release preparation (2026-07-22)
 
