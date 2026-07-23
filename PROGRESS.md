@@ -23,6 +23,16 @@ Live Trends draft. The next candidate is v1.5.48, which must pass an
 exact-main pre-tag preflight and stage as a private signed/notarized draft
 before separate owner-approved public promotion.
 
+The initial clean v1.5.48 pre-tag runtime rebuild caught dependency drift before
+any tag was created: PyInstaller 6.21 could not thin its already arm64
+bootloader, and the newly resolved SciPy runtime failed in the frozen probe. A
+small candidate correction locks the verified macOS-arm64 Python inputs and
+enforces them through the runtime builder and static contract. Its fresh
+runtime build, full 62-test suite, 80 contracts, production build, Electron IPC
+smoke, workspace validators, and workflow Actionlint pass. It still needs to
+merge and be rechecked at the exact tag target before staging a private v1.5.48
+draft.
+
 ### Smart Live Trends release preparation (2026-07-22)
 
 Smart Live Trends merged to `origin/main` as

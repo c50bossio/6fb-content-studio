@@ -1,0 +1,18 @@
+# Reproducible macOS-arm64 runtime inputs. These versions are verified together
+# by scripts/build-pipeline-runtime.sh and the packaged-runtime probe.
+pyinstaller==6.20.0
+pyinstaller-hooks-contrib==2026.5
+mediapipe==0.10.35
+opencv-contrib-python==4.13.0.92
+numpy==2.4.4
+scipy==1.17.1
+Pillow==12.3.0
+PyYAML==6.0.3
+filterpy==1.4.5
+rapidfuzz==3.14.5
+mlx-whisper==0.4.3
+mlx==0.31.2
+mlx-metal==0.31.2
+tiktoken==0.12.0
+huggingface-hub==1.13.0
+torch==2.11.0

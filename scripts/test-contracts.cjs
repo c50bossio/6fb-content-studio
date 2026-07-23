@@ -13,7 +13,9 @@ const requiredSources = [
   'electron/preload.ts',
   'src/pages/Setup.tsx',
   'src/pages/Settings.tsx',
+  'scripts/build-pipeline-runtime.sh',
   'scripts/build-pipeline-runtime.ps1',
+  'python/tools/clip_extractor/requirements-macos-arm64.lock',
   '.github/workflows/release.yml',
   '.github/workflows/publish-release.yml',
   '.github/workflows/release-windows.yml',
@@ -47,7 +49,9 @@ const [
   preload,
   setup,
   settings,
+  macRuntimeBuilder,
   windowsRuntimeBuilder,
+  macRuntimeConstraints,
   releaseWorkflow,
   publishReleaseWorkflow,
   windowsRelease,
@@ -193,6 +197,11 @@ assert.doesNotMatch(setup, /src=["']\/content-playbook\.png["']/, 'Packaged rend
 assert.match(windowsRuntimeBuilder, /if \(\$LASTEXITCODE -ne 0\)/, 'Windows runtime native commands must fail closed');
 assert.match(windowsRuntimeBuilder, /Invoke-NativeCommand -FilePath "node" -ArgumentList @\("-p"/, 'PowerShell must pass Node print flags as explicit native arguments');
 assert.match(windowsRuntimeBuilder, /IsNullOrWhiteSpace\(\$FfmpegStatic\)/, 'Windows runtime discovery must reject empty ffmpeg paths before Test-Path');
+assert.match(macRuntimeBuilder, /requirements-macos-arm64\.lock/, 'macOS runtime builds must use the tracked dependency constraints');
+assert.match(macRuntimeBuilder, /pip install --constraint "\$MACOS_CONSTRAINTS" pyinstaller/, 'macOS runtime builds must constrain PyInstaller');
+assert.match(macRuntimeBuilder, /pip install --constraint "\$MACOS_CONSTRAINTS" -r/, 'macOS runtime requirements must use the tracked constraints');
+assert.match(macRuntimeConstraints, /pyinstaller==6\.20\.0/, 'macOS runtime must pin the verified PyInstaller version');
+assert.match(macRuntimeConstraints, /scipy==1\.17\.1/, 'macOS runtime must pin the verified SciPy version');
 assert.match(windowsRelease, /name: Run full test suite[\s\S]*?SIXFB_TEST_PYTHON[\s\S]*?npm test/, 'Windows releases must test with the populated runtime venv');
 assert.match(releaseWorkflow, /name: Run full test suite\s+env:\s+SIXFB_TEST_PYTHON: \$\{\{ github\.workspace \}\}\/python\/\.build-venv\/bin\/python\s+run: npm test/, 'macOS releases must test with the freshly built runtime venv');
 assert.doesNotMatch(docsTest, /execFileSync\(['"]rg['"]/, 'Documentation tests must not require ripgrep on Windows runners');

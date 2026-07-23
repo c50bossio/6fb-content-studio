@@ -17,6 +17,7 @@ BUILD_DIR="$ROOT_DIR/python/build"
 DIST_DIR="$ROOT_DIR/python/dist"
 RUNTIME_DIR="$ROOT_DIR/python/runtime/$RUNTIME_ID"
 TOOLS_DIR="$ROOT_DIR/python/tools"
+MACOS_CONSTRAINTS="$TOOLS_DIR/clip_extractor/requirements-macos-arm64.lock"
 FFMPEG_STATIC="$(node -p "require('ffmpeg-static')")"
 FFPROBE_STATIC="$(node -p "require('ffprobe-static').path")"
 
@@ -40,8 +41,8 @@ fi
 
 "$PYTHON_BIN" -m venv "$VENV_DIR"
 "$VENV_DIR/bin/python" -m pip install --upgrade pip 'setuptools<82' wheel
-"$VENV_DIR/bin/python" -m pip install pyinstaller
-"$VENV_DIR/bin/python" -m pip install -r "$TOOLS_DIR/clip_extractor/requirements.txt"
+"$VENV_DIR/bin/python" -m pip install --constraint "$MACOS_CONSTRAINTS" pyinstaller
+"$VENV_DIR/bin/python" -m pip install --constraint "$MACOS_CONSTRAINTS" -r "$TOOLS_DIR/clip_extractor/requirements.txt"
 "$VENV_DIR/bin/python" -m pip check
 
 MLX_METALLIB="$("$VENV_DIR/bin/python" - <<'PY'
