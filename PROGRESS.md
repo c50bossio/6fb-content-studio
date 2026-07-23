@@ -7,6 +7,19 @@ Last updated: 2026-07-23
 
 ## Current status
 
+### Settings UX candidate (2026-07-23, not merged or released)
+
+`codex/settings-ux-rework` reorganizes Settings around the user workflow:
+6FB account, Content Planner, Instagram, and YouTube inspiration appear before
+technical controls. API keys, runtime health, storage, version diagnostics, and
+Reset App remain available behind an accessible Advanced control; browser SSO
+and password fallback behavior are unchanged. The candidate passed the full
+suite with 65 unit tests, 82 IPC contracts, Python/runtime checks, production
+build, and isolated Electron smoke. Its responsive visual matrix captured 87
+states at 375/768/1440 with zero layout, console, or network findings; the
+visual gate self-test also passed. The branch has not been pushed, reviewed,
+merged, packaged, tagged, or released.
+
 ### Thumbnail Maker release preparation (2026-07-22)
 
 Thumbnail Maker merged to `origin/main` through pull request #40 as

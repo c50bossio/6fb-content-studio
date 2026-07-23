@@ -426,9 +426,9 @@ async function main() {
         };
       })()`);
       await clickScreen(client, 'Settings');
-      await waitForContent(client, 'Sign in with 6FB in browser');
+      await waitForContent(client, 'Sign in with 6FB');
       const browserLoginVisible = await evaluate(client, `(() => {
-        const button = [...document.querySelectorAll('button')].find(candidate => candidate.textContent?.trim() === 'Sign in with 6FB in browser');
+        const button = [...document.querySelectorAll('button')].find(candidate => candidate.textContent?.trim() === 'Sign in with 6FB');
         if (!button) return false;
         button.scrollIntoView({ block: 'center' });
         return true;
@@ -458,6 +458,22 @@ async function main() {
       await resetScroll(client);
       report.screens[`${width}/settings-youtube-enabled`] = await auditLayout(client);
       await capture(client, path.join(outputDir, String(width), 'settings-youtube-enabled.png'));
+
+      const advancedSettingsOpened = await evaluate(client, `(() => {
+        const button = [...document.querySelectorAll('button')].find(candidate => candidate.textContent?.includes('Advanced settings'));
+        if (!button) return false;
+        button.scrollIntoView({ block: 'center' });
+        button.click();
+        return true;
+      })()`);
+      if (!advancedSettingsOpened) throw new Error('Advanced settings did not expand');
+      await waitForContent(client, 'API Keys');
+      const advancedSettingsExpanded = await evaluate(client, `document.querySelector('[aria-controls="advanced-settings-content"]')?.getAttribute('aria-expanded') === 'true'`);
+      if (!advancedSettingsExpanded) throw new Error('Advanced settings rendered without an expanded control state');
+      await delay(150);
+      report.screens[`${width}/settings-advanced-expanded`] = await auditLayout(client);
+      await capture(client, path.join(outputDir, String(width), 'settings-advanced-expanded.png'));
+
       await clickScreen(client, 'Dashboard');
       await evaluate(client, `(() => {
         window.electronAPI.scanLibrary = async () => ({ runs: [{
