@@ -4,10 +4,15 @@ Last updated: 2026-07-23
 
 ## Confirmed facts
 
-- `v1.5.50` is the proposed next macOS-arm64-only release for the Settings
-  connection-workflow update merged through pull request #50 as
-  `16cde66ba23218b5e0b22a106ae4ae49cd9cc90c`. Its release notes and checklist
-  are tracked; no tag, package, draft, or public release exists yet.
+- `v1.5.50` is public and latest for macOS arm64. It delivers the Settings
+  connection-workflow update merged through pull request #50. Annotated tag
+  `v1.5.50` resolves to
+  `1ba5acc55869a02d16baace9b80d6a046ede9940`. Staging workflow `30004587257`
+  passed the bundled runtime, full suite, signing, notarization, stapling,
+  exact-four-asset draft, and staged-DMG smoke. Promotion workflow
+  `30005705326` passed the exact-manifest recheck and anonymous public-DMG
+  smoke. The public asset manifest and digests are recorded in
+  `delivery/evidence/2026-07-23-v1.5.50-public-release.md`.
 
 - `v1.5.49` is public and latest for macOS arm64. It delivers the
   browser-to-desktop 6FB sign-in merged through pull request #41. Exact tag

@@ -7,7 +7,7 @@ Last updated: 2026-07-23
 
 ## Current status
 
-### Settings UX release candidate (2026-07-23, merged; not yet tagged or released)
+### Settings UX release (2026-07-23, public for macOS arm64)
 
 `codex/settings-ux-rework` reorganizes Settings around the user workflow:
 6FB account, Content Planner, Instagram, and YouTube inspiration appear before
@@ -20,8 +20,12 @@ states at 375/768/1440 with zero layout, console, or network findings; the
 visual gate self-test also passed. It merged through pull request #50 as exact
 `origin/main` commit `16cde66ba23218b5e0b22a106ae4ae49cd9cc90c`; the merge
 tree passed a fresh full suite, 87-state visual matrix, and strict workspace
-validation. CodeRabbit's post-merge check succeeded. No v1.5.50 tag, package,
-draft, or public release exists yet.
+validation. CodeRabbit's post-merge check succeeded. It is now public as
+macOS-arm64 release `v1.5.50`, tagged at
+`1ba5acc55869a02d16baace9b80d6a046ede9940`. The staging workflow
+`30004587257` passed its full test, signing, notarization, exact-four-asset,
+and staged-DMG gates; the promotion workflow `30005705326` passed its
+anonymous public-manifest and public-DMG smoke. Windows remains unpublished.
 
 ### Thumbnail Maker release preparation (2026-07-22)
 
