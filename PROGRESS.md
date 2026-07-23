@@ -68,6 +68,52 @@ suite, TypeScript check, scoped lint, production webpack build, and independent
 42-test security/contract matrix pass. Filesystem scans find no Google API-key
 literals or YouTube/Gemini query-key transports. This proof does not substitute
 for replacement-key rotation, deployment, or authenticated staging.
+Thumbnail Maker quality improvements remain isolated on
+`codex/thumbnail-maker`; they are not merged, packaged, or released. The
+feature now assigns three deliberate creative lanes (warning, mistake, and
+curiosity), keeps the image model focused on barbering visuals without AI text,
+and lets the renderer own editable exact headline, accent, graphic treatment,
+and visual-proof-cue controls. It now applies the House Cut reference standard:
+one claim, one visible proof cue, and one accent system. The image model is
+forbidden from adding text, arrows, rings, diagrams, or extra cutaways; the
+renderer owns the headline and at most one proof annotation. Each finished
+visual can be exported as a composed 1536×864 PNG from app-owned storage. A
+real Electron acceptance run selected the Top 3 Tapers library video, made one
+bounded package request and initial three sequential bounded image calls, and
+exported three full-size final PNGs. The House Cut follow-up produced reviewed,
+clean base art and refreshed three 1536×864 final exports; one extra BOWL CUT?
+image edit occurred when the preview CDP response closed before reporting a
+sequential result. It exposed and corrected a real card-scaling export defect;
+the final outputs and evidence are recorded in
+`engineering/qa/2026-07-22-thumbnail-maker.md`. Typecheck, 16 unit tests, 73
+IPC contracts, production build, documentation contracts, and the latest
+53-state responsive visual audit pass; no upload, schedule, publication,
+commit, merge, package, or release occurred.
+
+The latest editorial refresh replaces the remaining hard black type-pane and
+flat vector-card feel with full-bleed photography, depth-aware left foreground
+headlines, cinematic grading, subtle grain, and restrained display type. The
+prompt now rejects vector-poster, stock-cutout, and flat-render aesthetics.
+The owner-authorized local three-cover comparison is `BOWL CUT?`, `TOO THIN`,
+and `CLOSED FIRST?`; exact app-owned paths and the bounded-request evidence are
+recorded in `engineering/qa/2026-07-22-thumbnail-maker.md`. Typecheck, 16 unit
+tests, 73 IPC contracts, production build, documentation contracts, and the
+53-state visual audit remain green. Two preview-CDP response drops created
+redundant local base art during the live refresh; no retry loop remains active
+and no upload, schedule, publication, commit, merge, package, or release
+occurred.
+
+The same isolated branch now includes a local Thumbnail Library. Each completed
+three-option package is saved as a validated, source-linked app-data record and
+can be reopened, refined, and saved without another model request. A disposable
+Electron IPC smoke proved save/list/load behavior and rejected an outside-owned
+reference path. The verified commit is rebased onto current `origin/main`
+`0e5600d7855262e3d42cc671ac33f427822506ad` (v1.5.47), retaining the newer
+Smart Trends and YouTube-consent work. The integration proof passes typecheck,
+62 unit tests, 80 IPC contracts, documentation contracts, production build, the
+isolated Electron IPC smoke, and the 81-state visual audit with zero findings.
+This remains unmerged and unreleased; no upload, schedule, publication, merge,
+package, or release occurred.
 
 Public release `v1.5.46` is available for macOS arm64 from annotated tag
 `v1.5.46`, which resolves to the exact approved tag-target commit
@@ -104,6 +150,50 @@ the verified handoff record before final tag target
 #29 was closed without merge. The signed-in Azure tenant showed zero
 subscriptions at the decision point, and no Artifact Signing or repository
 signing setup occurred. Azure and Windows signing were not used for v1.5.46.
+
+## Thumbnail Maker development (2026-07-22)
+
+- Completed locally on isolated branch `codex/thumbnail-maker`: added a
+  transcript-grounded Thumbnail Maker page, sidebar/dashboard routing, strict
+  output validation, bounded OpenAI IPC, local frame matching, copy, and
+  Markdown export. The handler uses `gpt-5.2` structured output with response
+  storage disabled; existing Claude-backed tools are unchanged.
+- Completed: exact House Cut parity for one diagnosis, three titles, three
+  distinct 2-4 word thumbnail concepts with transcript evidence and timestamps,
+  description, one CTA, and user-initiated finished-cover generation from an
+  app-owned frame. The page offers both per-concept cover generation and a
+  bounded sequential three-cover comparison set; publishing remains out of
+  scope.
+- Completed: revised finished-cover art direction to match the owner-approved
+  comparison style: dark charcoal contrast, headline field on the left, and
+  authentic barbering action on the right. The image contract rejects the
+  earlier washed, centered treatment.
+- Verified: full local suite passed with 15 unit tests, 71 IPC contracts,
+  Python/runtime checks, production build, and isolated Electron IPC smoke.
+  The visual gate captured 53 states across 375, 768, and 1440 px with zero
+  layout, target-size, console, or network findings.
+- Completed: one owner-authorized stored-key OpenAI source-contract acceptance
+  call against the 19,409-character `Top 3 Tapers Video FINISHED.mp4` library
+  transcript completed with `gpt-5.2` and passed strict output validation.
+  Response storage was disabled; no upload, scheduling action, or publication
+  occurred. The uninstalled feature branch still needs a local packaged-app
+  acceptance run before a release decision.
+- Completed: one owner-authorized `gpt-image-1.5` image-edit acceptance call
+  generated and visually verified a finished 1536×1024 `DON'T GET CUTE` cover
+  from an app-owned clip frame. The generated PNG remains only in app-owned
+  local storage; it was not uploaded, scheduled, or published.
+- Completed: built-preview renderer acceptance selected the `Top 3 Tapers Video
+  FINISHED.mp4` library run `1775592631332`, produced a fresh valid package,
+  and generated all three finished local covers (`BOWL CUT?`, `TOO THIN`, and
+  `AT WHAT COST?`) sequentially through the real renderer/IPC path. A live
+  timestamp-schema gap was corrected by constraining JSON output to `MM:SS` or
+  `HH:MM:SS` before post-response validation; typecheck, 15 unit tests, 71 IPC
+  contracts, and the production build passed afterward. No upload, scheduling,
+  publication, installation, or release occurred.
+- Blocked: no local implementation blocker. The branch is not committed,
+  pushed, merged, tagged, packaged, or released.
+- Next: local packaged-preview acceptance through the actual renderer/IPC path,
+  then a separate decision on commit/PR/merge.
 
 ## Release preparation (2026-07-22)
 

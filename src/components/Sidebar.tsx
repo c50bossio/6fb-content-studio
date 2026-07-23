@@ -35,6 +35,12 @@ const NavIcons: Record<string, () => React.ReactElement> = {
       <rect x="5" y="3" width="14" height="18" rx="2"/><line x1="1" y1="6" x2="1" y2="18"/><line x1="23" y1="6" x2="23" y2="18"/>
     </svg>
   ),
+  thumbnail: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+      <rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/>
+      <path d="m21 15-4-4L5 20"/><path d="m13 15 2-2 4 4"/>
+    </svg>
+  ),
   brand: () => (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
       <circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/>
@@ -83,6 +89,7 @@ const GLOBAL_ITEMS: { page: Page; label: string; ready: boolean }[] = [
 const ENGINE_ITEMS: { page: Page; label: string; ready: boolean; subtitle?: string }[] = [
   { page: 'planner',   label: 'Video Planner',   ready: true  },
   { page: 'clips',     label: 'Clips',          ready: true  },
+  { page: 'thumbnail', label: 'Thumbnail Maker', ready: true },
   { page: 'carousel',  label: 'Carousel',       ready: true  },
   { page: 'blog',      label: 'Blog Writer',    ready: true  },
   { page: 'editor',    label: 'Video Editor',   ready: true  },

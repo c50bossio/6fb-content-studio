@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { ContentBrain, ContentStrategyBrief } from '../src/types/content-strategy';
 import type { PublishingQueuePost } from '../src/types/publishing';
 import type { TrendFeed } from '../src/types/trends';
+import type { SaveThumbnailPackageRequest, ThumbnailCoverExportRequest, ThumbnailImageRequest, ThumbnailPackageExportRequest, ThumbnailPackageRequest } from '../src/types/thumbnail-package';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // API Key Management
@@ -61,6 +62,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('read-transcript', runPath),
   autoMatchCarouselFrames: (data: { runPath: string; timestamps: string[] }) =>
     ipcRenderer.invoke('auto-match-carousel-frames', data),
+  generateThumbnailPackage: (data: ThumbnailPackageRequest) =>
+    ipcRenderer.invoke('generate-thumbnail-package', data),
+  generateThumbnailImage: (data: ThumbnailImageRequest) =>
+    ipcRenderer.invoke('generate-thumbnail-image', data),
+  exportThumbnailPackage: (data: ThumbnailPackageExportRequest) =>
+    ipcRenderer.invoke('export-thumbnail-package', data),
+  exportThumbnailCover: (data: ThumbnailCoverExportRequest) =>
+    ipcRenderer.invoke('export-thumbnail-cover', data),
+  readThumbnailImageData: (imagePath: string) =>
+    ipcRenderer.invoke('read-thumbnail-image-data', imagePath),
+  saveThumbnailPackage: (data: SaveThumbnailPackageRequest) =>
+    ipcRenderer.invoke('save-thumbnail-package', data),
+  listThumbnailPackages: () =>
+    ipcRenderer.invoke('list-thumbnail-packages'),
+  loadThumbnailPackage: (id: string) =>
+    ipcRenderer.invoke('load-thumbnail-package', id),
 
   // Carousel Persistence & Export
   exportCarouselDeck: (title: string, images: string[]) =>
