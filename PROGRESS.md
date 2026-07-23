@@ -22,9 +22,10 @@ does not contain this feature; private v1.5.47 predates it and remains a Smart
 Live Trends draft. v1.5.48 is now a certified private macOS draft from exact
 tag target `8e29d4c8ffc20ef5b0e78c1d31b8dce8655c927b`: its constrained runtime
 rebuild, full suite, signing, notarization, stapling, exact-four-file manifest,
-and staged-DMG smoke passed in workflow `29976055852`. It is not public. The
-next gate is separate owner approval to promote the existing draft, followed by
-anonymous public-asset and DMG smoke checks.
+and staged-DMG smoke passed in workflow `29976055852`. The owner then approved
+promotion: v1.5.48 is public and latest for macOS arm64. Workflow `29976866850`
+revalidated the draft, promoted it, and passed anonymous public-manifest and
+public-DMG smoke checks. Windows remains deliberately unpublished.
 
 The initial clean v1.5.48 pre-tag runtime rebuild caught dependency drift before
 any tag was created: PyInstaller 6.21 could not thin its already arm64
