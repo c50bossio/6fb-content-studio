@@ -28,10 +28,15 @@ and disabling discovery or resetting the app clears consent and cached YouTube
 references. Unit, type, and static contract proof passes locally. Release still
 uses the separately owned `/apps/content/api/studio/youtube-trends` backend
 contract, which is implemented and locally verified on isolated branch
-`codex/youtube-trends-proxy`. Replacement-key rotation, deployment configuration,
-and end-to-end authenticated staging proof remain open; no real Instagram
-account or YouTube credential was used, and this candidate is not merged,
-pushed, tagged, packaged, or released.
+`codex/youtube-trends-proxy`. On 2026-07-22, a replacement server-only key was
+created in the owning Google Cloud project with an API restriction to
+`youtube.googleapis.com`; one bounded read-only `search.list` request returned
+HTTP 200, and the encrypted `YOUTUBE_API_KEY` value was replaced in the Vercel
+production, preview, and development environments. The historical unrestricted
+key remains active until the merged deployment and authenticated end-to-end
+proof confirm the cutover, at which point it must be deleted. No deployment was
+triggered by the environment update. This candidate is not merged, pushed,
+tagged, packaged, or released.
 
 Current Mac client proof: TypeScript passes; 55 unit tests pass; static contracts
 pass across 72 IPC channels; the production build passes; and the 75-capture
