@@ -4,6 +4,12 @@ Last updated: 2026-07-23
 
 ## Confirmed facts
 
+- `v1.5.54` is a failed, non-published tag. Its Mac workflow passed runtime
+  rebuild and all functional test assertions, but stopped before signing or
+  staging when the Electron smoke harness encountered a temporary-directory
+  cleanup race. `v1.5.55` is the prepared replacement candidate after the
+  bounded cleanup repair; no draft or public release exists for either tag.
+
 - `v1.5.54` is prepared as the next macOS-arm64-only patch after public
   `v1.5.53`. It carries the low-fit authorized-Instagram signal correction
   merged through pull request #60 as exact `origin/main` commit

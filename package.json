@@ -13,7 +13,7 @@
     "test:docs": "node scripts/test-docs.cjs",
     "test:python": "node scripts/test-python.cjs",
     "test:runtime": "node scripts/test-runtime.cjs",
-    "test:electron": "node scripts/test-electron-ipc.cjs",
+    "test:electron": "node scripts/test-electron-ipc-cleanup.cjs && node scripts/test-electron-ipc.cjs",
     "test": "npm run typecheck && npm run test:unit && npm run test:contracts && npm run test:cdp && npm run test:docs && npm run test:python && npm run test:runtime && npm run build && npm run test:electron",
     "qa:visual": "node scripts/run-visual-audit.cjs",
     "qa:visual:self-test": "node scripts/test-visual-gate.cjs",
