@@ -4,6 +4,21 @@ Last updated: 2026-07-23
 
 ## Confirmed facts
 
+- `v1.5.54` is prepared as the next macOS-arm64-only patch after public
+  `v1.5.53`. It carries the low-fit authorized-Instagram signal correction
+  merged through pull request #60 as exact `origin/main` commit
+  `c442e85ca31d035fb96047e321b6c7ee1e4f2360`.
+- The correction withholds low-fit account activity from Smart Trends while
+  retaining direct barber-domain signals. The corresponding unit coverage and
+  authenticated acceptance evidence are recorded in
+  `engineering/qa/2026-07-23-low-fit-instagram-signals.md`.
+- `delivery/release-notes/v1.5.54.md` and
+  `delivery/checklists/v1.5.54-release-readiness.md` prepare this candidate.
+  They do not create a tag, a draft release, a public release, or an updater.
+- The tag workflow is macOS-only and creates a verified private draft with four
+  Mac artifacts. `.github/workflows/publish-release.yml` is the separate,
+  owner-approved public-promotion workflow.
+
 - `v1.5.52` is public and latest for macOS arm64. Its annotated tag resolves
   to `6b9c0751a33d9ece6048862e884ebebd50013932`; the staging workflow
   `30030169653` passed its full suite, signing, notarization, exact-four-asset
