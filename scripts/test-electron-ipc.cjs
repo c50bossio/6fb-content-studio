@@ -183,6 +183,35 @@ async function run() {
     assert.equal(resolve(health.paths.userData), resolve(userDataDir), 'isolated profile must be active');
     assert.equal('settingsPath' in health.paths, false, 'renderer health must not expose the settings file');
 
+    const thumbnailFixture = {
+      diagnosis: 'A precise first pass protects the final taper.',
+      titles: ['Stop Rushing the Taper', 'The First Guide Matters', 'Why Your Blend Looks Heavy'],
+      thumbnails: [
+        { text: 'DON’T START HIGH', creativeLane: 'warning', accent: 'red', treatment: 'clean', visualDirection: 'A barber sets the first guideline low at the temple.', transcriptEvidence: 'The speaker explains that the first guide sets the taper height.', timestamp: '02:14' },
+        { text: 'TOO MUCH WEIGHT', creativeLane: 'mistake', accent: 'emerald', treatment: 'clean', visualDirection: 'A close taper shows weight left behind at the transition.', transcriptEvidence: 'The speaker explains that skipped blending leaves weight.', timestamp: '03:20' },
+        { text: 'CLOSED FIRST?', creativeLane: 'curiosity', accent: 'none', treatment: 'clean', visualDirection: 'A barber begins the taper with a closed lever near the neckline.', transcriptEvidence: 'The speaker explains why the lever starts closed.', timestamp: '04:10' },
+      ],
+      description: 'The first taper decision controls the entire blend.',
+      cta: 'Practice one clean guideline before your next client.',
+    };
+    const savedThumbnail = await evaluate(client, `window.electronAPI.saveThumbnailPackage({
+      sourceName: 'IPC smoke source', sourceRunId: '1784660000000', package: ${JSON.stringify(thumbnailFixture)}
+    })`);
+    assert.equal(savedThumbnail.success, true, 'valid thumbnail package must save in the isolated profile');
+    assert.ok(savedThumbnail.id, 'saved thumbnail package must receive a main-process record id');
+    const savedThumbnails = await evaluate(client, `window.electronAPI.listThumbnailPackages()`);
+    assert.equal(savedThumbnails.packages.some(item => item.id === savedThumbnail.id), true, 'saved thumbnail package must appear in the local library');
+    const loadedThumbnail = await evaluate(client, `window.electronAPI.loadThumbnailPackage(${JSON.stringify(savedThumbnail.id)})`);
+    assert.equal(loadedThumbnail.success, true, 'saved thumbnail package must reopen through the main-process boundary');
+    assert.deepEqual(loadedThumbnail.record.package, thumbnailFixture, 'reopened thumbnail package must preserve the complete three-option decision set');
+    const unsafeThumbnail = await evaluate(client, `window.electronAPI.saveThumbnailPackage({
+      sourceName: 'Unsafe source', sourceRunId: '1784660000000', package: {
+        ...${JSON.stringify(thumbnailFixture)},
+        thumbnails: [{ ...${JSON.stringify(thumbnailFixture.thumbnails[0])}, framePath: ${JSON.stringify(outsideSecret)} }, ${JSON.stringify(thumbnailFixture.thumbnails[1])}, ${JSON.stringify(thumbnailFixture.thumbnails[2])}]
+      }
+    })`);
+    assert.equal(unsafeThumbnail.success, false, 'thumbnail package persistence must reject paths outside app-owned media storage');
+
     const savedKey = await evaluate(client, `window.electronAPI.saveApiKey('claude', 'test-secret-value')`);
     assert.equal(savedKey.success, true);
     const configPath = join(userDataDir, 'config.json');
@@ -321,7 +350,7 @@ async function run() {
       'failed duration validation must preserve original metadata',
     );
 
-    console.log('Electron IPC smoke passed: packaged asset, isolated profile, pinned protocol approvals, symlink rejection, scheduler lifecycle, and transactional trim validation.');
+    console.log('Electron IPC smoke passed: packaged asset, isolated profile, thumbnail-library persistence, pinned protocol approvals, symlink rejection, scheduler lifecycle, and transactional trim validation.');
   } finally {
     client?.close();
     child.kill('SIGTERM');

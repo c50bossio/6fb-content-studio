@@ -5,11 +5,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const root = process.cwd();
+const thumbnailPackageSource = fs.readFileSync(path.join(root, 'electron/thumbnail-package.mts'), 'utf8');
+const thumbnailMakerPage = fs.readFileSync(path.join(root, 'src/pages/ThumbnailMaker.tsx'), 'utf8');
 const requiredSources = [
   'electron/main.ts',
   'electron/python-bridge.ts',
   'electron/preload.ts',
   'src/pages/Setup.tsx',
+  'src/pages/Settings.tsx',
   'scripts/build-pipeline-runtime.ps1',
   '.github/workflows/release.yml',
   '.github/workflows/publish-release.yml',
@@ -32,7 +35,6 @@ const requiredSources = [
   'electron/trend-intelligence.mts',
   'electron/smart-trend-service.mts',
   'electron/instagram-graph.mts',
-  'src/pages/Settings.tsx',
 ];
 const missingSources = requiredSources.filter(relativePath => !fs.existsSync(path.join(root, relativePath)));
 if (missingSources.length) {
@@ -44,6 +46,7 @@ const [
   pythonBridge,
   preload,
   setup,
+  settings,
   windowsRuntimeBuilder,
   releaseWorkflow,
   publishReleaseWorkflow,
@@ -66,7 +69,6 @@ const [
   trendIntelligence,
   smartTrendService,
   instagramGraph,
-  settings,
 ] = requiredSources.map(relativePath => fs.readFileSync(path.join(root, relativePath), 'utf8'));
 
 const uniqueSorted = values => [...new Set(values)].sort();
@@ -75,6 +77,41 @@ const mainChannels = uniqueSorted([...main.matchAll(/ipcMain\.handle\(['"]([^'"]
 
 assert.deepEqual(preloadChannels, mainChannels, 'Preload invoke channels and main handlers must match exactly');
 assert.ok(preloadChannels.length >= 60, `Expected a substantial IPC contract, found only ${preloadChannels.length} channels`);
+assert.match(main, /Build the exact transcript-packaging artifact used by the House Cut workflow/, 'Thumbnail generation must retain the source workflow contract');
+assert.match(main, /normalizeThumbnailPackage\(JSON\.parse\(response\.output_text\)\)/, 'Thumbnail AI output must cross the strict package validator');
+assert.match(main, /generate-thumbnail-package[\s\S]*?const apiKey = store\.get\('apiKeys\.openai'\)/, 'Thumbnail Maker must use the locally stored OpenAI key');
+assert.match(main, /model: 'gpt-5\.2'/, 'Thumbnail Maker must use the approved ChatGPT model');
+assert.match(main, /store: false/, 'Thumbnail Maker must disable OpenAI response storage');
+assert.match(main, /type: 'json_schema'[\s\S]*?name: 'thumbnail_package'[\s\S]*?strict: true/, 'Thumbnail Maker must request strict structured output');
+assert.match(main, /creativeLane: \{ type: 'string', enum: \['warning', 'mistake', 'curiosity'\] \}/, 'Thumbnail packages must produce three deliberate creative lanes');
+assert.match(settings, /saveApiKey\('openai', key\)/, 'Settings must let the owner configure the OpenAI key locally');
+assert.match(thumbnailMakerPage, /hasOpenAIKey/, 'Thumbnail Maker must gate generation on OpenAI configuration');
+assert.match(main, /generate-thumbnail-image[\s\S]*?safeOwnedPath\(request\.referenceFramePath, clipsDir\(\)\)/, 'Finished thumbnails must use only an app-owned local reference frame');
+assert.match(main, /model: 'gpt-image-1\.5'/, 'Finished thumbnails must use the supported GPT image model');
+assert.match(main, /toFile\([\s\S]*?type: extname\(referenceFramePath\)/, 'Finished thumbnails must preserve the local frame MIME type for OpenAI image editing');
+assert.match(main, /client\.images\.edit\([\s\S]*?size: '1536x1024'[\s\S]*?quality: 'high'[\s\S]*?input_fidelity: 'high'/, 'Finished thumbnails must request a high-fidelity 16:9 cover');
+assert.match(main, /right 40 to 50 percent[\s\S]*?darker left foreground[\s\S]*?photography breathe across the full frame[\s\S]*?dark charcoal to near-black[\s\S]*?Avoid washed gray, flat neutral backgrounds, a centered subject/, 'Finished covers must use the approved editorial left-text/right-action, high-contrast composition');
+assert.match(main, /Do not render words, letters, numbers, logos, watermarks, UI, or any other typography/, 'The app must own exact headline rendering instead of delegating spelling to the image model');
+assert.match(main, /new OpenAI\(\{ apiKey, maxRetries: 1, timeout: 120_000 \}\)/, 'Finished thumbnail image calls must have bounded retry and timeout limits');
+assert.match(main, /join\(app\.getPath\('userData'\), 'thumbnail-lab'/, 'Finished covers must be saved only under app-owned storage');
+assert.match(thumbnailMakerPage, /Generate finished cover/, 'Thumbnail Maker must expose finished-cover generation in the renderer');
+assert.match(thumbnailMakerPage, /Generate 3 finished covers/, 'Thumbnail Maker must generate a finished three-cover comparison set');
+assert.match(thumbnailMakerPage, /Exact headline/, 'Thumbnail Maker must expose editable exact headline controls');
+assert.match(thumbnailMakerPage, /exportThumbnailCover/, 'Thumbnail Maker must export the app-rendered final cover');
+assert.match(preload, /save-thumbnail-package/, 'Thumbnail packages must expose a bridged persistence save action');
+assert.match(preload, /list-thumbnail-packages/, 'Thumbnail packages must expose a bridged library list action');
+assert.match(preload, /load-thumbnail-package/, 'Thumbnail packages must expose a bridged library load action');
+assert.match(main, /const thumbnailPackagesDir = \(\) => join\(app\.getPath\('userData'\), 'thumbnail-packages'\)/, 'Thumbnail packages must persist only under app-owned storage');
+assert.match(main, /retainOwnedThumbnailPaths\(normalizeThumbnailPackage\(request\?\.package\)\)/, 'Saved thumbnail packages must retain only validated app-owned image paths');
+assert.match(main, /safeJsonRecordPath\(thumbnailPackagesDir\(\), id\)/, 'Saved thumbnail packages must validate record IDs before loading');
+assert.match(thumbnailMakerPage, /Thumbnail Library/, 'Thumbnail Maker must present saved packages for reopening');
+assert.match(thumbnailMakerPage, /saveThumbnailPackage/, 'Thumbnail Maker must save generated and refined packages');
+assert.match(thumbnailPackageSource, /candidate\.titles\.length !== 3/, 'Thumbnail packages must contain exactly three titles');
+assert.match(thumbnailPackageSource, /candidate\.thumbnails\.length !== 3/, 'Thumbnail packages must contain exactly three concepts');
+assert.match(thumbnailPackageSource, /words\.length < 2 \|\| words\.length > 4/, 'Thumbnail copy must remain within two to four words');
+assert.match(thumbnailPackageSource, /one warning, one mistake, and one curiosity creative lane/, 'Thumbnail packages must keep one distinct creative lane per concept');
+assert.match(thumbnailMakerPage, /readTranscript\(selectedRun\.runPath\)/, 'Thumbnail Maker must use an app-owned transcribed run');
+assert.match(thumbnailMakerPage, /autoMatchCarouselFrames/, 'Thumbnail Maker must attach local transcript-matched frames');
 
 const rawFetchCalls = [...main.matchAll(/(?<![A-Za-z.])fetch\(/g)];
 assert.equal(rawFetchCalls.length, 1, 'Only boundedFetch may call the raw fetch API');
@@ -142,6 +179,11 @@ for (const config of anthropicClients) {
   assert.match(config, /maxRetries:\s*2/, 'Anthropic calls must have bounded retries');
   assert.match(config, /timeout:\s*30_000/, 'Anthropic calls must have a request timeout');
 }
+
+const openAIClients = [...main.matchAll(/new OpenAI\(([^\n]+)\)/g)].map(match => match[1]);
+assert.equal(openAIClients.length, 2, 'Thumbnail Maker must own separate bounded OpenAI text and image clients');
+assert.ok(openAIClients.some(config => /maxRetries:\s*2/.test(config) && /timeout:\s*30_000/.test(config)), 'Thumbnail package text calls must keep bounded retries and timeout');
+assert.ok(openAIClients.some(config => /maxRetries:\s*1/.test(config) && /timeout:\s*120_000/.test(config)), 'Finished image calls must keep their own bounded retry and timeout');
 
 assert.match(main, /safeNumericRunPath\(runId, clipsDir\(\)\)/, 'Clip deletion must use a numeric owned run path');
 assert.match(main, /validateLocalScheduledPost\(normalized\)/, 'Scheduled posts must cross the main-process validator');

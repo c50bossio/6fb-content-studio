@@ -26,6 +26,7 @@ const screens = [
   ['dashboard', 'Dashboard'],
   ['video-planner', 'Video Planner'],
   ['clips', 'Clips'],
+  ['thumbnail-maker', 'Thumbnail Maker'],
   ['carousel', 'Carousel'],
   ['blog-writer', 'Blog Writer'],
   ['video-editor', 'Video Editor'],
@@ -380,6 +381,8 @@ async function main() {
 
     await evaluate(client, `(() => {
       localStorage.setItem('contentStudio:setupComplete', 'true');
+      localStorage.setItem('contentStudio:hasClaudeKey', 'true');
+      localStorage.setItem('contentStudio:hasOpenAIKey', 'true');
       localStorage.setItem('contentStudio:brandProfile', JSON.stringify({
         brandName: '6FB Mentorship', primaryColor: '#00C851', accentColor: '#ffffff',
         backgroundColor: '#0f0f0f', fontPreset: 'clean-pro', headlineFont: 'Space Grotesk',
@@ -407,6 +410,7 @@ async function main() {
 
     for (const width of widths) {
       await setViewport(client, width);
+      await evaluate(client, `window.electronAPI.scanLibrary = async () => ({ runs: [] })`);
       for (const [slug, label] of screens) {
         await clickScreen(client, label);
         const key = `${width}/${slug}`;
@@ -435,6 +439,32 @@ async function main() {
       report.screens[`${width}/settings-youtube-enabled`] = await auditLayout(client);
       await capture(client, path.join(outputDir, String(width), 'settings-youtube-enabled.png'));
       await clickScreen(client, 'Dashboard');
+      await evaluate(client, `(() => {
+        window.electronAPI.scanLibrary = async () => ({ runs: [{
+          runId: '1784761200000', timestamp: Date.now() - 3600000,
+          sourceVideo: '/mock/shop-income.mp4', runPath: '/mock/1784761200000',
+          clips: [{ contentType: 'education', thumbnailPath: null }]
+        }] });
+        window.electronAPI.readTranscript = async () => ({ success: true, transcript: '[00:10] A full calendar is not the same thing as margin. [02:14] The chair creates the income, then structure decides whether that income becomes freedom. [08:03] If every dollar becomes lifestyle, being booked can still leave a barber broke.' });
+        window.electronAPI.generateThumbnailPackage = async () => ({ success: true, package: {
+          diagnosis: 'A booked chair creates income, but structure decides whether that income becomes margin and freedom.',
+          titles: ['Why Busy Barbers Stay Broke', 'The Money Move After Every Cut', 'Your Booked Calendar Is Not Wealth'],
+          thumbnails: [
+            { text: 'MONEY AFTER CUTS', creativeLane: 'warning', accent: 'red', treatment: 'warning-line', timestamp: '02:14', visualDirection: 'Chris beside a barber chair with a clean arrow toward assets.', transcriptEvidence: 'The speaker explains that chair income must fund the next move.' },
+            { text: 'BOOKED BUT BROKE', creativeLane: 'mistake', accent: 'emerald', treatment: 'marker', timestamp: '08:03', visualDirection: 'A full appointment calendar beside an empty margin meter.', transcriptEvidence: 'The transcript contrasts a full schedule with missing financial margin.' },
+            { text: 'CHAIR BECOMES FUEL', creativeLane: 'curiosity', accent: 'none', treatment: 'clean', timestamp: '00:10', visualDirection: 'Barber income moving from the chair into systems and savings.', transcriptEvidence: 'The opening separates activity from the structure that creates freedom.' }
+          ],
+          description: 'A full book is valuable only when the money creates margin, systems, and options after the cut.',
+          cta: 'Write down where the money from your next ten cuts is going.'
+        }});
+        window.electronAPI.autoMatchCarouselFrames = async () => ({ success: true, frames: [null, null, null] });
+      })()`);
+      await clickScreen(client, 'Thumbnail Maker');
+      await waitForContent(client, 'shop-income');
+      await clickButton(client, 'Generate 3 Directions');
+      await waitForContent(client, 'CORE DIAGNOSIS');
+      report.screens[`${width}/thumbnail-maker-results`] = await auditLayout(client);
+      await capture(client, path.join(outputDir, String(width), 'thumbnail-maker-results.png'));
 
       await clickScreen(client, 'Scheduler');
       const hoverPoint = await evaluate(client, `(() => {

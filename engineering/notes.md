@@ -47,6 +47,16 @@ Last updated: 2026-07-22
   `qa/2026-07-22-smart-live-trends.md`; merge and release remain separate gates.
 
 - Keep all implementation source in its existing runtime directories.
+- House Cut thumbnail references establish a repeatable cover rule for the
+  Thumbnail Maker: one claim, one visible proof cue, and one accent system.
+  The GPT Image base art must remain free of text and graphic annotations so
+  the editable renderer can apply the exact headline and, at most, one proof
+  line or marker without creating visual clutter.
+- The cover renderer must treat the model image as full-bleed editorial
+  photography, not a source image behind a hard black text pane. It applies
+  photographic grading, vignette and grain, a depth-aware left foreground, and
+  restrained dimensional type. Image prompts explicitly reject vector-poster,
+  stock-cutout, and flat-render aesthetics.
 - Store only plans, architecture context, and verification evidence here.
 - Applied the supported production-only audit repair: `fast-uri@3.1.4`,
   `js-yaml@4.3.0`, and `ws@8.21.1`; `npm audit --omit=dev` and `npm run build` passed.
@@ -89,3 +99,48 @@ Last updated: 2026-07-22
   missing validation sources cleanly, selects Python cross-platform, and maps
   unexpected pipeline exceptions to concise nonzero CLI failures. The verified
   44 px target floor remains global because the audit contract covers every width.
+- Thumbnail Maker on `codex/thumbnail-maker` reuses `scan-library`,
+  `read-transcript`, and `auto-match-carousel-frames`; it adds no transcription
+  or FFmpeg pipeline. Its OpenAI Responses handler uses `gpt-5.2`, disables
+  response storage, keeps a two-retry, 30-second cap, and validates exact
+  counts, distinct copy, 2-4 word thumbnail text, timestamps, and
+  title/thumbnail separation before renderer delivery.
+- Verification evidence is recorded in
+  `engineering/qa/2026-07-22-thumbnail-maker.md`. The full local suite and a
+  53-state responsive matrix pass. One owner-authorized stored-key `gpt-5.2`
+  source-contract call against a completed library video also passed strict
+  validation. A second owner-authorized `gpt-image-1.5` acceptance call created
+  and visually verified one finished 1536×1024 cover from an app-owned source
+  frame; feature-branch packaging remains a separate acceptance step.
+- Thumbnail Maker now treats the three concepts as a comparison set: the
+  renderer can make all three finished covers sequentially, halts at the first
+  error, and has a contract for the approved dark left-text/right-action
+  composition. This changes neither the image model nor the published app.
+- Packaged-preview acceptance selected library run `1775592631332` for `Top 3
+  Tapers Video FINISHED.mp4`, generated a fresh `gpt-5.2` package, then created
+  all three `gpt-image-1.5` covers through the actual renderer and IPC path.
+  The live run exposed a timestamp-format gap: the post-response validator
+  allowed only `MM:SS` or `HH:MM:SS`, while the JSON schema did not constrain
+  the model's timestamp field. The schema now applies the same pattern and
+  eight-character maximum before validation; typecheck, 15 unit tests, 71 IPC
+  contracts, and the production build passed after the repair. All outputs
+  remain local and no upload, schedule, or publication occurred.
+- The next approved Thumbnail Maker quality pass moves exact headline typography
+  out of `gpt-image-1.5` and into the renderer. The image request now asks only
+  for the authentic barbering visual, while the UI provides editable headline,
+  creative-lane, accent, treatment, and visual-focus controls. A local PNG
+  export composes the exact app-rendered headline at 1536×864. Package
+  validation requires one warning, one mistake, and one curiosity concept.
+- The first real export revealed that resizing a card-sized DOM node through
+  `html-to-image` paints it only in the upper-left of a larger canvas. The
+  export path now renders an off-screen, fixed 1536×864 composition instead.
+  Generated covers are read back only from the app-owned `thumbnail-lab` PNG
+  root through a guarded IPC handler and converted to data URLs before capture;
+  this prevents privileged `localfile://` fetching from dropping the visual
+  during PNG composition.
+- Thumbnail Maker packages now persist as validated, source-linked records in
+  app-owned `thumbnail-packages` storage. The main process assigns or validates
+  record IDs and timestamps, validates the three-option package again, and
+  retains only frame paths under `clips` plus generated/exported PNG paths under
+  `thumbnail-lab`. The renderer can list, reopen, refine, and save the local
+  package without another OpenAI request.

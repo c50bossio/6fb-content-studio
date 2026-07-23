@@ -11,12 +11,14 @@ import Settings from './pages/Settings';
 import VideoEditor from './pages/VideoEditor';
 import Scheduler from './pages/Scheduler';
 import Analytics from './pages/Analytics';
+import ThumbnailMaker from './pages/ThumbnailMaker';
 import { useStudioStats } from './hooks/useStudioStats';
 import UpdateBanner from './components/UpdateBanner';
 import type { ContentBrain, ContentStrategyBrief } from './types/content-strategy';
 import type { PublishingQueueResponse } from './types/publishing';
 import type { ScheduleDraft } from './types/creation-handoff';
 import type { TrendFeed } from './types/trends';
+import type { SaveThumbnailPackageRequest, SavedThumbnailPackage, ThumbnailCoverExportRequest, ThumbnailImageRequest, ThumbnailPackage, ThumbnailPackageExportRequest, ThumbnailPackageRequest, ThumbnailPackageSummary } from './types/thumbnail-package';
 
 export interface BrandProfile {
   brandName: string;
@@ -66,6 +68,14 @@ declare global {
       readClipTranscript: (clipPath: string) => Promise<{ word: string; start: number; end: number }[] | null>;
       readTranscript: (runPath: string) => Promise<{ success: boolean; transcript?: string; format?: string; error?: string }>;
       autoMatchCarouselFrames: (data: { runPath: string; timestamps: string[] }) => Promise<{ success: boolean; frames?: (string | null)[]; error?: string }>;
+      generateThumbnailPackage: (data: ThumbnailPackageRequest) => Promise<{ success: boolean; package?: ThumbnailPackage; error?: string }>;
+      generateThumbnailImage: (data: ThumbnailImageRequest) => Promise<{ success: boolean; imagePath?: string; error?: string }>;
+      exportThumbnailPackage: (data: ThumbnailPackageExportRequest) => Promise<{ success: boolean; filePath?: string; error?: string }>;
+      exportThumbnailCover: (data: ThumbnailCoverExportRequest) => Promise<{ success: boolean; imagePath?: string; error?: string }>;
+      readThumbnailImageData: (imagePath: string) => Promise<{ success: boolean; dataUrl?: string; error?: string }>;
+      saveThumbnailPackage: (data: SaveThumbnailPackageRequest) => Promise<{ success: boolean; id?: string; record?: ThumbnailPackageSummary; error?: string }>;
+      listThumbnailPackages: () => Promise<{ packages: ThumbnailPackageSummary[]; error?: string }>;
+      loadThumbnailPackage: (id: string) => Promise<{ success: boolean; record?: SavedThumbnailPackage; error?: string }>;
       // Carousel Persistence & Export
       exportCarouselDeck: (title: string, images: string[]) => Promise<{ success: boolean; folderPath?: string; savedPaths?: string[]; error?: string }>;
       saveCarousel: (data: { title: string; slides: object[]; brandSnapshot: object }) => Promise<{ success: boolean; id?: string; error?: string }>;
@@ -146,12 +156,13 @@ declare global {
   }
 }
 
-export type Page = 'dashboard' | 'planner' | 'clips' | 'carousel' | 'brand' | 'editor' | 'schedule' | 'analytics' | 'blog' | 'settings';
+export type Page = 'dashboard' | 'planner' | 'clips' | 'thumbnail' | 'carousel' | 'brand' | 'editor' | 'schedule' | 'analytics' | 'blog' | 'settings';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>('dashboard');
   const [setupComplete, setSetupComplete] = useState<boolean | null>(null);
   const [hasClaudeKey, setHasClaudeKey] = useState<boolean>(false);
+  const [hasOpenAIKey, setHasOpenAIKey] = useState<boolean>(false);
   const [brandProfile, setBrandProfile] = useState<BrandProfile | null>(null);
   const [editorClipPath, setEditorClipPath] = useState<string | null>(null);
   const [clipPlanHandoffId, setClipPlanHandoffId] = useState<string | null>(null);
@@ -236,14 +247,19 @@ export default function App() {
       (window as unknown as { electronAPI: typeof window.electronAPI }).electronAPI = {
         saveApiKey: async (provider: string, _key: string) => {
           if (provider === 'claude') localStorage.setItem('contentStudio:hasClaudeKey', 'true');
+          if (provider === 'openai') localStorage.setItem('contentStudio:hasOpenAIKey', 'true');
           return { success: true };
         },
         getApiKey: async (provider: string) => ({
-          hasKey: provider === 'claude' && localStorage.getItem('contentStudio:hasClaudeKey') === 'true',
+          hasKey: (provider === 'claude' && localStorage.getItem('contentStudio:hasClaudeKey') === 'true')
+            || (provider === 'openai' && localStorage.getItem('contentStudio:hasOpenAIKey') === 'true'),
           hint: null,
         }),
         getAllSettings: async () => ({
-          apiKeys: { claude: localStorage.getItem('contentStudio:hasClaudeKey') === 'true', openai: false },
+          apiKeys: {
+            claude: localStorage.getItem('contentStudio:hasClaudeKey') === 'true',
+            openai: localStorage.getItem('contentStudio:hasOpenAIKey') === 'true',
+          },
           contentPlannerToken: false,
           setupComplete: localStorage.getItem('contentStudio:setupComplete') === 'true',
         }),
@@ -266,6 +282,14 @@ export default function App() {
         extractCarousel: async () => ({ success: false, error: 'Electron required' }),
         readTranscript: async () => ({ success: false, error: 'Electron required' }),
         autoMatchCarouselFrames: async () => ({ success: false, error: 'Electron required' }),
+        generateThumbnailPackage: async () => ({ success: false, error: 'Electron required' }),
+        generateThumbnailImage: async () => ({ success: false, error: 'Electron required' }),
+        exportThumbnailPackage: async () => ({ success: false, error: 'Electron required' }),
+        exportThumbnailCover: async () => ({ success: false, error: 'Electron required' }),
+        readThumbnailImageData: async () => ({ success: false, error: 'Electron required' }),
+        saveThumbnailPackage: async () => ({ success: false, error: 'Electron required' }),
+        listThumbnailPackages: async () => ({ packages: [] }),
+        loadThumbnailPackage: async () => ({ success: false, error: 'Electron required' }),
         saveBrandProfile: async (profile: BrandProfile) => {
           localStorage.setItem('contentStudio:brandProfile', JSON.stringify(profile));
           return { success: true };
@@ -286,7 +310,7 @@ export default function App() {
         checkSystemHealth: async () => ({
           deps: { python: false, ffmpeg: false, ffprobe: false, mediapipe: false, clipExtractor: false },
           paths: { userData: '~/Library/Application Support/6fb-content-studio', clipExtractor: '' },
-          apiKeys: { claude: true, openai: false },
+          apiKeys: { claude: true, openai: true },
         }),
         getAppVersion: async () => 'browser-preview',
         resetApp: async () => ({ success: true }),
@@ -369,6 +393,7 @@ export default function App() {
     window.electronAPI.getAllSettings().then(s => {
       setSetupComplete(s.setupComplete);
       setHasClaudeKey(s.apiKeys?.claude || false);
+      setHasOpenAIKey(s.apiKeys?.openai || false);
     }).catch(() => setSetupComplete(false));
     window.electronAPI.getBrandProfile().then(setBrandProfile).catch(() => {});
   }, [currentPage]);
@@ -392,6 +417,7 @@ export default function App() {
         {currentPage === 'dashboard'  && <Dashboard onNavigate={navigate} stats={stats} hasBrandProfile={!!brandProfile} />}
         {currentPage === 'planner'   && <VideoPlanner onCreateFromPlan={openClipsFromPlan} />}
         {currentPage === 'clips'      && <ClipExtractor initialPlanId={clipPlanHandoffId} onPlanHandoffConsumed={() => setClipPlanHandoffId(null)} onClipCreated={onClipCreated} onNavigateToEditor={openEditorForClip} onScheduleClip={openSchedulerDraft} />}
+        {currentPage === 'thumbnail'  && <ThumbnailMaker brandProfile={brandProfile} hasOpenAIKey={hasOpenAIKey} onNavigateToClips={() => navigate('clips')} onNavigateToSettings={() => navigate('settings')} />}
         {currentPage === 'carousel'   && <CarouselStudio brandProfile={brandProfile} onNavigateToBrand={() => navigate('brand')} onCarouselCreated={onCarouselCreated} hasClaudeKey={hasClaudeKey} />}
         {currentPage === 'brand'      && <BrandStudio onSave={setBrandProfile} />}
         {currentPage === 'blog'       && <BlogWriter brandProfile={brandProfile} onBlogCreated={onBlogCreated} hasClaudeKey={hasClaudeKey} />}

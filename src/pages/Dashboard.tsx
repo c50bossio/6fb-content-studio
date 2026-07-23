@@ -65,6 +65,12 @@ const Icons = {
       <polygon points="10 8 16 12 10 16 10 8"/>
     </svg>
   ),
+  Thumbnail: () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" className="w-full h-full">
+      <rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/>
+      <path d="m21 15-4-4L5 20"/><path d="m13 15 2-2 4 4"/>
+    </svg>
+  ),
 };
 
 const TOOLS: {
@@ -81,6 +87,14 @@ const TOOLS: {
     title: 'Clip Extractor',
     description: 'Upload a long video, find the strongest moments, and render vertical clips.',
     color: '#8B5CF6',
+    ready: true,
+  },
+  {
+    page: 'thumbnail',
+    Icon: Icons.Thumbnail,
+    title: 'Thumbnail Maker',
+    description: 'Build three titles and three transcript-grounded cover directions from a finished video.',
+    color: '#F97316',
     ready: true,
   },
   {

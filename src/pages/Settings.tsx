@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type FormEvent } from 'react';
 
 const YOUTUBE_POLICY_LINKS = [
   { label: '6FB Privacy', url: 'https://6fbmentorship.com/privacy' },
@@ -55,6 +55,9 @@ export default function Settings() {
   const [youtubeConsentSaving, setYouTubeConsentSaving] = useState(false);
   const [youtubeMsg, setYouTubeMsg] = useState('');
   const [appVersion, setAppVersion] = useState('...');
+  const [openAIKey, setOpenAIKey] = useState('');
+  const [openAIKeyError, setOpenAIKeyError] = useState('');
+  const [savingOpenAIKey, setSavingOpenAIKey] = useState(false);
 
   const api = (window as unknown as { electronAPI: Record<string, (...args: unknown[]) => Promise<unknown>> }).electronAPI;
   const isElectron = !!api?.checkSystemHealth;
@@ -150,6 +153,30 @@ export default function Settings() {
     setYouTubeConsentSaving(false);
   };
 
+  const handleSaveOpenAIKey = async (event: FormEvent) => {
+    event.preventDefault();
+    const key = openAIKey.trim();
+    if (!key.startsWith('sk-') || key.length < 20) {
+      setOpenAIKeyError('Enter a valid OpenAI API key beginning with sk-.');
+      return;
+    }
+    setSavingOpenAIKey(true);
+    setOpenAIKeyError('');
+    try {
+      const result = await api.saveApiKey('openai', key) as { success: boolean; error?: string };
+      if (!result.success) {
+        setOpenAIKeyError(result.error || 'The OpenAI API key could not be saved.');
+        return;
+      }
+      setOpenAIKey('');
+      setHealth(await api.checkSystemHealth() as SystemHealth);
+    } catch {
+      setOpenAIKeyError('The OpenAI API key could not be saved.');
+    } finally {
+      setSavingOpenAIKey(false);
+    }
+  };
+
   const handleReset = async () => {
     if (!resetConfirm) {
       setResetConfirm(true);
@@ -169,7 +196,7 @@ export default function Settings() {
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-3xl">
       <h1 className="text-3xl font-bold text-white mb-2">Settings</h1>
-      <p className="text-6fb-text-muted mb-8">Manage Claude, your 6FB account, and the local extraction runtime.</p>
+      <p className="text-6fb-text-muted mb-8">Manage AI providers, your 6FB account, and the local extraction runtime.</p>
 
       {/* API Keys Section */}
       <section className="mb-8">
@@ -201,27 +228,52 @@ export default function Settings() {
             )}
           </div>
 
-          {/* OpenAI legacy key cleanup */}
-          {health?.apiKeys.openai && (
-          <div className="flex items-center justify-between border-t border-6fb-border pt-4">
-            <div className="flex items-center gap-3">
-              <StatusDot ok={false} />
-              <div>
-                <p className="text-sm font-medium text-white">OpenAI legacy key</p>
-                <p className="text-xs text-6fb-text-muted">
-                  Not used in this production release. Claude is the supported provider.
-                </p>
+          <div className="border-t border-6fb-border pt-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <StatusDot ok={health?.apiKeys.openai ?? false} />
+                <div>
+                  <p className="text-sm font-medium text-white">OpenAI</p>
+                  <p className="text-xs text-6fb-text-muted">
+                    {health?.apiKeys.openai ? 'Ready for ChatGPT-powered Thumbnail Maker generation' : 'Required for Thumbnail Maker generation'}
+                  </p>
+                </div>
               </div>
+              {health?.apiKeys.openai && (
+                <button
+                  onClick={() => handleDeleteKey('openai')}
+                  className="text-xs text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg border border-red-500/20 hover:border-red-500/40 transition-colors"
+                >
+                  Remove
+                </button>
+              )}
             </div>
-            <button
-              onClick={() => handleDeleteKey('openai')}
-              className="text-xs text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg border border-red-500/20 hover:border-red-500/40 transition-colors"
-            >
-              Remove
-            </button>
+            {!health?.apiKeys.openai && (
+              <form onSubmit={handleSaveOpenAIKey} className="mt-4 pl-5 sm:pl-6">
+                <label htmlFor="openai-api-key" className="mb-2 block text-xs font-semibold text-6fb-text-muted">OpenAI API key</label>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    id="openai-api-key"
+                    type="password"
+                    autoComplete="new-password"
+                    value={openAIKey}
+                    onChange={event => { setOpenAIKey(event.target.value); setOpenAIKeyError(''); }}
+                    placeholder="sk-proj-..."
+                    className="min-w-0 flex-1 rounded-lg border border-6fb-border bg-6fb-bg px-3 py-2 text-sm text-white placeholder:text-6fb-text-muted focus:border-6fb-green focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={savingOpenAIKey || !openAIKey.trim()}
+                    className="rounded-lg bg-6fb-green px-4 py-2 text-xs font-bold text-black hover:bg-6fb-green-hover disabled:cursor-wait disabled:opacity-50"
+                  >
+                    {savingOpenAIKey ? 'Saving...' : 'Save key'}
+                  </button>
+                </div>
+                {openAIKeyError && <p role="alert" className="mt-2 text-xs text-red-400">{openAIKeyError}</p>}
+                <p className="mt-2 text-[11px] text-6fb-text-muted">Stored locally. API usage is billed separately from a ChatGPT subscription.</p>
+              </form>
+            )}
           </div>
-          )}
-
         </div>
       </section>
 
