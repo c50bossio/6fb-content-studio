@@ -7,9 +7,22 @@ Last updated: 2026-07-22
 
 ## Current status
 
-### Smart Live Trends candidate (2026-07-22)
+### Smart Live Trends release preparation (2026-07-22)
 
-Smart Live Trends is implemented but **not release-ready** in isolated branch
+Smart Live Trends merged to `origin/main` as
+`fa959f8f1b2366e216f0ada67762018d45912835` through desktop pull request #37.
+It is not present in the already public macOS-only `v1.5.46` tag, so the next
+possible desktop distribution is a new macOS-arm64-only `v1.5.47` release. The
+current release workflow is already Mac-only and stages exactly the four Mac
+assets; its manual Windows validator is not part of a tag release. This
+preparation does not tag, publish, package, or retire the historical YouTube
+key. The next gates are review/merge of the v1.5.47 release notes, exact-main
+verification, explicit tag approval, workflow certification, and an
+authenticated Mac Smart Trends check.
+
+### Smart Live Trends pre-merge record (historical; superseded)
+
+The following record captures the pre-merge candidate state in isolated branch
 `codex/smart-live-trends`, based on exact `origin/main` commit
 `aacdbff6924b6fe4fc5219c8eeabb6590b8bef8f`. The Video Planner now retrieves
 bounded current Google Trends RSS signals on an explicit click, can use an
@@ -40,8 +53,9 @@ are [desktop #37](https://github.com/c50bossio/6fb-content-studio/pull/37),
 [backend #125](https://github.com/c50bossio/6fb-content-generator/pull/125),
 and [policy #152](https://github.com/c50bossio/6fb-mentorship-landing/pull/152).
 At creation, all three preserve their locally verified heads; their remote
-checks are pending. This candidate is not merged, deployed, tagged, packaged,
-or released.
+checks were pending. This historical candidate record is superseded by the
+merged desktop/backend/policy state and the v1.5.47 preparation above; do not
+use it as current release routing.
 
 Current Mac client proof: TypeScript passes; 55 unit tests pass; static contracts
 pass across 72 IPC channels; the production build passes; and the 75-capture

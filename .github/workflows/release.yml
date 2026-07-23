@@ -1,4 +1,4 @@
-name: Build & Release
+name: Build & Stage macOS Release
 
 on:
   push:
@@ -324,35 +324,4 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
           RELEASE_ID: ${{ needs.stage-release.outputs.release_id }}
           RELEASE_INCLUDE_DRAFT: '1'
-        run: bash scripts/smoke-mac-release-dmg.sh "$GITHUB_REF_NAME"
-
-  publish-release:
-    needs: smoke-staged-mac
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Publish certified macOS release
-        env:
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
-        run: >-
-          gh release edit "$GITHUB_REF_NAME"
-          --repo "$GITHUB_REPOSITORY"
-          --draft=false --latest --verify-tag
-
-  smoke-published-mac:
-    needs: publish-release
-    runs-on: macos-15
-
-    steps:
-      - name: Checkout public release smoke
-        uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-
-      - name: Verify anonymous public macOS asset manifest
-        run: bash scripts/verify-public-macos-release-assets.sh "$GITHUB_REF_NAME"
-
-      - name: Smoke public macOS DMG
         run: bash scripts/smoke-mac-release-dmg.sh "$GITHUB_REF_NAME"

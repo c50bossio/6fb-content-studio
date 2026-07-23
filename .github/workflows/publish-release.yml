@@ -1,0 +1,94 @@
+name: Publish Staged macOS Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Annotated draft release tag to publish after owner acceptance
+        required: true
+        type: string
+
+concurrency:
+  group: publish-${{ inputs.tag }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  validate-draft:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+
+    steps:
+      - name: Validate exact staged macOS draft
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Publication requires a vMAJOR.MINOR.PATCH tag"
+            exit 1
+          fi
+          release_state=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
+            --json isDraft,isPrerelease,tagName --jq '[.isDraft, .isPrerelease, .tagName] | @tsv')
+          test "$release_state" = $'true\tfalse\t'"$TAG" || {
+            echo "::error::Expected an existing non-prerelease draft for $TAG: $release_state"
+            exit 1
+          }
+          expected=(
+            "6FB-Content-Studio-arm64.dmg"
+            "6FB-Content-Studio-arm64.zip"
+            "6FB-Content-Studio-arm64.zip.blockmap"
+            "latest-mac.yml"
+          )
+          printf '%s\n' "${expected[@]}" | sort > "$RUNNER_TEMP/expected-assets.txt"
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' \
+            | sort > "$RUNNER_TEMP/actual-assets.txt"
+          diff -u "$RUNNER_TEMP/expected-assets.txt" "$RUNNER_TEMP/actual-assets.txt" || {
+            echo "::error::Draft release asset manifest is not exact"
+            exit 1
+          }
+          empty_assets=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+            --jq '.assets[] | select(.size <= 0) | .name')
+          test -z "$empty_assets" || {
+            echo "::error::Draft release contains empty assets: $empty_assets"
+            exit 1
+          }
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+  publish-release:
+    needs: validate-draft
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Publish owner-accepted macOS draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.validate-draft.outputs.tag }}
+        run: >-
+          gh release edit "$TAG"
+          --repo "$GITHUB_REPOSITORY"
+          --draft=false --latest --verify-tag
+
+  smoke-published-mac:
+    needs:
+      - validate-draft
+      - publish-release
+    runs-on: macos-15
+
+    steps:
+      - name: Checkout exact release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.validate-draft.outputs.tag }}
+          persist-credentials: false
+
+      - name: Verify anonymous public macOS asset manifest
+        run: bash scripts/verify-public-macos-release-assets.sh "${{ needs.validate-draft.outputs.tag }}"
+
+      - name: Smoke public macOS DMG
+        run: bash scripts/smoke-mac-release-dmg.sh "${{ needs.validate-draft.outputs.tag }}"

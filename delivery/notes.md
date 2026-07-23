@@ -4,11 +4,19 @@ Last updated: 2026-07-22
 
 ## Confirmed facts
 
+- Smart Live Trends merged to `origin/main` through pull request #37 as
+  `fa959f8f1b2366e216f0ada67762018d45912835`, after public `v1.5.46` was
+  tagged. A new `v1.5.47` tag is therefore required to distribute it.
+- `delivery/release-notes/v1.5.47.md` and
+  `delivery/checklists/v1.5.47-release-readiness.md` define the Mac-arm64-only
+  candidate. They do not authorize a tag or publication.
 - The source `package.json` reports version `1.5.39`; the tag workflow stamps
   the release version while packaging.
 - `.github/workflows/release.yml` coordinates macOS-arm64-only `v*` releases:
-  it stages exactly four Mac assets in a draft, smoke-checks the notarized DMG
-  from that draft, and only then publishes.
+  it stages exactly four Mac assets in a private draft and smoke-checks the
+  notarized DMG from that draft. `.github/workflows/publish-release.yml` is a
+  separate explicit manual promotion that re-verifies the draft manifest, then
+  publishes and performs anonymous public-asset and DMG smokes.
 - `.github/workflows/release-windows.yml` is a manual, non-publishing future
   Windows build/test/package validator. It is not callable from the production
   tag workflow.
@@ -102,6 +110,8 @@ Last updated: 2026-07-22
 
 ## Open questions
 
+- Which exact reviewed `origin/main` commit will be approved as the `v1.5.47`
+  tag target after this preparation change is merged?
 - What adoption threshold should trigger reconsidering a Windows release?
 
 ## Recent decisions
