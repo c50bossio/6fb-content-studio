@@ -7,21 +7,25 @@ Last updated: 2026-07-23
 
 ## Current status
 
-### Instagram Trends correction release preparation (2026-07-23)
+### Instagram Trends correction release (2026-07-23, public for macOS arm64)
 
-The Instagram Trends correction merged through pull request #53 as exact
-`origin/main` commit `b8556606dcd753aeb8c13da7e3bfc9f318708615`. It uses the
-Instagram Login graph origin and bounded recent authorized-account media rather
-than unsupported public hashtag discovery, labels results as account signals,
-and reserves those signals alongside Google Trends and Content Planner topics.
-The exact application tree matches the fully verified implementation commit:
-66 unit tests plus IPC/source contracts, CDP, documentation, Python/runtime,
-production build, and isolated Electron smoke passed; a bounded read-only
-connected-account check returned four recent media items. No post, schedule,
-or account setting changed. The v1.5.51 Mac-only release notes and checklist
-are prepared locally; merge, fresh exact-main verification, explicit tag
-approval, signed draft validation, and a separate public-promotion approval
-remain required.
+The Instagram Trends correction merged through pull request #53 and the
+release record through pull request #54 as exact `origin/main` commit
+`17415f8d93c819cae1f2ed2554b40160236011ed`. It uses the Instagram Login graph
+origin and bounded recent authorized-account media rather than unsupported
+public hashtag discovery, labels results as account signals, and reserves those
+signals alongside Google Trends and Content Planner topics. `v1.5.51` is public
+for macOS arm64 only. Tag workflow `30016497013` passed its full suite,
+signing, notarization, exact-four-asset draft, and staged-DMG smoke gates. The
+owner-approved promotion workflow `30018146940` published the release, but its
+immediate anonymous API smoke recorded GitHub HTTP 403 before its DMG smoke;
+it did not revert publication. Independent anonymous post-propagation proof
+verified the exact four-file manifest, updater metadata, and a fresh public DMG
+matching its published SHA-256, notarization, strict signature, Gatekeeper, and
+version `1.5.51`. The evidence is in
+`delivery/evidence/2026-07-23-v1.5.51-public-release.md`. A follow-up branch
+adds a bounded 62-second anonymous-publication backoff so future promotions do
+not report this false negative. Windows remains deliberately unpublished.
 
 ### Settings UX release (2026-07-23, public for macOS arm64)
 

@@ -4,16 +4,22 @@ Last updated: 2026-07-23
 
 ## Confirmed facts
 
-- Pull request #53 merged the Instagram Login trend-source correction as exact
-  `origin/main` commit `b8556606dcd753aeb8c13da7e3bfc9f318708615`. Its tree is
-  identical to implementation commit `50669423c50cabe6f9d326d5a760ad230829caad`,
-  which passed the complete local suite (66 unit tests, contracts, CDP,
-  documentation, Python/runtime, production build, and Electron smoke). A
-  bounded read-only connected-account check returned four authorized Instagram
-  media items after the correction; it made no publishing or account changes.
-  `delivery/release-notes/v1.5.51.md` and
-  `delivery/checklists/v1.5.51-release-readiness.md` define the next
-  macOS-arm64-only candidate. They do not create a tag or publish a release.
+- `v1.5.51` is public and latest for macOS arm64. It delivers the Instagram
+  Trends correction merged through pull request #53, with final release-record
+  commit `17415f8d93c819cae1f2ed2554b40160236011ed`. Tag workflow
+  `30016497013` passed the full suite, signing, notarization, stapling,
+  exact-four-asset draft, and staged-DMG smoke gates. The owner-approved
+  promotion run `30018146940` validated and published the draft, but its
+  immediate anonymous API smoke encountered GitHub HTTP 403 during public
+  propagation and therefore recorded failure before the DMG smoke step.
+  Independent anonymous certification after propagation verified the exact
+  four-asset public manifest, public updater metadata, and a fresh public DMG
+  download matching SHA-256 `c23ee38888a09ebb6107f638b075ed87e59850cb22871b6101eacd8b5d2c7465`;
+  the DMG passed stapling, strict signature, Gatekeeper, and embedded-version
+  checks for `1.5.51`. The evidence is in
+  `delivery/evidence/2026-07-23-v1.5.51-public-release.md`. Windows remains
+  deliberately unpublished. A follow-up hardens the anonymous verifier with a
+  finite 62-second propagation backoff; it does not change v1.5.51 artifacts.
 
 - `v1.5.50` is public and latest for macOS arm64. It delivers the Settings
   connection-workflow update merged through pull request #50. Annotated tag

@@ -226,6 +226,8 @@ assert.match(publishReleaseWorkflow, /Expected an existing non-prerelease draft/
 assert.match(publishReleaseWorkflow, /expected-assets\.txt[\s\S]*?actual-assets\.txt/, 'Public release promotion must re-verify the exact draft manifest');
 assert.match(publishReleaseWorkflow, /publish-release:[\s\S]*?needs: validate-draft[\s\S]*?gh release edit[\s\S]*?--repo "\$GITHUB_REPOSITORY"[\s\S]*?--draft=false/, 'Public promotion must follow draft validation and target the explicit repository');
 assert.match(publishReleaseWorkflow, /smoke-published-mac:[\s\S]*?needs:[\s\S]*?- validate-draft[\s\S]*?- publish-release[\s\S]*?verify-public-macos-release-assets\.sh[\s\S]*?smoke-mac-release-dmg\.sh/, 'Public promotion must perform anonymous manifest and DMG smokes');
+assert.match(publicMacManifestVerifier, /max_attempts=6[\s\S]*?delay=\$\(\(2 \*\* attempt\)\)[\s\S]*?sleep "\$delay"/, 'Anonymous public manifest verification must tolerate bounded publication propagation');
+assert.match(publicMacManifestVerifier, /--retry 0[\s\S]*?Anonymous public release API did not become available/, 'Anonymous public manifest verification must own its finite retry policy');
 assert.doesNotMatch(releaseWorkflow, /publish-release:|smoke-published-mac:|--draft=false/, 'Tag creation must stop at a certified private draft');
 assert.doesNotMatch(windowsRelease, /softprops\/action-gh-release/, 'The Windows workflow must never publish independently');
 assert.doesNotMatch(releaseWorkflow, /release-windows|\.exe|latest\.yml/, 'The production tag workflow must remain macOS-only');
@@ -252,7 +254,7 @@ assert.match(releaseWorkflow, /RELEASE_ID: \$\{\{ steps\.stage-draft\.outputs\.i
 assert.match(releaseWorkflow, /Verify exact draft asset manifest[\s\S]*?expected-assets\.txt[\s\S]*?actual-assets\.txt/, 'Draft verification must reject stale or missing release assets');
 assert.match(releaseWorkflow, /RELEASE_INCLUDE_DRAFT: '1'/, 'macOS certification must inspect the staged draft asset');
 assert.match(releaseWorkflow, /RELEASE_ID: \$\{\{ needs\.stage-release\.outputs\.release_id \}\}/, 'Staged macOS certification must use the exact draft release ID');
-assert.match(publicMacManifestVerifier, /curl[\s\S]*?--retry 2[\s\S]*?--connect-timeout 10 --max-time 60/, 'Public manifest verification must use bounded anonymous network calls');
+assert.match(publicMacManifestVerifier, /max_attempts=6[\s\S]*?curl[\s\S]*?--retry 0[\s\S]*?--connect-timeout 10 --max-time 60[\s\S]*?sleep "\$delay"/, 'Public manifest verification must use bounded anonymous network calls');
 assert.doesNotMatch(publicMacManifestVerifier, /Authorization:|GH_TOKEN/, 'Public manifest verification must not depend on authentication');
 const publicManifestMatch = publicMacManifestVerifier.match(/expected=\(\s*([\s\S]*?)\s*\)/);
 assert.ok(publicManifestMatch, 'Public manifest verifier must declare the expected asset set');
