@@ -15,10 +15,13 @@ It is not present in the already public macOS-only `v1.5.46` tag, so the next
 possible desktop distribution is a new macOS-arm64-only `v1.5.47` release. The
 current release workflow is already Mac-only and stages exactly the four Mac
 assets; its manual Windows validator is not part of a tag release. This
-preparation does not tag, publish, package, or retire the historical YouTube
-key. The next gates are review/merge of the v1.5.47 release notes, exact-main
-verification, explicit tag approval, workflow certification, and an
-authenticated Mac Smart Trends check.
+v1.5.47 preparation merged through pull request #38 as exact `origin/main`
+commit `293037de905edf37296255cb56ce47c1160e9027`; its tree exactly matches the
+fully verified pull-request head. This preparation does not tag, publish,
+package, or retire the historical YouTube key. The next gates are exact tag
+preflight, explicit approval to create the private draft tag, workflow
+certification, and an authenticated Mac Smart Trends check before any separate
+public-promotion approval.
 
 ### Smart Live Trends pre-merge record (historical; superseded)
 
