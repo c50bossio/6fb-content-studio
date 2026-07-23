@@ -11,6 +11,7 @@ import type { ContentStrategyBrief } from '../src/types/content-strategy';
 
 // 35-minute hard timeout for long 4K renders; cancellable via cancelActiveExtraction()
 const EXTRACTION_TIMEOUT_MS = 35 * 60 * 1000;
+const HEALTH_CHECK_TIMEOUT_MS = 15_000;
 
 // Singleton reference so main.ts can cancel mid-run
 let activeProcess: ChildProcess | null = null;
@@ -136,9 +137,30 @@ export async function checkPythonDeps(runtime: ClipExtractorRuntime): Promise<{
 }> {
   const check = (cmd: string, args: string[]): Promise<boolean> =>
     new Promise(resolve => {
-      const proc = spawn(cmd, args, { stdio: 'pipe' });
-      proc.on('close', code => resolve(code === 0));
-      proc.on('error', () => resolve(false));
+      let settled = false;
+      let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+      const finish = (result: boolean) => {
+        if (settled) return;
+        settled = true;
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+        resolve(result);
+      };
+
+      let proc: ChildProcess;
+      try {
+        proc = spawn(cmd, args, { stdio: 'pipe' });
+      } catch {
+        finish(false);
+        return;
+      }
+
+      timeoutHandle = setTimeout(() => {
+        try { proc.kill('SIGTERM'); } catch {}
+        finish(false);
+      }, HEALTH_CHECK_TIMEOUT_MS);
+      timeoutHandle.unref?.();
+      proc.once('close', code => finish(code === 0));
+      proc.once('error', () => finish(false));
     });
 
   const pythonPath = runtime.pythonPath || resolveSystemPython();
@@ -146,8 +168,14 @@ export async function checkPythonDeps(runtime: ClipExtractorRuntime): Promise<{
   const ffprobePath = runtime.ffprobePath || companionToolPath(ffmpegPath, 'ffprobe');
   const hasBinary = !!runtime.binaryPath && existsSync(runtime.binaryPath);
 
+  // The frozen pipeline's deep runtime check imports MLX Whisper on Apple
+  // Silicon. That import can block indefinitely under an Electron child
+  // process, leaving the entire renderer IPC request unresolved. `--help`
+  // validates the bundled executable starts and its parser loads without
+  // triggering model/runtime initialization; the package build retains the
+  // deeper validation before distribution.
   const bundledRuntimeReady = hasBinary && runtime.binaryPath
-    ? await check(runtime.binaryPath, ['--runtime-check'])
+    ? await check(runtime.binaryPath, ['--help'])
     : false;
 
   const [python, ffmpeg, ffprobe, mediapipe] = hasBinary && runtime.binaryPath

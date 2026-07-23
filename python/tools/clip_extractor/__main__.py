@@ -20,10 +20,6 @@ _tools_dir = str(Path(__file__).parent.parent)
 if _tools_dir not in sys.path:
     sys.path.insert(0, _tools_dir)
 
-from clip_extractor.core.pipeline import analyze, reframe, render_from_crop_path, extract_clip
-from clip_extractor.core.config_loader import load_config
-
-
 def _safe_clip_title(value: object, fallback: str) -> str:
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", str(value or "")).strip(".-")
     return cleaned[:120] or fallback
@@ -41,6 +37,8 @@ def _coerce_clip_id(value: object, fallback: int) -> int:
 
 def cmd_reframe(args: argparse.Namespace) -> None:
     """Full reframe pipeline: detect -> smooth -> crop -> render."""
+    from clip_extractor.core.pipeline import reframe
+
     result = reframe(
         video_path=args.video,
         output_path=args.output,
@@ -54,6 +52,8 @@ def cmd_reframe(args: argparse.Namespace) -> None:
 
 def cmd_analyze(args: argparse.Namespace) -> None:
     """Detection + smoothing only — output crop_path.json for inspection."""
+    from clip_extractor.core.pipeline import analyze
+
     output = args.output or str(Path(args.video).parent / "crop_path.json")
     crop_path = analyze(
         video_path=args.video,
@@ -119,6 +119,8 @@ def cmd_render(args: argparse.Namespace) -> None:
             )
         result = args.output
     else:
+        from clip_extractor.core.pipeline import render_from_crop_path
+
         result = render_from_crop_path(
             video_path=args.video,
             crop_path_file=args.crop_path,
@@ -130,6 +132,8 @@ def cmd_render(args: argparse.Namespace) -> None:
 
 def cmd_batch(args: argparse.Namespace) -> None:
     """Process multiple clips from a definitions file."""
+    from clip_extractor.core.pipeline import reframe
+
     with open(args.clips, "r") as f:
         clips = json.load(f)
 
@@ -192,6 +196,7 @@ def cmd_select_parse(args: argparse.Namespace) -> None:
 
 def cmd_select_resolve(args: argparse.Namespace) -> None:
     """Resolve Claude's selections to exact timestamps and generate output files."""
+    from clip_extractor.core.config_loader import load_config
     from clip_extractor.selection.srt_parser import load_transcript
     from clip_extractor.selection.timestamp_resolver import resolve_all_clips
     from clip_extractor.selection.clip_formatter import (

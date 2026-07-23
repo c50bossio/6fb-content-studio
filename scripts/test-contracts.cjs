@@ -198,8 +198,13 @@ assert.match(windowsRuntimeBuilder, /if \(\$LASTEXITCODE -ne 0\)/, 'Windows runt
 assert.match(windowsRuntimeBuilder, /Invoke-NativeCommand -FilePath "node" -ArgumentList @\("-p"/, 'PowerShell must pass Node print flags as explicit native arguments');
 assert.match(windowsRuntimeBuilder, /IsNullOrWhiteSpace\(\$FfmpegStatic\)/, 'Windows runtime discovery must reject empty ffmpeg paths before Test-Path');
 assert.match(macRuntimeBuilder, /requirements-macos-arm64\.lock/, 'macOS runtime builds must use the tracked dependency constraints');
+assert.match(macRuntimeBuilder, /REQUESTED_PYTHON_VERSION[\s\S]*?VENV_PYTHON_VERSION[\s\S]*?rm -rf "\$VENV_DIR"/, 'macOS runtime builds must recreate a generated venv when the requested interpreter changes');
 assert.match(macRuntimeBuilder, /pip install --constraint "\$MACOS_CONSTRAINTS" pyinstaller/, 'macOS runtime builds must constrain PyInstaller');
 assert.match(macRuntimeBuilder, /pip install --constraint "\$MACOS_CONSTRAINTS" -r/, 'macOS runtime requirements must use the tracked constraints');
+assert.match(macRuntimeBuilder, /--hidden-import clip_extractor\.core\.pipeline/, 'macOS runtime builds must retain lazy Clip Extractor render commands');
+assert.match(macRuntimeBuilder, /--exclude-module sounddevice/, 'macOS runtime builds must exclude MediaPipe audio support that is unused by the vision-only extractor');
+assert.match(macRuntimeBuilder, /--collect-data mediapipe[\s\S]*?--collect-binaries mediapipe/, 'macOS runtime builds must include MediaPipe data and binaries without discovering every optional task module');
+assert.doesNotMatch(macRuntimeBuilder, /--collect-all mediapipe/, 'macOS runtime builds must not import MediaPipe optional audio tasks during PyInstaller collection');
 assert.match(macRuntimeConstraints, /pyinstaller==6\.20\.0/, 'macOS runtime must pin the verified PyInstaller version');
 assert.match(macRuntimeConstraints, /scipy==1\.17\.1/, 'macOS runtime must pin the verified SciPy version');
 assert.match(windowsRelease, /name: Run full test suite[\s\S]*?SIXFB_TEST_PYTHON[\s\S]*?npm test/, 'Windows releases must test with the populated runtime venv');
@@ -268,6 +273,14 @@ assert.match(pythonBridge, /PYTHONUTF8: '1'/, 'Electron clip extraction must for
 assert.match(pythonBridge, /PYTHONIOENCODING: 'utf-8'/, 'Electron clip extraction must force UTF-8 child streams');
 assert.match(pythonBridge, /proc\.stdout\?\.setEncoding\('utf8'\)/, 'Electron clip extraction must decode stdout across UTF-8 chunk boundaries');
 assert.match(pythonBridge, /proc\.stderr\?\.setEncoding\('utf8'\)/, 'Electron clip extraction must decode stderr across UTF-8 chunk boundaries');
+assert.match(pythonBridge, /HEALTH_CHECK_TIMEOUT_MS = 15_000/, 'Electron dependency checks must have a finite timeout');
+assert.match(pythonBridge, /runtime\.binaryPath, \['--help'\]/, 'Packaged health checks must avoid model initialization that can hang the renderer');
+assert.match(pythonBridge, /proc\.kill\('SIGTERM'\)[\s\S]*?finish\(false\)/, 'Timed-out dependency checks must terminate their child process and resolve');
+assert.doesNotMatch(
+  fs.readFileSync(path.join(root, 'python/tools/clip_extractor/__main__.py'), 'utf8'),
+  /from clip_extractor\.core\.pipeline import analyze, reframe, render_from_crop_path, extract_clip/,
+  'Transcript-only selection commands must not eagerly initialize the heavy media pipeline',
+);
 assert.match(windowsRelease, /PYTHONUTF8: '1'[\s\S]*?PYTHONIOENCODING: 'utf-8'/, 'Windows release validation must run Python under UTF-8');
 assert.match(main, /isSamePath\(filePath, app\.getPath\('userData'\)\)/, 'Trusted Open Folder must allow only the exact app-data directory');
 assert.match(workspaceValidator, /process\.env\.SIXFB_WORKSPACE_PYTHON/, 'Workspace validation must support an explicit Python interpreter');
