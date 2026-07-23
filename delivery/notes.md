@@ -15,12 +15,17 @@ Last updated: 2026-07-22
   before any tag was created. The merged candidate locks the verified arm64
   runtime dependencies and requires a fresh packaged-runtime probe before a
   release tag can be staged.
-- v1.5.48 is now a certified, non-prerelease private macOS-arm64 draft from
+- Before publication, v1.5.48 was a certified, non-prerelease private
+  macOS-arm64 draft from
   annotated tag `8e29d4c8ffc20ef5b0e78c1d31b8dce8655c927b`. Workflow
   `29976055852` passed the constrained runtime rebuild, full test suite,
   signing, notarization, stapling, exact-four-file manifest check, and staged
-  DMG smoke. Public v1.5.46 remains the latest public download. Promotion of
-  the v1.5.48 draft requires a separate owner decision.
+  DMG smoke. It was held for a separate owner decision before promotion.
+- v1.5.48 is now public and latest for macOS arm64. The owner-approved
+  publication workflow `29976866850` revalidated its exact four-file draft
+  manifest, promoted it at 2026-07-23T03:23:29Z, then passed anonymous public
+  asset-manifest and public-DMG smoke checks. The public manifest and digests
+  are recorded in `delivery/evidence/2026-07-23-v1.5.48-public-release.md`.
 
 - Smart Live Trends merged to `origin/main` through pull request #37 as
   `fa959f8f1b2366e216f0ada67762018d45912835`, after public `v1.5.46` was
