@@ -161,6 +161,12 @@ async function run() {
     await client.open();
     await Promise.all([client.send('Runtime.enable'), client.send('Network.enable')]);
     await waitForApi(client);
+    const browserSsoApi = await evaluate(client, `({
+      start: typeof window.electronAPI.start6FBBrowserLogin,
+      cancel: typeof window.electronAPI.cancel6FBBrowserLogin,
+      complete: typeof window.electronAPI.on6FBBrowserLoginComplete,
+    })`);
+    assert.deepEqual(browserSsoApi, { start: 'function', cancel: 'function', complete: 'function' }, 'browser SSO IPC must be exposed through the isolated preload API');
 
     let assetState;
     for (let attempt = 0; attempt < 50; attempt += 1) {

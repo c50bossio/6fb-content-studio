@@ -390,3 +390,58 @@ signing setup occurred. Azure and Windows signing were not used for v1.5.46.
 ## Open questions
 
 - Who owns the non-repository pilot roster and weekly participant check-in?
+
+## Browser-to-desktop SSO handoff (2026-07-22)
+
+- Companion Content Playbook [#126](https://github.com/c50bossio/6fb-content-generator/pull/126)
+  merged at `89af986bb55ab2abf61e0abe6dba6fa307316105`, including the
+  `8f0ca0221a43b8d3be279a4e9dc9fe4eb75e9000` PKCE-binding repair. Exact-main
+  CI is fully green (Build, unit, Playwright, Vercel deploy, and production
+  smoke), and GitHub deployment `5566352121` is SHA-bound to that commit.
+  A real authenticated browser-to-desktop handoff exposed a production HTTP 500
+  at the authorize route before its localhost callback. The deployed workflow
+  runs `prisma generate` but no production migration command, while this route
+  writes the newly added nullable `OAuthNonce.codeChallenge` column. Owner
+  approval was obtained and migration `20260723030000_add_oauth_nonce_code_challenge`
+  applied successfully; Prisma then reported the production schema up to date.
+  Follow-up [#127](https://github.com/c50bossio/6fb-content-generator/pull/127)
+  added a migration-before-deploy gate. Its first exact-main run exposed a
+  test-environment precedence defect before deployment; [#128](https://github.com/c50bossio/6fb-content-generator/pull/128)
+  corrected that command and merged at `b28204042066062b3000cc59783c81c28d92368a`.
+  Exact-main CI `29978261036` then passed Build, unit, Playwright, production
+  migration (no pending migrations), Vercel deployment, and a SHA-bound
+  production smoke (12 passed, 0 failed).
+  A fresh temporary-profile browser handoff reached localhost and returned a
+  connected Electron account result without exposing the token to the renderer.
+  Desktop [#41](https://github.com/c50bossio/6fb-content-studio/pull/41)
+  remains a draft at `e4b07a267fb3faadb36e78d568dbf690c2f42a34`; it is not
+  merged, deployed, tagged, or released.
+- Desktop: Settings now offers **Sign in with 6FB in browser** while preserving
+  password login as a fallback. Electron reserves a random high localhost port,
+  creates PKCE/state values in memory, validates the localhost callback, and
+  exchanges only an opaque single-use code over HTTPS. Tokens and cookies are
+  never placed in URLs or sent to the renderer.
+- Content Playbook: its new authorize route uses the existing Hub SSO redirect
+  when needed, stores the authorization-time PKCE challenge with a five-minute
+  `OAuthNonce`, and redirects to localhost with only an opaque nonce. Its token
+  route verifies the submitted verifier against that stored challenge and
+  atomically consumes the nonce before returning the scoped Content token to
+  Electron.
+- Verified: desktop `npm test` passed with the freshly built macOS arm64 Python
+  runtime (58 unit tests, 74 IPC/contracts, docs, CDP, Python/runtime, build,
+  and isolated Electron smoke); Content Playbook full test suite passed 162
+  files / 2,788 tests before the PKCE repair; the repaired head passed the full
+  suite, TypeScript, Prisma schema validation, production build, and 9 focused
+  SSO tests including substitution, replay, expiry, and race-loss cases.
+  Responsive visual audit passed 78 captured states at 375, 768, and 1440 px
+  with zero overflow, clipped text, undersized targets, console errors, or
+  network errors. The new Settings browser-login state is explicitly captured
+  and checked at all three widths.
+- Verified after rebasing desktop #41 onto Studio main `ae5270a`: the full
+  release-selected suite passed (65 unit tests, 82 IPC contracts, CDP, docs,
+  Python/runtime, production build, and isolated Electron smoke). The refreshed
+  visual matrix captured 84 states at 375, 768, and 1440 px with zero layout,
+  console, or network findings and three focus contracts. The 1440 Settings
+  browser-login capture remains clean.
+- Next gate: request a separate desktop-merge decision. No desktop release may
+  occur first.

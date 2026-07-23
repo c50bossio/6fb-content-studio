@@ -422,6 +422,26 @@ async function main() {
       await evaluate(client, `(() => {
         window.electronAPI = {
           ...window.electronAPI,
+          get6FBAccount: async () => ({ email: null, igUsername: null, igTokenExpiresAt: null, connected: false }),
+        };
+      })()`);
+      await clickScreen(client, 'Settings');
+      await waitForContent(client, 'Sign in with 6FB in browser');
+      const browserLoginVisible = await evaluate(client, `(() => {
+        const button = [...document.querySelectorAll('button')].find(candidate => candidate.textContent?.trim() === 'Sign in with 6FB in browser');
+        if (!button) return false;
+        button.scrollIntoView({ block: 'center' });
+        return true;
+      })()`);
+      if (!browserLoginVisible) throw new Error('Browser SSO sign-in button was not found in Settings');
+      await delay(150);
+      report.screens[`${width}/settings-browser-login`] = await auditLayout(client);
+      await capture(client, path.join(outputDir, String(width), 'settings-browser-login.png'));
+
+      await clickScreen(client, 'Dashboard');
+      await evaluate(client, `(() => {
+        window.electronAPI = {
+          ...window.electronAPI,
           get6FBAccount: async () => ({ email: 'qa@6fbmentorship.com', igUsername: null, igTokenExpiresAt: null, connected: true }),
           getYouTubeTrendsConsent: async () => ({ accepted: false, acceptedVersion: null, currentVersion: '2026-07-22', accountConnected: true }),
           setYouTubeTrendsConsent: async accepted => ({ success: true, accepted, acceptedVersion: accepted ? '2026-07-22' : null }),
