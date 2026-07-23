@@ -396,9 +396,18 @@ signing setup occurred. Azure and Windows signing were not used for v1.5.46.
 - Companion Content Playbook [#126](https://github.com/c50bossio/6fb-content-generator/pull/126)
   merged at `89af986bb55ab2abf61e0abe6dba6fa307316105`, including the
   `8f0ca0221a43b8d3be279a4e9dc9fe4eb75e9000` PKCE-binding repair. Exact-main
-  CI and the production deployment are in progress; no authenticated production
-  handoff has been accepted. Desktop [#41](https://github.com/c50bossio/6fb-content-studio/pull/41)
-  remains a draft at `87186b06ad38c41668deee3b986b5c97a6b0c486`; it is not
+  CI is fully green (Build, unit, Playwright, Vercel deploy, and production
+  smoke), and GitHub deployment `5566352121` is SHA-bound to that commit.
+  A real authenticated browser-to-desktop handoff exposed a production HTTP 500
+  at the authorize route before its localhost callback. The deployed workflow
+  runs `prisma generate` but no production migration command, while this route
+  writes the newly added nullable `OAuthNonce.codeChallenge` column. Owner
+  approval was obtained and migration `20260723030000_add_oauth_nonce_code_challenge`
+  applied successfully; Prisma then reported the production schema up to date.
+  A fresh temporary-profile browser handoff reached localhost and returned a
+  connected Electron account result without exposing the token to the renderer.
+  Desktop [#41](https://github.com/c50bossio/6fb-content-studio/pull/41)
+  remains a draft at `2141c64fb1be8a184c4c2f629998fcff6b91a4f5`; it is not
   merged, deployed, tagged, or released.
 - Desktop: Settings now offers **Sign in with 6FB in browser** while preserving
   password login as a fallback. Electron reserves a random high localhost port,
@@ -421,7 +430,5 @@ signing setup occurred. Azure and Windows signing were not used for v1.5.46.
   with zero overflow, clipped text, undersized targets, console errors, or
   network errors. The new Settings browser-login state is explicitly captured
   and checked at all three widths.
-- Next gate: wait for Content Playbook exact-main CI and production deployment,
-  then accept a real authenticated browser-to-desktop sign-in. Rebase and
-  reverify desktop #41 against current Studio main only after that acceptance;
-  no desktop merge or release may occur first.
+- Next gate: rebase and reverify desktop #41 against current Studio main.
+  No desktop merge or release may occur first.
