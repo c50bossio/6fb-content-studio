@@ -35,8 +35,13 @@ HTTP 200, and the encrypted `YOUTUBE_API_KEY` value was replaced in the Vercel
 production, preview, and development environments. The historical unrestricted
 key remains active until the merged deployment and authenticated end-to-end
 proof confirm the cutover, at which point it must be deleted. No deployment was
-triggered by the environment update. This candidate is not merged, pushed,
-tagged, packaged, or released.
+triggered by the environment update. The linked ready-for-review pull requests
+are [desktop #37](https://github.com/c50bossio/6fb-content-studio/pull/37),
+[backend #125](https://github.com/c50bossio/6fb-content-generator/pull/125),
+and [policy #152](https://github.com/c50bossio/6fb-mentorship-landing/pull/152).
+At creation, all three preserve their locally verified heads; their remote
+checks are pending. This candidate is not merged, deployed, tagged, packaged,
+or released.
 
 Current Mac client proof: TypeScript passes; 55 unit tests pass; static contracts
 pass across 72 IPC channels; the production build passes; and the 75-capture

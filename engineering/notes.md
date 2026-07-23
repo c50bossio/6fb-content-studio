@@ -22,8 +22,9 @@ Last updated: 2026-07-22
   the fixed 6FB backend, uses official branding and accessible policy links,
   and renders validated fields as reference-only without scoring or topic use.
   The authenticated backend is implemented and locally verified on isolated
-  branch `codex/youtube-trends-proxy`; deployment configuration and authenticated
-  staging proof remain separate gates.
+  branch `codex/youtube-trends-proxy`; the linked desktop, backend, and public
+  policy PRs are #37, #125, and #152 respectively. Deployment configuration and
+  authenticated staging proof remain separate gates.
 
 ## Open questions
 
