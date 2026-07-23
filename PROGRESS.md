@@ -393,29 +393,35 @@ signing setup occurred. Azure and Windows signing were not used for v1.5.46.
 
 ## Browser-to-desktop SSO handoff (2026-07-22)
 
-- Draft pull requests are open: desktop [#41](https://github.com/c50bossio/6fb-content-studio/pull/41)
-  at `786cdb94483f5faef41356f5888dabc930ceb7ea` and companion Content
-  Playbook [#126](https://github.com/c50bossio/6fb-content-generator/pull/126)
-  at `baf303d273c29529eb1e260df97fa4b3f3fa1a60`. Neither is merged, deployed,
-  tagged, or released.
+- Companion Content Playbook [#126](https://github.com/c50bossio/6fb-content-generator/pull/126)
+  merged at `89af986bb55ab2abf61e0abe6dba6fa307316105`, including the
+  `8f0ca0221a43b8d3be279a4e9dc9fe4eb75e9000` PKCE-binding repair. Exact-main
+  CI and the production deployment are in progress; no authenticated production
+  handoff has been accepted. Desktop [#41](https://github.com/c50bossio/6fb-content-studio/pull/41)
+  remains a draft at `87186b06ad38c41668deee3b986b5c97a6b0c486`; it is not
+  merged, deployed, tagged, or released.
 - Desktop: Settings now offers **Sign in with 6FB in browser** while preserving
   password login as a fallback. Electron reserves a random high localhost port,
   creates PKCE/state values in memory, validates the localhost callback, and
   exchanges only an opaque single-use code over HTTPS. Tokens and cookies are
   never placed in URLs or sent to the renderer.
 - Content Playbook: its new authorize route uses the existing Hub SSO redirect
-  when needed, creates a five-minute `OAuthNonce`, and redirects to localhost
-  with the nonce plus public PKCE challenge. Its token route verifies the
-  verifier and atomically consumes the nonce before returning the scoped
-  Content token to Electron.
+  when needed, stores the authorization-time PKCE challenge with a five-minute
+  `OAuthNonce`, and redirects to localhost with only an opaque nonce. Its token
+  route verifies the submitted verifier against that stored challenge and
+  atomically consumes the nonce before returning the scoped Content token to
+  Electron.
 - Verified: desktop `npm test` passed with the freshly built macOS arm64 Python
   runtime (58 unit tests, 74 IPC/contracts, docs, CDP, Python/runtime, build,
   and isolated Electron smoke); Content Playbook full test suite passed 162
-  files / 2,788 tests and the desktop SSO suite passed 6/6; TypeScript passed in
-  both repositories. Responsive visual audit passed 78 captured states at 375,
-  768, and 1440 px with zero overflow, clipped text, undersized targets,
-  console errors, or network errors. The new Settings browser-login state is
-  explicitly captured and checked at all three widths.
-- Next gate: review the two isolated diffs, then create and merge the paired
-  pull requests. A staging or production browser-to-desktop sign-in must be
-  accepted after the backend deployment and before any new desktop release.
+  files / 2,788 tests before the PKCE repair; the repaired head passed the full
+  suite, TypeScript, Prisma schema validation, production build, and 9 focused
+  SSO tests including substitution, replay, expiry, and race-loss cases.
+  Responsive visual audit passed 78 captured states at 375, 768, and 1440 px
+  with zero overflow, clipped text, undersized targets, console errors, or
+  network errors. The new Settings browser-login state is explicitly captured
+  and checked at all three widths.
+- Next gate: wait for Content Playbook exact-main CI and production deployment,
+  then accept a real authenticated browser-to-desktop sign-in. Rebase and
+  reverify desktop #41 against current Studio main only after that acceptance;
+  no desktop merge or release may occur first.
