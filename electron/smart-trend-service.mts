@@ -13,6 +13,7 @@ import {
   MAX_GOOGLE_RSS_BYTES,
   createIdeaStarters,
   dedupeTrendIdeas,
+  hasDirectBarberDomainSignal,
   mapContentPlannerToTrends,
   mapInstagramMediaToTrends,
   parseYouTubeBackendResponse,
@@ -289,7 +290,12 @@ export class SmartTrendService {
       ...rankTrendIdeas(google.ideas, input.contentBrain, 6),
     ], 8);
     const plannedIdeas = planner.ideas.slice(0, 2);
-    const usefulLiveIdeas = liveIdeas.filter(idea => (idea.barberFitScore ?? 0) >= MIN_USEFUL_BARBER_FIT);
+    const usefulLiveIdeas = liveIdeas.filter(idea => (
+      (idea.barberFitScore ?? 0) >= MIN_USEFUL_BARBER_FIT
+      // A single direct barber-domain term is enough evidence to keep a live
+      // Google signal, even though the additive fit score is only ten points.
+      || (idea.sourceId === 'google-trends' && hasDirectBarberDomainSignal(idea.title))
+    ));
     // An authorized account's own recent media is a first-party signal, even
     // when its caption does not include enough barber keywords to score well.
     // Keep it, but do not use the same exception for broad Google signals.

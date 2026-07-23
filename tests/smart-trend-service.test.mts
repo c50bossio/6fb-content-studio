@@ -100,6 +100,22 @@ test('all-zero live fit excludes unrelated signals and returns only useful start
   assert.match(source(feed, 'google-trends').message ?? '', /no signal cleared barber fit 20/i);
 });
 
+test('a direct barber-domain Google signal survives even when its additive fit score is below the threshold', async () => {
+  const service = new SmartTrendService({
+    now: () => BASE_TIME,
+    sleep: async () => {},
+    request: async () => response(googleRss('Barber Battle 2026')),
+  });
+
+  const feed = await service.fetch({});
+  const directSignal = feed.ideas.find(idea => idea.sourceId === 'google-trends');
+
+  assert.ok(directSignal);
+  assert.equal(directSignal.title, 'Barber Battle 2026');
+  assert.equal(directSignal.barberFitScore, 10);
+  assert.doesNotMatch(source(feed, 'google-trends').message ?? '', /no signal cleared barber fit/i);
+});
+
 test('consented 6FB account makes one backend request and keeps YouTube reference-only', async () => {
   const calls: Array<{ url: string; init: RequestInit }> = [];
   const service = new SmartTrendService({
