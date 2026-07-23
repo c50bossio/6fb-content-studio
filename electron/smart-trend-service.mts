@@ -293,14 +293,10 @@ export class SmartTrendService {
     const usefulLiveIdeas = liveIdeas.filter(idea => (
       (idea.barberFitScore ?? 0) >= MIN_USEFUL_BARBER_FIT
       // A single direct barber-domain term is enough evidence to keep a live
-      // Google signal, even though the additive fit score is only ten points.
-      || (idea.sourceId === 'google-trends' && hasDirectBarberDomainSignal(idea.title))
+      // signal, even though the additive fit score is only ten points.
+      || hasDirectBarberDomainSignal(idea.title)
     ));
-    // An authorized account's own recent media is a first-party signal, even
-    // when its caption does not include enough barber keywords to score well.
-    // Keep it, but do not use the same exception for broad Google signals.
-    const accountIdeas = liveIdeas.filter(idea => idea.sourceId === 'instagram');
-    const qualifiedLiveIdeas = dedupeTrendIdeas([...usefulLiveIdeas, ...accountIdeas], 8);
+    const qualifiedLiveIdeas = dedupeTrendIdeas(usefulLiveIdeas, 8);
     // Do not surface a broad, unrelated spike merely because it is live. The
     // source status preserves that evidence, while the picker stays useful for
     // barbers by showing only qualified live signals, their plan, or starters.
@@ -310,7 +306,7 @@ export class SmartTrendService {
     const fitAwareStatus = (result: SourceResult) => {
       const hasLive = liveIdeas.some(idea => idea.sourceId === result.status.sourceId);
       const hasUseful = usefulLiveIdeas.some(idea => idea.sourceId === result.status.sourceId);
-      if (result.status.sourceId !== 'google-trends' || !hasLive || hasUseful) return result.status;
+      if (!hasLive || hasUseful) return result.status;
       return {
         ...result.status,
         message: `${result.status.message ?? 'Current source signals.'} No signal cleared barber fit ${MIN_USEFUL_BARBER_FIT}.`,
