@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { INSTAGRAM_GRAPH_ORIGIN } from '../electron/instagram-graph.mts';
 import { MIN_USEFUL_BARBER_FIT, SmartTrendService } from '../electron/smart-trend-service.mts';
 import type { TrendFeed, TrendSourceId } from '../src/types/trends.ts';
 
@@ -9,14 +10,18 @@ const PLANNER_URL_PART = 'content.6fbmentorship.com/api/me/today-brief';
 const YOUTUBE_URL_PART = 'content.6fbmentorship.com/apps/content/api/studio/youtube-trends';
 
 function googleRss(title = 'Barber pricing and client retention') {
+  return googleRssItems([title]);
+}
+
+function googleRssItems(titles: string[]) {
   return `<?xml version="1.0"?>
     <rss xmlns:ht="https://trends.google.com/trending/rss"><channel>
-      <item>
+      ${titles.map((title, index) => `<item>
         <title>${title}</title>
-        <link>https://trends.google.com/trending?geo=US</link>
+        <link>https://trends.google.com/trending?geo=US&item=${index}</link>
         <pubDate>Wed, 22 Jul 2026 17:00:00 GMT</pubDate>
         <ht:approx_traffic>20K+</ht:approx_traffic>
-      </item>
+      </item>`).join('')}
     </channel></rss>`;
 }
 
@@ -221,7 +226,7 @@ test('missing credentials make zero authenticated calls and report optional sour
   assert.equal(calls.length, 1);
   assert.equal(calls.every(call => !authorization(call.init)), true);
   assert.equal(calls.every(call => !call.url.includes('access_token=')), true);
-  assert.equal(calls.some(call => call.url.includes(PLANNER_URL_PART) || call.url.includes('graph.facebook.com')), false);
+  assert.equal(calls.some(call => call.url.includes(PLANNER_URL_PART) || call.url.includes('graph.instagram.com')), false);
   assert.equal(source(feed, 'instagram').state, 'not-connected');
   assert.equal(feed.youtube.status.state, 'not-connected');
   assert.equal(source(feed, 'content-planner').state, 'not-connected');
@@ -323,7 +328,7 @@ test('wrong-shape 200 responses are errors, while valid empty source shapes stay
       calls.push(url);
       if (url.includes(GOOGLE_URL_PART)) return response('<html>sign in</html>');
       if (url.includes(PLANNER_URL_PART)) return jsonResponse({ ok: true });
-      if (url.includes('ig_hashtag_search')) return jsonResponse({ items: [] });
+      if (url.includes('/12345/media')) return jsonResponse({ items: [] });
       throw new Error(`Unexpected URL: ${url}`);
     },
   });
@@ -406,27 +411,21 @@ test('attempt timeouts are bounded and retry only once', async () => {
   assert.equal(source(feed, 'google-trends').state, 'error');
 });
 
-test('authorized Instagram uses two fixed hashtag lookup/media pairs and returns live evidence', async () => {
+test('authorized Instagram reads bounded recent account media and returns live evidence', async () => {
   const instagramCalls: string[] = [];
   const service = new SmartTrendService({
     now: () => BASE_TIME,
     sleep: async () => {},
     request: async url => {
       if (url.includes(GOOGLE_URL_PART)) return response(googleRss());
-      if (url.includes('ig_hashtag_search')) {
+      if (url.includes('/12345/media')) {
         instagramCalls.push(url);
-        const hashtagId = url.includes('q=barbershop') ? '202' : '101';
-        return jsonResponse({ data: [{ id: hashtagId }] });
-      }
-      if (url.includes('/recent_media')) {
-        instagramCalls.push(url);
-        const id = url.includes('/202/') ? 'shop_media' : 'barber_media';
         return jsonResponse({ data: [{
-          id,
+          id: 'barber_media',
           media_type: 'VIDEO',
-          caption: id === 'shop_media' ? 'Barbershop retention systems' : 'Barber pricing consultation',
+          caption: 'Barber pricing consultation',
           timestamp: '2026-07-22T17:30:00Z',
-          permalink: `https://www.instagram.com/reel/${id}/`,
+          permalink: 'https://www.instagram.com/reel/barber_media/',
           like_count: 100,
           comments_count: 10,
         }] });
@@ -437,10 +436,44 @@ test('authorized Instagram uses two fixed hashtag lookup/media pairs and returns
 
   const feed = await service.fetch({ instagramAccessToken: 'ig-token', instagramUserId: '12345' });
 
-  assert.equal(instagramCalls.length, 4);
+  assert.equal(instagramCalls.length, 1);
+  assert.equal(INSTAGRAM_GRAPH_ORIGIN, 'https://graph.instagram.com/v23.0');
+  assert.equal(instagramCalls.every(url => url.startsWith(`${INSTAGRAM_GRAPH_ORIGIN}/`)), true);
+  assert.equal(instagramCalls[0].includes('/12345/media'), true);
+  assert.equal(instagramCalls[0].includes('limit=12'), true);
   assert.equal(source(feed, 'instagram').state, 'live');
   assert.equal(feed.ideas.some(idea => idea.sourceId === 'instagram' && idea.evidenceState === 'live'), true);
   assert.equal(feed.ideas.some(idea => idea.sourceUrl?.includes('access_token')), false);
+});
+
+test('authorized account signals survive a full Google feed alongside planned topics', async () => {
+  const service = new SmartTrendService({
+    now: () => BASE_TIME,
+    sleep: async () => {},
+    request: async url => {
+      if (url.includes(GOOGLE_URL_PART)) {
+        return response(googleRssItems(Array.from({ length: 8 }, (_, index) => `Barber pricing retention ${index}`)));
+      }
+      if (url.includes('/12345/media')) {
+        return jsonResponse({ data: [{
+          id: 'account_media', media_type: 'VIDEO', caption: 'Weekly chair recap',
+          timestamp: '2026-07-22T17:30:00Z', permalink: 'https://www.instagram.com/reel/account_media/',
+          like_count: 10, comments_count: 2,
+        }] });
+      }
+      if (url.includes(PLANNER_URL_PART)) return jsonResponse({ data: { today: { topic: 'Plan a better rebooking system' }, week: [] } });
+      throw new Error(`Unexpected URL: ${url}`);
+    },
+  });
+
+  const feed = await service.fetch({
+    contentPlannerToken: 'planner-token',
+    instagramAccessToken: 'ig-token',
+    instagramUserId: '12345',
+  });
+
+  assert.equal(feed.ideas.some(idea => idea.sourceId === 'instagram'), true);
+  assert.equal(feed.ideas.some(idea => idea.sourceId === 'content-planner'), true);
 });
 
 test('Instagram permission failure is terminal and capped at one request', async () => {
@@ -450,7 +483,7 @@ test('Instagram permission failure is terminal and capped at one request', async
     sleep: async () => {},
     request: async url => {
       if (url.includes(GOOGLE_URL_PART)) return response(googleRss());
-      if (url.includes('graph.facebook.com')) {
+      if (url.includes('graph.instagram.com')) {
         instagramCalls += 1;
         return response('', 403);
       }

@@ -195,12 +195,14 @@ function instagramTraffic(record: UnknownRecord) {
 
 export function mapInstagramMediaToTrends(
   payload: unknown,
-  hashtagValue: string,
+  hashtagValue: string | null,
   fetchedAt: string,
   limit = 6,
 ): TrendIdea[] {
-  const hashtag = normalizeHashtag(hashtagValue);
-  if (!hashtag) return [];
+  const hashtag = hashtagValue === null ? null : normalizeHashtag(hashtagValue);
+  if (hashtagValue !== null && !hashtag) return [];
+  const sourceLabel = hashtag ? `Instagram #${hashtag}` : 'Instagram account';
+  const sourceContext = hashtag ? `#${hashtag}` : 'account media';
   const payloadRecord = asRecord(payload);
   const media = Array.isArray(payload) ? payload : payloadRecord?.data;
   if (!Array.isArray(media)) return [];
@@ -223,15 +225,15 @@ export function mapInstagramMediaToTrends(
       id: `instagram:${id}`,
       title,
       sourceId: 'instagram',
-      sourceLabel: `Instagram #${hashtag}`,
+      sourceLabel,
       evidenceState: 'live',
       sourceUrl,
       observedAt,
       publishedAt,
       trafficEvidence,
       whyNow: trafficEvidence
-        ? `Recent Instagram #${hashtag} media with ${trafficEvidence}.`
-        : `Recent Instagram #${hashtag} media from the authorized Graph API response.`,
+        ? `Recent Instagram ${sourceContext} with ${trafficEvidence}.`
+        : `Recent Instagram ${sourceContext} from the authorized Graph API response.`,
     });
   }
 

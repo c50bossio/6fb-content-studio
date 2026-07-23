@@ -174,18 +174,6 @@ function credentialScope(value: string) {
   return createHash('sha256').update(value).digest('hex').slice(0, 16);
 }
 
-function buildInstagramHashtags(brain?: ContentBrain | null) {
-  const candidates = ['barber', 'barbershop', ...(brain?.contentPillars ?? [])];
-  const hashtags: string[] = [];
-  for (const candidate of candidates) {
-    const normalized = candidate.toLowerCase().replace(/[^a-z0-9_]/g, '');
-    if (normalized.length < 2 || normalized.length > 30 || hashtags.includes(normalized)) continue;
-    hashtags.push(normalized);
-    if (hashtags.length === 2) break;
-  }
-  return hashtags;
-}
-
 export class SmartTrendService {
   private readonly request: RequestFn;
   private readonly now: () => number;
@@ -293,11 +281,13 @@ export class SmartTrendService {
           }),
     ]);
 
-    const liveIdeas = rankTrendIdeas(
-      [...google.ideas, ...instagram.ideas],
-      input.contentBrain,
-      6,
-    );
+    // Keep a bounded account signal in the feed when Instagram is live. A
+    // generic Google spike must not crowd a connected barber's own recent
+    // content out of the product that is meant to make use of it.
+    const liveIdeas = dedupeTrendIdeas([
+      ...rankTrendIdeas(instagram.ideas, input.contentBrain, 2),
+      ...rankTrendIdeas(google.ideas, input.contentBrain, 6),
+    ], 8);
     const plannedIdeas = planner.ideas.slice(0, 2);
     const usefulLiveIdeas = liveIdeas.filter(idea => (idea.barberFitScore ?? 0) >= MIN_USEFUL_BARBER_FIT);
     const broadLiveIdeas = liveIdeas.filter(idea => (idea.barberFitScore ?? 0) < MIN_USEFUL_BARBER_FIT);
@@ -562,43 +552,23 @@ export class SmartTrendService {
   private async fetchInstagram(input: SmartTrendServiceInput, fetchedAt: string): Promise<SourceResult> {
     const token = input.instagramAccessToken!;
     const userId = input.instagramUserId!;
-    const ideas: TrendIdea[] = [];
-
-    for (const hashtag of buildInstagramHashtags(input.contentBrain)) {
-      const lookup = new URL(`${INSTAGRAM_GRAPH_ORIGIN}/ig_hashtag_search`);
-      lookup.searchParams.set('user_id', userId);
-      lookup.searchParams.set('q', hashtag);
-      lookup.searchParams.set('access_token', token);
-      const lookupResponse = await this.requestWithRetry(lookup.toString());
-      const lookupPayload = await readLimitedJson(lookupResponse);
-      const lookupRecord = asRecord(lookupPayload);
-      if (!lookupRecord || !Array.isArray(lookupRecord.data)) {
-        throw new SourceRequestError('Instagram returned malformed hashtag data.');
-      }
-      const lookupData = lookupRecord.data as Array<{ id?: unknown }>;
-      const hashtagId = typeof lookupData[0]?.id === 'string' ? lookupData[0].id : '';
-      if (!/^\d+$/.test(hashtagId)) continue;
-
-      const media = new URL(`${INSTAGRAM_GRAPH_ORIGIN}/${hashtagId}/recent_media`);
-      media.searchParams.set('user_id', userId);
-      media.searchParams.set('fields', 'id,caption,media_type,like_count,comments_count,timestamp,permalink');
-      media.searchParams.set('limit', '12');
-      media.searchParams.set('access_token', token);
-      const mediaResponse = await this.requestWithRetry(media.toString());
-      const mediaPayload = await readLimitedJson(mediaResponse);
-      const mediaRecord = asRecord(mediaPayload);
-      if (!mediaRecord || !Array.isArray(mediaRecord.data)) {
-        throw new SourceRequestError('Instagram returned malformed media data.');
-      }
-      ideas.push(...mapInstagramMediaToTrends(mediaPayload, hashtag, fetchedAt, 4));
+    const media = new URL(`${INSTAGRAM_GRAPH_ORIGIN}/${userId}/media`);
+    media.searchParams.set('fields', 'id,caption,media_type,like_count,comments_count,timestamp,permalink');
+    media.searchParams.set('limit', '12');
+    media.searchParams.set('access_token', token);
+    const mediaResponse = await this.requestWithRetry(media.toString());
+    const mediaPayload = await readLimitedJson(mediaResponse);
+    const mediaRecord = asRecord(mediaPayload);
+    if (!mediaRecord || !Array.isArray(mediaRecord.data)) {
+      throw new SourceRequestError('Instagram returned malformed media data.');
     }
 
-    const ranked = rankTrendIdeas(ideas, input.contentBrain, 6);
+    const ranked = rankTrendIdeas(mapInstagramMediaToTrends(mediaPayload, null, fetchedAt, 6), input.contentBrain, 6);
     return {
       ideas: ranked,
       status: ranked.length
-        ? status('instagram', 'live', `${ranked.length} recent authorized hashtag signal${ranked.length === 1 ? '' : 's'}.`, fetchedAt)
-        : status('instagram', 'empty', 'Instagram returned no usable recent hashtag signals.', fetchedAt),
+        ? status('instagram', 'live', `${ranked.length} recent authorized account signal${ranked.length === 1 ? '' : 's'}.`, fetchedAt)
+        : status('instagram', 'empty', 'Instagram returned no usable recent account signals.', fetchedAt),
     };
   }
 }
