@@ -84,7 +84,7 @@ test('Google success returns source-backed live evidence with deterministic requ
   assert.equal(feed.ideas.some(idea => idea.sourceId === 'google-trends' && idea.evidenceState === 'live'), true);
 });
 
-test('all-zero live fit leads with useful starters without fabricating relevance', async () => {
+test('all-zero live fit excludes unrelated signals and returns only useful starters', async () => {
   const service = new SmartTrendService({
     now: () => BASE_TIME,
     sleep: async () => {},
@@ -94,14 +94,26 @@ test('all-zero live fit leads with useful starters without fabricating relevance
   const feed = await service.fetch({});
 
   assert.equal(MIN_USEFUL_BARBER_FIT, 20);
-  assert.equal(feed.ideas[0].evidenceState, 'idea-starter');
-  assert.equal(feed.ideas.filter(idea => idea.evidenceState === 'idea-starter').length, 4);
-  const broad = feed.ideas.find(idea => idea.sourceId === 'google-trends');
-  assert.ok(broad);
-  assert.equal(broad.barberFitScore, 0);
-  assert.equal(broad.title, 'FIFA team of the tournament 2026');
-  assert.equal(broad.evidenceState, 'live');
+  assert.equal(feed.ideas.length, 6);
+  assert.equal(feed.ideas.every(idea => idea.evidenceState === 'idea-starter'), true);
+  assert.equal(feed.ideas.some(idea => idea.sourceId === 'google-trends'), false);
   assert.match(source(feed, 'google-trends').message ?? '', /no signal cleared barber fit 20/i);
+});
+
+test('a direct barber-domain Google signal survives even when its additive fit score is below the threshold', async () => {
+  const service = new SmartTrendService({
+    now: () => BASE_TIME,
+    sleep: async () => {},
+    request: async () => response(googleRss('Barber Battle 2026')),
+  });
+
+  const feed = await service.fetch({});
+  const directSignal = feed.ideas.find(idea => idea.sourceId === 'google-trends');
+
+  assert.ok(directSignal);
+  assert.equal(directSignal.title, 'Barber Battle 2026');
+  assert.equal(directSignal.barberFitScore, 10);
+  assert.doesNotMatch(source(feed, 'google-trends').message ?? '', /no signal cleared barber fit/i);
 });
 
 test('consented 6FB account makes one backend request and keeps YouTube reference-only', async () => {
@@ -474,6 +486,7 @@ test('authorized account signals survive a full Google feed alongside planned to
 
   assert.equal(feed.ideas.some(idea => idea.sourceId === 'instagram'), true);
   assert.equal(feed.ideas.some(idea => idea.sourceId === 'content-planner'), true);
+  assert.equal(feed.ideas.some(idea => idea.sourceId === 'google-trends'), true);
 });
 
 test('Instagram permission failure is terminal and capped at one request', async () => {

@@ -412,6 +412,10 @@ function addContextWeights(weights: Map<string, number>, values: readonly string
   }
 }
 
+export function hasDirectBarberDomainSignal(title: string): boolean {
+  return [...fitTokens(title)].some(token => BARBER_DOMAIN_TOKENS.has(token));
+}
+
 export function scoreBarberFit(title: string, brain?: ContentBrain | null): number {
   const titleTokens = fitTokens(title);
   let score = 0;

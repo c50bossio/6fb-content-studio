@@ -7,6 +7,23 @@ Last updated: 2026-07-23
 
 ## Current status
 
+### Low-fit Google Trends correction (2026-07-23, pending review)
+
+Public macOS `v1.5.52` acceptance testing found that the Smart Trends service
+could append low-fit general Google Trends topics even after reporting that no
+signal cleared the barber-fit threshold. Pull request #58 removes those
+unqualified Google topics from the picker, while preserving qualified live
+signals, authorized Instagram account signals, and Content Planner topics. Its
+full suite passes with the fresh bundled Python 3.12 runtime, and a built-app
+live-source check returned six Idea starters with zero low-fit Google topics.
+An inline review identified a boundary case where a one-keyword direct barber
+headline (for example, "Barber Battle 2026") could be excluded. The PR now
+keeps direct barber-domain Google signals while continuing to exclude unrelated
+low-fit headlines; the refreshed full suite passes with 67 unit tests and 82
+IPC contract checks.
+This is a code-review candidate only: `v1.5.52` remains public and unchanged;
+no merge, tag, or additional release has occurred.
+
 ### Instagram Trends correction release (2026-07-23, public for macOS arm64)
 
 The Instagram Trends correction merged through pull request #53 and the

@@ -9,6 +9,7 @@ import {
   TREND_STALE_CACHE_MS,
   createIdeaStarters,
   dedupeTrendIdeas,
+  hasDirectBarberDomainSignal,
   mapContentPlannerToTrends,
   mapInstagramMediaToTrends,
   parseYouTubeBackendResponse,
@@ -248,6 +249,8 @@ test('barber-fit scoring is deterministic and does not manufacture relevance for
   assert.equal(scoreBarberFit('Barber pricing and client retention', brain), related);
   assert.equal(related > unrelated, true);
   assert.equal(unrelated, 0);
+  assert.equal(hasDirectBarberDomainSignal('Barber Battle 2026'), true);
+  assert.equal(hasDirectBarberDomainSignal('Meteor shower viewing time'), false);
 });
 
 test('ranking scores only live or cached ideas and keeps plan/starter claims unscored', () => {

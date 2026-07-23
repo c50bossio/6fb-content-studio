@@ -133,7 +133,8 @@ assert.match(smartTrendService, /now - cached\.checkedAt >= STALE_CACHE_MS[\s\S]
 assert.match(smartTrendService, /clearYouTubeCache\(\)[\s\S]*?clearTimeout\(timer\)[\s\S]*?youtubeExpiryTimers\.clear\(\)/, 'Clearing YouTube data must also clear every expiry timer');
 assert.match(smartTrendService, /MAX_JSON_BYTES = 512 \* 1024/, 'Trend JSON responses must have a hard size cap');
 assert.match(smartTrendService, /MIN_USEFUL_BARBER_FIT = 20/, 'Broad live data must clear a fixed useful-fit threshold');
-assert.match(smartTrendService, /createIdeaStarters\(4\)[\s\S]*?broadLiveIdeas\.slice\(0, 2\)/, 'All-low-fit live data must lead with useful starters and cap broad signals');
+assert.match(smartTrendService, /hasDirectBarberDomainSignal\(idea\.title\)[\s\S]*?qualifiedLiveIdeas[\s\S]*?\? dedupeTrendIdeas\(\[\.\.\.qualifiedLiveIdeas, \.\.\.plannedIdeas\]/, 'Only qualified live, direct barber-domain, or planned signals may enter the picker');
+assert.match(smartTrendService, /: createIdeaStarters\(6\);/, 'All-low-fit live data must return only useful starters');
 assert.match(smartTrendService, /No signal cleared barber fit \$\{MIN_USEFUL_BARBER_FIT\}/, 'Low-fit source status must explain why starters lead');
 assert.match(smartTrendService, /createHash\('sha256'\)/, 'Authenticated trend caches must be partitioned without storing raw credentials as keys');
 assert.match(smartTrendService, /SIXFB_YOUTUBE_TRENDS = 'https:\/\/content\.6fbmentorship\.com\/apps\/content\/api\/studio\/youtube-trends'/, 'YouTube references must use the canonical fixed authenticated 6FB backend endpoint');
