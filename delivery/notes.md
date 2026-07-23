@@ -10,6 +10,10 @@ Last updated: 2026-07-22
 - `delivery/release-notes/v1.5.47.md` and
   `delivery/checklists/v1.5.47-release-readiness.md` define the Mac-arm64-only
   candidate. They do not authorize a tag or publication.
+- v1.5.47 release preparation merged through pull request #38 as exact
+  `origin/main` commit `293037de905edf37296255cb56ce47c1160e9027`. Its tree
+  exactly matches verified pull-request head
+  `82c98941f8f84e9d592a29e4675d8d3519af531b`; no tag or draft release exists.
 - The source `package.json` reports version `1.5.39`; the tag workflow stamps
   the release version while packaging.
 - `.github/workflows/release.yml` coordinates macOS-arm64-only `v*` releases:
@@ -110,8 +114,8 @@ Last updated: 2026-07-22
 
 ## Open questions
 
-- Which exact reviewed `origin/main` commit will be approved as the `v1.5.47`
-  tag target after this preparation change is merged?
+- Will exact `origin/main` commit `293037de905edf37296255cb56ce47c1160e9027`
+  still be the approved `v1.5.47` tag target after the final pre-tag check?
 - What adoption threshold should trigger reconsidering a Windows release?
 
 ## Recent decisions
